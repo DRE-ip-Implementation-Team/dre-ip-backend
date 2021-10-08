@@ -1,0 +1,8 @@
+FROM rust:alpine3.14
+
+WORKDIR /usr/src/myapp
+COPY . .
+
+RUN cargo install --path .
+
+CMD ["dreip"]
