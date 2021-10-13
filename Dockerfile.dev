@@ -1,8 +1,11 @@
-FROM rust:alpine3.14
+FROM rust
+
+EXPOSE 8000
 
 WORKDIR /usr/src/myapp
 COPY . .
 
-RUN cargo install --path .
+RUN rustup override set nightly
+RUN rustup update && cargo update
 
-CMD ["dreip"]
+CMD cargo run
