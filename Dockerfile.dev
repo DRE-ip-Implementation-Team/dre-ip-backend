@@ -5,8 +5,6 @@ EXPOSE 8000
 WORKDIR /usr/src/myapp
 COPY . .
 
-RUN rustup override set nightly
-RUN rustup update && cargo update
 RUN cargo install cargo-watch
 
 ENV ROCKET_ADDRESS=0.0.0.0
