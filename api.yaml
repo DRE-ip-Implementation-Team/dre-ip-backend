@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: DRE-ip Server API
+  description: DRE-ip Server API
+  version: 1.0.0
+servers:
+  - description: Backend Server
+    url: Self-Hosted
+security:
+  - AuthToken: []  # Require AuthToken by default.
+
+tags:
+  - name: Frontend
+  - name: Login API
+  - name: Election Management API
+  - name: Voting API
+  - name: Results API
+
+paths:
+  # --- Frontend Delivery ---
+  /:
+    get:
+      summary: Load the frontend.
+      security: [ ]  # No token needed just to load UI.
+      tags:
+        - Frontend
+      responses:
+        200:
+          description: Frontend returned.
+          content:
+            text/html:
+              schema:
+                type: string
+                example: <html>...</html>
+  # --- Login API ---
+  # Admin login via password
+  /api/login/admin:
+    post:
+      summary: Attempt to authenticate as admin via the admin password.
+      security: [ ]  # No token needed before login.
+      tags:
+        - Login API
+      requestBody:
+        description: Admin password.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLogin"
+      responses:
+        200:
+          $ref: "#/components/responses/AuthToken"
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          description: Incorrect password.
+  # User request OTP
+  /api/login/voter/request-otp:
+    post:
+      summary: Request an OTP for voter authentication.
+      security: [ ]  # No token needed before login.
+      tags:
+        - Login API
+      requestBody:
+        description: Voter SMS number.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoterSMSNumber"
+      responses:
+        200:
+          description: OTP successfully sent.
+        400:
+          $ref: "#/components/responses/BadFormat"
+  # User login via OTP
+  /api/login/voter/submit-otp:
+    post:
+      summary: Submit an OTP to authenticate as a voter.
+      security: [ ]  # No token needed before login.
+      tags:
+        - Login API
+      requestBody:
+        description: Voter SMS number and OTP.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoterOTP"
+      responses:
+        200:
+          $ref: "#/components/responses/AuthToken"
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          description: Incorrect OTP.
+  # --- Election Management API ---
+  # TODO
+  # --- Voting API ---
+  # TODO
+  # --- Results API ---
+  # TODO
+
+components:
+  # Security
+  securitySchemes:
+    AuthToken:
+      type: apiKey
+      in: cookie
+      name: AUTHTOKEN
+  # Payload Schemas
+  schemas:
+    AdminLogin:
+      type: object
+      properties:
+        password:
+          type: string
+      example:
+        password: "CorrectHorseBatteryStaple"
+    VoterSMSNumber:
+      type: object
+      properties:
+        sms:
+          type: string
+      example:
+        sms: "+441234567890"
+    VoterOTP:
+      type: object
+      properties:
+        sms:
+          type: string
+        otp:
+          type: string
+      example:
+        sms: "+441234567890"
+        otp: "123456"
+    AuthToken:
+      type: string
+      example: AUTHTOKEN=abc.123.xyz
+  # Common Responses
+  responses:
+    AuthToken:
+      description: Login successful, token returned.
+      headers:
+        Set-Cookie:
+          schema:
+            $ref: "#/components/schemas/AuthToken"
+    BadFormat:
+      description: Bad request format.
