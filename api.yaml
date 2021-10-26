@@ -12,14 +12,38 @@ security:
   - AuthToken: [ ]  # Require AuthToken by default.
 
 tags:
+  - name: Information API
   - name: Login API
   - name: Election Management API
     description: Requires an admin-level AUTHTOKEN cookie.
   - name: Voting API
     description: Requires a voter-level AUTHTOKEN cookie.
-  - name: Results API
 
 paths:
+  # --- Information API ---
+  # Retrieve all elections
+  /election:
+    get:
+      summary: Retrieve all currently-running elections.
+      description: "Currently-running elections are defined as those
+        which are finalised and the current time is within their start
+        and end bounds."
+      security: [ ]  # No authentication needed.
+      tags:
+        - Information API
+      responses:
+        200:
+          description: Array of elections.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Election"
+  # Retrieve all votes for an election
+  # TODO this could be a lot of data, we want to think about pagination before designing this API.
+  # Retrieve a specific vote by hash
+  # TODO
   # --- Login API ---
   # Admin login via password
   /login/admin:
@@ -169,9 +193,100 @@ paths:
         404:
           $ref: "#/components/responses/NotFound"
   # --- Voting API ---
-  # TODO
-  # --- Results API ---
-  # TODO
+  /election/{electionID}/voter/groups:
+    get:
+      summary: Retrieve the groups that the current voter belongs to.
+      description: "This information is deliberately available for only
+      the current user; not even the admin can see it. This is because
+      group membership may constitute personal information."
+      tags:
+        - Voting API
+      responses:
+        200:
+          description: List of group IDs, or null if groups not yet set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IDList"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
+    post:
+      summary: Set the groups of the current voter.
+      description: This can only be done once per voter per election.
+      tags:
+        - Voting API
+      requestBody:
+        description: List of group IDs.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDList"
+      responses:
+        200:
+          description: Group selection successful.
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          description: Groups already set.
+  /election/{electionID}/voter/voted:
+    get:
+      summary: Retrieve the questions that the current voter has already voted on.
+      tags:
+        - Voting API
+      responses:
+        200:
+          description: List of question IDs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IDList"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
+  # Submit provisional vote(s)
+  /election/{electionID}/vote:
+    post:
+      summary: Submit provisional vote(s) and get a stage-1 receipt.
+      tags:
+        - Voting API
+      requestBody:
+        description: "List of votes: question-candidate ID pairs."
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoteList"
+      responses:
+        200:
+          description: Stage-1 receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stage1Receipt"
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
+  # TODO cancel provisional
+  # TODO confirm provisional
 
 components:
   # Security
@@ -209,6 +324,13 @@ components:
     AuthToken:
       type: string
       example: AUTHTOKEN=abc.123.xyz
+    Candidate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
     Question:
       type: object
       properties:
@@ -223,12 +345,16 @@ components:
         candidates:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/Candidate"
       example:
         id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
         desc: Course Representative (Computer Science)
         groupConstraints: [07b185d2-7f75-4409-ad47-9dc8bb95cb4d]
-        candidates: [Alice, Bob]
+        candidates:
+          - id: 398fc139-c26c-44ea-8af9-c09009091442
+            name: Alice
+          - id: cc75eb78-dd87-472b-b80c-4eeb55a69e2c
+            name: Bob
     Group:
       type: object
       properties:
@@ -236,12 +362,13 @@ components:
           type: string
         name:
           type: string
-        mutexGroup:
+        mutexSet:
           required: false
           type: string
       example:
         id: 07b185d2-7f75-4409-ad47-9dc8bb95cb4d
         name: Computer Science Students
+        mutexSet: courses
     Election:
       type: object
       properties:
@@ -276,7 +403,41 @@ components:
           - id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
             desc: Course Representative (Computer Science)
             groupConstraints: [ 07b185d2-7f75-4409-ad47-9dc8bb95cb4d ]
-            candidates: [ Alice, Bob ]
+            candidates:
+              - id: 398fc139-c26c-44ea-8af9-c09009091442
+                name: Alice
+              - id: cc75eb78-dd87-472b-b80c-4eeb55a69e2c
+                name: Bob
+    IDList:
+      type: array
+      items:
+        type: string
+      example:
+        - e041990c-5edc-4bdc-94ed-406a4b9759c3
+        - 814d342b-acee-4848-b004-857ff77cf29f
+        - ddf94a22-6d6f-4c73-9cba-00d1d83dd537
+    Vote:
+      type: object
+      properties:
+        question:
+          type: string
+        candidate:
+          type: string
+      example:
+        question: 7b7c0917-060c-45cf-ace8-b8b834765d6f
+        candidate: 398fc139-c26c-44ea-8af9-c09009091442
+    VoteList:
+      type: array
+      items:
+        $ref: "#/components/schemas/Vote"
+      example:
+        - question: 7b7c0917-060c-45cf-ace8-b8b834765d6f
+          candidate: 398fc139-c26c-44ea-8af9-c09009091442
+        - question: aa74a53e-e9b6-4f46-b73e-3ec41e583a1c
+          candidate: 9a2ee202-6fb8-4fdb-89ec-c60a14999f7c
+    Stage1Receipt:
+      type: string
+      example: TODO receipt example  # TODO
   # Common Responses
   responses:
     AuthToken:
