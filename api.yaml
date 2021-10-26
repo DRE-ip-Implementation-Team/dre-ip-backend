@@ -1,40 +1,28 @@
 openapi: 3.0.3
 info:
   title: DRE-ip Server API
-  description: DRE-ip Server API
+  description: "DRE-ip Server API. Mostly structured in a REST-ful manner,
+  but uses only GET and POST in order to be compatible with no-Javascript
+  environments."
   version: 1.0.0
 servers:
   - description: Backend Server
     url: Self-Hosted
 security:
-  - AuthToken: []  # Require AuthToken by default.
+  - AuthToken: [ ]  # Require AuthToken by default.
 
 tags:
-  - name: Frontend
   - name: Login API
   - name: Election Management API
+    description: Requires an admin-level AUTHTOKEN cookie.
   - name: Voting API
+    description: Requires a voter-level AUTHTOKEN cookie.
   - name: Results API
 
 paths:
-  # --- Frontend Delivery ---
-  /:
-    get:
-      summary: Load the frontend.
-      security: [ ]  # No token needed just to load UI.
-      tags:
-        - Frontend
-      responses:
-        200:
-          description: Frontend returned.
-          content:
-            text/html:
-              schema:
-                type: string
-                example: <html>...</html>
   # --- Login API ---
   # Admin login via password
-  /api/login/admin:
+  /login/admin:
     post:
       summary: Attempt to authenticate as admin via the admin password.
       security: [ ]  # No token needed before login.
@@ -55,7 +43,7 @@ paths:
         401:
           description: Incorrect password.
   # User request OTP
-  /api/login/voter/request-otp:
+  /login/voter/request-otp:
     post:
       summary: Request an OTP for voter authentication.
       security: [ ]  # No token needed before login.
@@ -74,7 +62,7 @@ paths:
         400:
           $ref: "#/components/responses/BadFormat"
   # User login via OTP
-  /api/login/voter/submit-otp:
+  /login/voter/submit-otp:
     post:
       summary: Submit an OTP to authenticate as a voter.
       security: [ ]  # No token needed before login.
@@ -95,7 +83,91 @@ paths:
         401:
           description: Incorrect OTP.
   # --- Election Management API ---
-  # TODO
+  # Create an election.
+  /election/create:
+    post:
+      summary: Create a new empty election.
+      tags:
+        - Election Management API
+      requestBody:
+        description: "Initial election structure (optional).
+        The ID field is ignored, as one will be allocated."
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Election"
+      responses:
+        201:
+          description: Creation successful. Returns the resulting Election object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+  # Modify an election
+  /election/{electionID}/modify:
+    post:
+      summary: Replace the given election with the supplied structure.
+      description: "An election can only be modified if it is not finalised.
+      If you wish to modify a finalised election, you must use `/cancel` first."
+      tags:
+        - Election Management API
+      requestBody:
+        description: "New election structure.
+        The ID must match the ID in the URL."
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Election"
+      responses:
+        200:
+          description: Modification successful.
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
+  /election/{electionID}/cancel:
+    post:
+      summary: Cancel a finalised election.
+      description: "This allows a previously finalised election to be
+      modified. Be aware that this will destroy all current votes (if any)."
+      tags:
+        - Election Management API
+      responses:
+        200:
+          description: Cancellation successful.
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
+  # Delete an election.
+  /election/{electionID}/delete:
+    post:
+      summary: Permanently delete the given election.
+      tags:
+        - Election Management API
+      responses:
+        200:
+          description: Deletion successful.
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
   # --- Voting API ---
   # TODO
   # --- Results API ---
@@ -137,6 +209,74 @@ components:
     AuthToken:
       type: string
       example: AUTHTOKEN=abc.123.xyz
+    Question:
+      type: object
+      properties:
+        id:
+          type: string
+        desc:
+          type: string
+        groupConstraints:
+          type: array
+          items:
+            type: string
+        candidates:
+          type: array
+          items:
+            type: string
+      example:
+        id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
+        desc: Course Representative (Computer Science)
+        groupConstraints: [07b185d2-7f75-4409-ad47-9dc8bb95cb4d]
+        candidates: [Alice, Bob]
+    Group:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mutexGroup:
+          required: false
+          type: string
+      example:
+        id: 07b185d2-7f75-4409-ad47-9dc8bb95cb4d
+        name: Computer Science Students
+    Election:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        finalised:
+          type: boolean
+        startTime:
+          type: string
+        endTime:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Question"
+      example:
+        id: 7b1c5646-4cf8-4507-8ff4-bb8580214622
+        name: SU Election
+        finalised: true
+        startTime: 2021-10-01T00:00:00Z
+        endTime: 2021-10-08T00:00:00Z
+        groups:
+          - id: 07b185d2-7f75-4409-ad47-9dc8bb95cb4d
+            name: Computer Science Students
+        questions:
+          - id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
+            desc: Course Representative (Computer Science)
+            groupConstraints: [ 07b185d2-7f75-4409-ad47-9dc8bb95cb4d ]
+            candidates: [ Alice, Bob ]
   # Common Responses
   responses:
     AuthToken:
@@ -147,3 +287,9 @@ components:
             $ref: "#/components/schemas/AuthToken"
     BadFormat:
       description: Bad request format.
+    NotLoggedIn:
+      description: No AUTHTOKEN cookie present.
+    PermissionDenied:
+      description: AUTHTOKEN cookie is invalid or does not give you the required permissions.
+    NotFound:
+      description: Not Found.
