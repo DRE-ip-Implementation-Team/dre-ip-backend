@@ -22,12 +22,11 @@ tags:
 paths:
   # --- Information API ---
   # Retrieve all elections
-  /election:
+  /elections:
     get:
-      summary: Retrieve all currently-running elections.
-      description: "Currently-running elections are defined as those
-        which are finalised and the current time is within their start
-        and end bounds."
+      summary: Retrieve all elections.
+      description: "Non-finalised elections are excluded from the result unless
+      authenticated as admin."
       security: [ ]  # No authentication needed.
       tags:
         - Information API
@@ -41,8 +40,60 @@ paths:
                 items:
                   $ref: "#/components/schemas/Election"
   # Retrieve all votes for an election
-  # TODO this could be a lot of data, we want to think about pagination before designing this API.
-  # Retrieve a specific vote by hash
+  /election/{electionID}/votes:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+      - $ref: "#/components/parameters/PageNum"
+      - $ref: "#/components/parameters/PageSize"
+    get:
+      summary: Retrieve votes for an election.
+      description: "There may be a large number of votes, so this request is
+      paginated. The page size may be at most 1000, and defaults to 50."
+      security: [ ]  # No authentication needed.
+      tags:
+        - Information API
+      responses:
+        200:
+          description: Votes plus pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  votes:
+                    type: array
+                    description: List of vote receipts.
+                    items:
+                      $ref: "#/components/schemas/Stage2Receipt"
+                  page_num:
+                    type: integer
+                    description: The actual page index retrieved.
+                  page_size:
+                    type: integer
+                    description: The actual page size used.
+                  total_votes:
+                    type: integer
+                    description: The total number of votes for this election.
+              example:
+                votes:
+                  - id: 51
+                    R: abcdef
+                    Z: 098765
+                    P: fedcba
+                    action: "confirmed"
+                  - id: 52
+                    R: 123abc
+                    Z: def456
+                    P: 1a2b3c
+                    action: "audited"
+                    r: fafafa
+                    v: 0
+                page_num: 2
+                page_size: 50
+                total_votes: 52
+        404:
+          description: Page index out of range.
+  # Retrieve a specific vote by ID
   # TODO
   # --- Login API ---
   # Admin login via password
@@ -136,6 +187,8 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
   # Modify an election
   /election/{electionID}/modify:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     post:
       summary: Replace the given election with the supplied structure.
       description: "An election can only be modified if it is not finalised.
@@ -162,6 +215,8 @@ paths:
         404:
           $ref: "#/components/responses/NotFound"
   /election/{electionID}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     post:
       summary: Cancel a finalised election.
       description: "This allows a previously finalised election to be
@@ -179,6 +234,8 @@ paths:
           $ref: "#/components/responses/NotFound"
   # Delete an election.
   /election/{electionID}/delete:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     post:
       summary: Permanently delete the given election.
       tags:
@@ -194,6 +251,8 @@ paths:
           $ref: "#/components/responses/NotFound"
   # --- Voting API ---
   /election/{electionID}/voter/groups:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     get:
       summary: Retrieve the groups that the current voter belongs to.
       description: "This information is deliberately available for only
@@ -240,6 +299,8 @@ paths:
         409:
           description: Groups already set.
   /election/{electionID}/voter/voted:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     get:
       summary: Retrieve the questions that the current voter has already voted on.
       tags:
@@ -259,6 +320,8 @@ paths:
           $ref: "#/components/responses/NotFound"
   # Submit provisional vote(s)
   /election/{electionID}/vote:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     post:
       summary: Submit provisional vote(s) and get a stage-1 receipt.
       tags:
@@ -436,8 +499,78 @@ components:
         - question: aa74a53e-e9b6-4f46-b73e-3ec41e583a1c
           candidate: 9a2ee202-6fb8-4fdb-89ec-c60a14999f7c
     Stage1Receipt:
-      type: string
-      example: TODO receipt example  # TODO
+      type: object
+      properties:
+        id:
+          type: integer
+        R:
+          type: string
+        Z:
+          type: string
+        P:
+          type: string  # TODO what is actual format of P?
+      example:
+        id: 12345
+        R: 329a7f6d7e8c5a5b
+        Z: 8a6db9c9ee90f122
+        P: 1298badfc7896fc7
+    Stage2Receipt:
+      type: object
+      description: "A stage 2 receipt contains all the information of a stage 1
+      receipt, but additionally has been either confirmed or audited.
+
+      An audited receipt will include the secrets `r` and `v` for verification
+      purposes; a confirmed receipt will not."
+      properties:
+        id:
+          type: integer
+        R:
+          type: string
+        Z:
+          type: string
+        P:
+          type: string
+        action:
+          type: string
+        r:
+          type: string
+          required: false
+        v:
+          type: integer
+          required: false
+      example:
+        id: 12345
+        R: 329a7f6d7e8c5a5b
+        Z: 8a6db9c9ee90f122
+        P: 1298badfc7896fc7
+        action: "audited"
+        r: 1298cd98c28e90a0
+        v: 1
+  # Common parameters
+  parameters:
+    ElectionID:
+      name: electionID
+      in: path
+      required: true
+      description: The ID of the election to operate on.
+      schema:
+        type: string
+      example: .../7b1c5646-4cf8-4507-8ff4-bb8580214622/...
+    PageNum:
+      name: page_num
+      in: query
+      description: The page index into paginated data, starting at 1.
+      schema:
+        type: integer
+      example: ?page_num=5
+    PageSize:
+      name: page_size
+      in: query
+      description: "The requested size of a single paginated batch.
+      The API may impose a maximum or minimum on this parameter."
+      schema:
+        type: integer
+      example: ?page_size=100
   # Common Responses
   responses:
     AuthToken:
