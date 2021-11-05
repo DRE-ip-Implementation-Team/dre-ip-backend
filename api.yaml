@@ -92,9 +92,26 @@ paths:
                 page_size: 50
                 total_votes: 52
         404:
-          description: Page index out of range.
+          $ref: "#/components/responses/NotFound"
   # Retrieve a specific vote by ID
-  # TODO
+  /election/{electionID}/vote/{voteID}:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+      - $ref: "#/components/parameters/VoteID"
+    get:
+      summary: Retrieve a single vote.
+      security: [ ]  # No authentication needed.
+      tags:
+        - Information API
+      responses:
+        200:
+          description: A single vote record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stage2Receipt"
+        404:
+          $ref: "#/components/responses/NotFound"
   # --- Login API ---
   # Admin login via password
   /login/admin:
@@ -348,8 +365,63 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
-  # TODO cancel provisional
-  # TODO confirm provisional
+  # Cancel provisional vote
+  /election/{electionID}/vote/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+    post:
+      summary: Cancel the in-progress provisional vote.
+      description: "This audits the vote, allowing Cast As Intended to be
+      verified. The choices can be changed before submitting another
+      provisional vote."
+      tags:
+        - Voting API
+      responses:
+        200:
+          description: Stage-2 receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stage2Receipt"
+        400:
+          $ref: "#/components/responses/NoPendingVote"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
+  # Confirm provisional vote
+  /election/{electionID}/vote/confirm:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+    post:
+      summary: Confirm the in-progress provisional vote.
+      description: "This confirms the vote, casting the ballot and locking
+      in the choices."
+      tags:
+        - Voting API
+      responses:
+        200:
+          description: Stage-2 receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stage2Receipt"
+              example:
+                id: 12345
+                R: 329a7f6d7e8c5a5b
+                Z: 8a6db9c9ee90f122
+                P: 1298badfc7896fc7
+                action: "confirmed"
+        400:
+          $ref: "#/components/responses/NoPendingVote"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+        404:
+          $ref: "#/components/responses/NotFound"
 
 components:
   # Security
@@ -505,10 +577,13 @@ components:
           type: integer
         R:
           type: string
+          description: Public random component.
         Z:
           type: string
+          description: Public vote component.
         P:
           type: string  # TODO what is actual format of P?
+          description: Public zero-knowledge proof component.
       example:
         id: 12345
         R: 329a7f6d7e8c5a5b
@@ -526,18 +601,24 @@ components:
           type: integer
         R:
           type: string
+          description: Public random component.
         Z:
           type: string
+          description: Public vote component.
         P:
           type: string
+          description: Public zero-knowledge proof component.
         action:
           type: string
+          description: "Either 'confirmed' or 'audited'."
         r:
           type: string
           required: false
+          description: Secret random component; only present for audited votes.
         v:
           type: integer
           required: false
+          description: Secret vote component; only present for audited votes.
       example:
         id: 12345
         R: 329a7f6d7e8c5a5b
@@ -556,6 +637,14 @@ components:
       schema:
         type: string
       example: .../7b1c5646-4cf8-4507-8ff4-bb8580214622/...
+    VoteID:
+      name: voteID
+      in: path
+      required: true
+      description: The ID of the vote to operate on.
+      schema:
+        type: integer
+      example: .../12345/...
     PageNum:
       name: page_num
       in: query
@@ -587,3 +676,5 @@ components:
       description: AUTHTOKEN cookie is invalid or does not give you the required permissions.
     NotFound:
       description: Not Found.
+    NoPendingVote:
+      description: No in-progress provisional vote.
