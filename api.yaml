@@ -437,6 +437,8 @@ components:
       properties:
         password:
           type: string
+      required:
+        - password
       example:
         password: "CorrectHorseBatteryStaple"
     VoterSMSNumber:
@@ -444,6 +446,8 @@ components:
       properties:
         sms:
           type: string
+      required:
+        - sms
       example:
         sms: "+441234567890"
     VoterOTP:
@@ -453,6 +457,9 @@ components:
           type: string
         otp:
           type: string
+      required:
+        - sms
+        - otp
       example:
         sms: "+441234567890"
         otp: "123456"
@@ -466,6 +473,9 @@ components:
           type: string
         name:
           type: string
+      required:
+        - id
+        - name
     Question:
       type: object
       properties:
@@ -481,6 +491,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Candidate"
+      required:
+        - id
+        - desc
+        - groupConstraints
+        - candidates
       example:
         id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
         desc: Course Representative (Computer Science)
@@ -498,8 +513,10 @@ components:
         name:
           type: string
         mutexSet:
-          required: false
           type: string
+      required:
+        - id
+        - name
       example:
         id: 07b185d2-7f75-4409-ad47-9dc8bb95cb4d
         name: Computer Science Students
@@ -525,6 +542,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Question"
+      required:
+        - id
+        - name
+        - finalised
+        - startTime
+        - endTime
+        - groups
+        - questions
       example:
         id: 7b1c5646-4cf8-4507-8ff4-bb8580214622
         name: SU Election
@@ -558,6 +583,9 @@ components:
           type: string
         candidate:
           type: string
+      required:
+        - question
+        - candidate
       example:
         question: 7b7c0917-060c-45cf-ace8-b8b834765d6f
         candidate: 398fc139-c26c-44ea-8af9-c09009091442
@@ -584,6 +612,11 @@ components:
         P:
           type: string  # TODO what is actual format of P?
           description: Public zero-knowledge proof component.
+      required:
+        - id
+        - R
+        - Z
+        - P
       example:
         id: 12345
         R: 329a7f6d7e8c5a5b
@@ -613,12 +646,16 @@ components:
           description: "Either 'confirmed' or 'audited'."
         r:
           type: string
-          required: false
           description: Secret random component; only present for audited votes.
         v:
           type: integer
-          required: false
           description: Secret vote component; only present for audited votes.
+      required:
+        - id
+        - R
+        - Z
+        - P
+        - action
       example:
         id: 12345
         R: 329a7f6d7e8c5a5b
