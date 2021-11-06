@@ -3,7 +3,6 @@ FROM rust
 EXPOSE 8000
 
 WORKDIR /usr/src/myapp
-COPY . .
 
 RUN cargo install cargo-watch
 
