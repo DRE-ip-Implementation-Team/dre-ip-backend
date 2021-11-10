@@ -87,8 +87,10 @@ async fn login_voter_submit_otp(
 
         // Disallow OTP reuse
         otps.delete_one(doc! { "_id": otp.id }, None).await.unwrap();
+
         // TODO: Generate legitimate JWT
         cookies.add_private(Cookie::new("access_token", "abc.123.xyz"));
+
         Status::Accepted
     } else {
         // Wrong code
