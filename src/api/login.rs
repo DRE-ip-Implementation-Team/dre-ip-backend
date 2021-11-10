@@ -32,7 +32,7 @@ async fn login_voter_request_otp(
     users: &State<Collection<User>>,
     otps: &State<Collection<Otp>>,
 ) -> Status {
-    // If user already exists, reject request
+    // If SMS already exists, reject request
     if let Some(_) = users
         .find_one(doc! { "sms": to_bson(&request.sms).unwrap() }, None)
         .await
