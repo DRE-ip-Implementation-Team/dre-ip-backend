@@ -1,7 +1,5 @@
-use rocket::{http::{CookieJar, Status}, Route, serde::json::Json};
-use serde::Deserialize;
+use rocket::Route;
 
 pub fn routes() -> Vec<Route> {
-    routes![
-    ]
+    routes![]
 }
