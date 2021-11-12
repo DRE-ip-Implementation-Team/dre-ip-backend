@@ -11,5 +11,5 @@ serde = "1.0.130"
 phonenumber = "0.3.1"
 
 [dependencies.rocket]
-version = "0.5.0-rc.1"
+version = "=0.5.0-rc.1"
 features = ["secrets"]
