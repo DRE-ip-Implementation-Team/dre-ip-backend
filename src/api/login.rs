@@ -1,10 +1,20 @@
-use crate::model::{Otp, Sms, User};
-use crate::AdminPassword;
-use mongodb::bson::{doc, to_bson};
-use mongodb::Collection;
-use rocket::form::{Form, Strict};
-use rocket::http::{Cookie, CookieJar, Status};
-use rocket::{Route, State};
+use crate::{
+    model::{
+        otp::Otp,
+        user::{Claims, Sms, User},
+    },
+    AdminPassword,
+};
+use mongodb::{
+    bson::{doc, to_bson},
+    options::ReplaceOptions,
+    Collection,
+};
+use rocket::{
+    form::{Form, Strict},
+    http::{Cookie, CookieJar, Status},
+    Route, State,
+};
 
 pub fn routes() -> Vec<Route> {
     routes![login_admin, login_voter_request_otp, login_voter_submit_otp,]
@@ -17,13 +27,19 @@ fn login_admin(
     admin_password: &State<AdminPassword>,
 ) -> Status {
     if login.password == admin_password.0 {
-        // TODO: Generate legitimate JWT
-        cookies.add_private(Cookie::new("access_token", "abc.123.xyz"));
-        Status::Accepted
+        let claims = Claims::for_admin();
+        let token = claims.encode().unwrap();
+        cookies.add_private(Cookie::new("auth_token", token));
+        Status::Ok
     } else {
         Status::Unauthorized
     }
 }
+
+// TODO: Separate endpoints for:
+// - Non-existent user
+// - Existing unconfirmed user (contains `expiredAt`)
+// - Existing confirmed user
 
 #[post("/login/voter/request-otp", data = "<request>")]
 async fn login_voter_request_otp(
@@ -32,32 +48,56 @@ async fn login_voter_request_otp(
     users: &State<Collection<User>>,
     otps: &State<Collection<Otp>>,
 ) -> Status {
-    // If SMS already exists, reject request
-    if let Some(_) = users
+    // `if let` looks ugly but avoids the alternative `match` nesting
+    let (user, _otp) = if let Some(user) = users
         .find_one(doc! { "sms": to_bson(&request.sms).unwrap() }, None)
         .await
         .unwrap()
     {
-        return Status::BadRequest;
-    }
+        // User already exists, so re-generate and upsert an OTP for their confirmation state
 
-    // Insert user and OTP
-    let mut user = User::new(request.sms.clone());
-    let user_id = users
-        .insert_one(&user, None)
-        .await
-        .unwrap()
-        .inserted_id
-        .as_object_id()
+        let otp = match user.expire_at() {
+            Some(_) => Otp::to_register(&user),
+            None => Otp::to_authenticate(&user),
+        }
         .unwrap();
-    user.id = Some(user_id);
-    let otp = Otp::for_user(&user).unwrap();
-    otps.insert_one(otp, None).await.unwrap();
+
+        // TODO: Mitigate DoS attacks
+
+        otps.replace_one(
+            doc! { "userId": user.id },
+            &otp,
+            ReplaceOptions::builder().upsert(true).build(),
+        )
+        .await
+        .unwrap();
+
+        (user, otp)
+    } else {
+        // User does not exist, so create them, generate a registration OTP and insert the pair
+
+        let mut user = User::new(request.sms.clone());
+        let user_id = users
+            .insert_one(&user, None)
+            .await
+            .unwrap()
+            .inserted_id
+            .as_object_id()
+            .unwrap();
+        user.id = Some(user_id);
+
+        let otp = Otp::to_register(&user).unwrap();
+        otps.insert_one(&otp, None).await.unwrap();
+
+        (user, otp)
+    };
 
     // TODO: Send OTP via SMS server
 
-    cookies.add_private(Cookie::new("user_id", user_id.to_hex()));
-    Status::Accepted
+    let claims = Claims::for_user(&user).unwrap();
+    let token = claims.encode().unwrap();
+    cookies.add_private(Cookie::new("auth_token", token));
+    Status::Ok
 }
 
 #[post("/login/voter/submit-otp", data = "<submission>")]
@@ -88,10 +128,9 @@ async fn login_voter_submit_otp(
         // Disallow OTP reuse
         otps.delete_one(doc! { "_id": otp.id }, None).await.unwrap();
 
-        // TODO: Generate legitimate JWT
-        cookies.add_private(Cookie::new("access_token", "abc.123.xyz"));
+        cookies.add_private(Cookie::new("auth_token", "abc.123.xyz"));
 
-        Status::Accepted
+        Status::Ok
     } else {
         // Wrong code
         Status::Unauthorized
