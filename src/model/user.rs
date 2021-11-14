@@ -61,7 +61,7 @@ impl<'r> FromRequest<'r> for User {
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let users: &State<Collection<User>> = req.guard().await.unwrap();
-        if let Some(cookie) = req.cookies().get_private("auth_token") {
+        if let Some(cookie) = req.cookies().get("auth_token") {
             let token = cookie.value();
             match token.parse::<Claims>() {
                 Ok(claims) => {

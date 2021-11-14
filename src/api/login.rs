@@ -29,7 +29,7 @@ fn login_admin(
     if login.password == admin_password.0 {
         let claims = Claims::for_admin();
         let token = claims.encode().unwrap();
-        cookies.add_private(Cookie::new("auth_token", token));
+        cookies.add(Cookie::new("auth_token", token));
         Status::Ok
     } else {
         Status::Unauthorized
@@ -96,14 +96,13 @@ async fn login_voter_request_otp(
 
     let claims = Claims::for_user(&user).unwrap();
     let token = claims.encode().unwrap();
-    cookies.add_private(Cookie::new("auth_token", token));
+    cookies.add(Cookie::new("auth_token", token));
     Status::Ok
 }
 
 #[post("/login/voter/submit-otp", data = "<submission>")]
 async fn login_voter_submit_otp(
     submission: Form<Strict<OtpSubmission<'_>>>,
-    cookies: &CookieJar<'_>,
     users: &State<Collection<User>>,
     user: User,
     otps: &State<Collection<Otp>>,
@@ -127,8 +126,6 @@ async fn login_voter_submit_otp(
 
         // Disallow OTP reuse
         otps.delete_one(doc! { "_id": otp.id }, None).await.unwrap();
-
-        cookies.add_private(Cookie::new("auth_token", "abc.123.xyz"));
 
         Status::Ok
     } else {
