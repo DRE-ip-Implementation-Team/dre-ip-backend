@@ -1,6 +1,6 @@
 use crate::{
     model::{
-        otp::Otp,
+        otp::{Code, Otp},
         user::{Claims, Sms, User},
     },
     AdminPassword,
@@ -102,7 +102,7 @@ async fn login_voter_request_otp(
 
 #[post("/login/voter/submit-otp", data = "<submission>")]
 async fn login_voter_submit_otp(
-    submission: Form<Strict<OtpSubmission<'_>>>,
+    submission: Form<Strict<OtpSubmission>>,
     users: &State<Collection<User>>,
     user: User,
     otps: &State<Collection<Otp>>,
@@ -145,9 +145,6 @@ struct OtpRequest {
 }
 
 #[derive(FromForm)]
-struct OtpSubmission<'a> {
-    #[field(validate = len(6..=6))]
-    // XXX: can't use `char::is_numeric`: it accepts non-decimal characters, e.g. the "3/4" character
-    #[field(validate = with(|otp| otp.chars().all(|c| ('0'..='9').contains(&c)), "OTP must consist of numbers only"))]
-    code: &'a str,
+struct OtpSubmission {
+    code: Code,
 }

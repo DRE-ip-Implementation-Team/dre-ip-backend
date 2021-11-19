@@ -12,7 +12,6 @@ use rocket::{
     Request, State,
 };
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
@@ -107,10 +106,7 @@ impl Display for Sms {
 impl<'r> FromFormField<'r> for Sms {
     fn from_value(field: ValueField<'r>) -> form::Result<'r, Self> {
         if field.name != "sms" {
-            return Err(ErrorKind::InvalidChoice {
-                choices: Cow::Owned(vec!["sms".into()]),
-            }
-            .into());
+            return Err(ErrorKind::Missing.into());
         }
         phonenumber::parse(None, field.value)
             .map(Sms)
