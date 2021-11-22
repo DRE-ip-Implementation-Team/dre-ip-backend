@@ -50,7 +50,7 @@ async fn login_voter_request_otp(
     otps: &State<Collection<Otp>>,
 ) -> Status {
     // `if let` looks ugly but avoids the alternative `match` nesting
-    let (user, _otp) = if let Some(user) = users
+    let (user, otp) = if let Some(user) = users
         .find_one(doc! { "sms": to_bson(&request.sms).unwrap() }, None)
         .await
         .unwrap()
@@ -94,6 +94,7 @@ async fn login_voter_request_otp(
     };
 
     // TODO: Send OTP via SMS server
+    println!("{:?}", otp);
 
     let claims = Claims::for_user(&user).unwrap();
     let token = claims.encode().unwrap();
