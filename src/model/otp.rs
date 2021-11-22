@@ -1,6 +1,7 @@
 use crate::conf;
 use crate::model::user::User;
 use mongodb::bson::{doc, oid::ObjectId, DateTime};
+use rand::distributions::{Distribution, Uniform};
 use rocket::form::Errors;
 use rocket::form::{self, prelude::ErrorKind, FromFormField, ValueField};
 use serde::{Deserialize, Serialize};
@@ -64,9 +65,13 @@ pub struct Code {
 
 impl Code {
     pub fn new() -> Self {
-        Self {
-            inner: [1, 2, 3, 4, 5, 6],
+        let mut inner = [0; LENGTH];
+        let digit_dist = Uniform::from(0..=9);
+        let mut rng = rand::thread_rng();
+        for digit in &mut inner {
+            *digit = digit_dist.sample(&mut rng);
         }
+        Self { inner }
     }
 }
 
