@@ -1,7 +1,8 @@
 use crate::{
     model::{
         otp::{Code, Otp},
-        user::{Claims, Sms, User},
+        sms::Sms,
+        user::{Claims, User},
     },
     AdminPassword,
 };

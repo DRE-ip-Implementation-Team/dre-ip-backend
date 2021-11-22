@@ -1,18 +1,16 @@
 use crate::conf;
+use crate::model::sms::Sms;
 use jsonwebtoken::{self as jwt, errors::Error as JwtError, DecodingKey, EncodingKey};
 use mongodb::{
     bson::{doc, oid::ObjectId, DateTime},
     Collection,
 };
-use phonenumber::PhoneNumber;
 use rocket::{
-    form::{self, prelude::ErrorKind, FromFormField, ValueField},
     http::Status,
     request::{FromRequest, Outcome},
     Request, State,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
@@ -90,27 +88,6 @@ impl<'r> FromRequest<'r> for User {
             // No `user_id` cookie set
             Outcome::Failure((Status::Unauthorized, UserAuthError::NoCookie))
         }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Sms(PhoneNumber);
-
-impl Display for Sms {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        self.0.fmt(formatter)
-    }
-}
-
-#[rocket::async_trait]
-impl<'r> FromFormField<'r> for Sms {
-    fn from_value(field: ValueField<'r>) -> form::Result<'r, Self> {
-        if field.name != "sms" {
-            return Err(ErrorKind::Missing.into());
-        }
-        phonenumber::parse(None, field.value)
-            .map(Sms)
-            .map_err(|err| ErrorKind::Custom(Box::new(err)).into())
     }
 }
 
