@@ -18,7 +18,12 @@ use rocket::{
 };
 
 pub fn routes() -> Vec<Route> {
-    routes![login_admin, login_voter_request_otp, login_voter_submit_otp,]
+    routes![
+        login_admin,
+        login_voter_request_otp,
+        login_voter_submit_otp,
+        login_voter_logout
+    ]
 }
 
 #[post("/login/admin", data = "<login>")]
@@ -134,6 +139,12 @@ async fn login_voter_submit_otp(
         // Wrong code
         Status::Unauthorized
     }
+}
+
+#[post("/login/voter/logout")]
+fn login_voter_logout(cookies: &CookieJar) -> Status {
+    cookies.remove(Cookie::named("auth_token"));
+    Status::Ok
 }
 
 #[derive(FromForm)]
