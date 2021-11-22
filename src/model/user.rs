@@ -3,6 +3,7 @@ use crate::model::sms::Sms;
 use jsonwebtoken::{self as jwt, errors::Error as JwtError, DecodingKey, EncodingKey};
 use mongodb::{
     bson::{doc, oid::ObjectId, DateTime},
+    error::Error as DbError,
     Collection,
 };
 use rocket::{
@@ -48,7 +49,7 @@ pub enum UserAuthError {
     NoCookie,
     BadCookie(String),
     NoUser,
-    DbError,
+    DbError(DbError),
     JwtError(JwtError),
 }
 
@@ -74,9 +75,12 @@ impl<'r> FromRequest<'r> for User {
                                 ))
                             }
                         },
-                        Err(_) => {
+                        Err(db_err) => {
                             // DB failed to fetch user
-                            Outcome::Failure((Status::InternalServerError, UserAuthError::DbError))
+                            Outcome::Failure((
+                                Status::InternalServerError,
+                                UserAuthError::DbError(db_err),
+                            ))
                         }
                     }
                 }
