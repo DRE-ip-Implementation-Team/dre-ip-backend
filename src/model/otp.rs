@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use std::convert::TryInto;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
+use thiserror::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,9 +91,11 @@ impl FromStr for Code {
     }
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum CodeParseError {
+    #[error("code must contain exactly 6 characters")]
     InvalidLength(usize),
+    #[error("code must contain only digits")]
     InvalidChar(char),
 }
 
@@ -114,8 +117,11 @@ impl From<CodeParseError> for form::error::ErrorKind<'_> {
 }
 
 mod code {
-    use serde::{Deserialize, Deserializer, Serializer};
-    use std::convert::TryInto;
+    use serde::{de::Visitor, Deserializer, Serializer};
+
+    use crate::model::otp::LENGTH;
+
+    use super::Code;
 
     pub fn serialize<S>(code: &[u8; 6], serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -124,11 +130,30 @@ mod code {
         serializer.serialize_str(&code.iter().map(|n| (n + 48) as char).collect::<String>())
     }
 
+    struct StrVisitor;
+
+    impl Visitor<'_> for StrVisitor {
+        type Value = Code;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(formatter, "a string of {} numbers", LENGTH)
+        }
+
+        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            s.parse::<Self::Value>().map_err(|err| E::custom(err))
+        }
+    }
+
     pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 6], D::Error>
     where
         D: Deserializer<'de>,
     {
-        Vec::<u8>::deserialize(deserializer).map(|bytes| bytes.try_into().unwrap())
+        deserializer
+            .deserialize_str(StrVisitor)
+            .map(|code| code.inner)
     }
 }
 
