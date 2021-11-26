@@ -7,7 +7,7 @@ use mongodb::{
     Collection,
 };
 use rocket::{
-    http::Status,
+    http::{Cookie, Status},
     request::{FromRequest, Outcome},
     Request, State,
 };
@@ -133,12 +133,12 @@ impl Claims {
         }
     }
 
-    pub fn for_user(user: &User) -> Option<Self> {
-        Some(Self {
-            user_id: Some(user.id?),
+    pub fn for_user_id(user_id: ObjectId) -> Self {
+        Self {
+            user_id: Some(user_id),
             is_admin: false,
             expire_at: Claims::expire_at(),
-        })
+        }
     }
 
     /// Returns a time at which the JWT represented by the `Claims` will cease to be valid.
@@ -151,12 +151,16 @@ impl Claims {
     /// Encodes the `Claims` as a JWT string with a standard header.
     ///
     /// See [`Config`] to customise the secret key used to encrypt the token.
-    pub fn encode(&self) -> Result<String, JwtError> {
+    fn encode(&self) -> String {
         jwt::encode(
             &jwt::Header::default(),
             &self,
             &EncodingKey::from_secret(conf!(jwt_secret)),
         )
+        // Valid because:
+        //  - Secret is formatted as default signing algorithm expects
+        //  - Serialisation does not fail
+        .unwrap()
     }
 }
 
@@ -170,5 +174,14 @@ impl FromStr for Claims {
             &jwt::Validation::new(jwt::Algorithm::HS256),
         )?
         .claims)
+    }
+}
+
+impl From<Claims> for Cookie<'_> {
+    fn from(claims: Claims) -> Self {
+        // TODO: Set `Secure` flag for HTTPS-only use
+        Cookie::build("auth_token", claims.encode())
+            .http_only(true)
+            .finish()
     }
 }
