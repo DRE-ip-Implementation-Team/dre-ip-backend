@@ -1,9 +1,9 @@
 use rocket::Route;
 
-pub mod election_management;
-pub mod information;
-pub mod login;
-pub mod voting;
+mod election_management;
+mod information;
+mod login;
+mod voting;
 
 pub fn routes() -> Vec<Route> {
     let mut routes = Vec::new();
