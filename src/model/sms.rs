@@ -1,3 +1,4 @@
+use mongodb::bson::{to_bson, Bson};
 use phonenumber::PhoneNumber;
 use rocket::form::{self, error::ErrorKind, FromFormField, ValueField};
 use serde::{Deserialize, Serialize};
@@ -63,5 +64,11 @@ impl<'r> FromFormField<'r> for Sms {
             .parse::<PhoneNumber>()
             .map(|number| Sms { inner: number })
             .map_err(|err| ErrorKind::Custom(Box::new(err)).into())
+    }
+}
+
+impl From<Sms> for Bson {
+    fn from(sms: Sms) -> Self {
+        to_bson(&sms).unwrap() // Valid because `PhoneNumber` serialization doesn't fail
     }
 }
