@@ -608,11 +608,9 @@ components:
           candidate: 398fc139-c26c-44ea-8af9-c09009091442
         - question: aa74a53e-e9b6-4f46-b73e-3ec41e583a1c
           candidate: 9a2ee202-6fb8-4fdb-89ec-c60a14999f7c
-    Stage1Receipt:
+    Stage1Ballot:
       type: object
       properties:
-        id:
-          type: integer
         R:
           type: string
           description: Public random component.
@@ -623,25 +621,16 @@ components:
           type: string  # TODO what is actual format of P?
           description: Public zero-knowledge proof component.
       required:
-        - id
         - R
         - Z
         - P
       example:
-        id: 12345
         R: 329a7f6d7e8c5a5b
         Z: 8a6db9c9ee90f122
         P: 1298badfc7896fc7
-    Stage2Receipt:
+    Stage2Ballot:
       type: object
-      description: "A stage 2 receipt contains all the information of a stage 1
-      receipt, but additionally has been either confirmed or audited.
-
-      An audited receipt will include the secrets `r` and `v` for verification
-      purposes; a confirmed receipt will not."
       properties:
-        id:
-          type: integer
         R:
           type: string
           description: Public random component.
@@ -661,19 +650,61 @@ components:
           type: integer
           description: Secret vote component; only present for audited votes.
       required:
-        - id
         - R
         - Z
         - P
         - action
       example:
-        id: 12345
         R: 329a7f6d7e8c5a5b
         Z: 8a6db9c9ee90f122
         P: 1298badfc7896fc7
         action: "audited"
         r: 1298cd98c28e90a0
         v: 1
+    Stage1Receipt:
+      type: object
+      properties:
+        id:
+          type: integer
+        ballots:
+          type: array
+          items:
+            $ref: "#/components/schemas/Stage1Ballot"
+      required:
+        - id
+        - ballots
+      example:
+        id: 12345
+        ballots:
+          - R: 329a7f6d7e8c5a5b
+            Z: 8a6db9c9ee90f122
+            P: 1298badfc7896fc7
+    Stage2Receipt:
+      description: "A stage 2 receipt contains all the information of a stage 1
+      receipt, but additionally has been either confirmed or audited.
+
+      An audited receipt will include the secrets `r` and `v` for verification
+      purposes; a confirmed receipt will not."
+      type: object
+      properties:
+        id:
+          type: integer
+        ballots:
+          type: array
+          items:
+            $ref: "#/components/schemas/Stage2Ballot"
+      required:
+        - id
+        - ballots
+      example:
+        id: 12345
+        ballots:
+          - R: 329a7f6d7e8c5a5b
+            Z: 8a6db9c9ee90f122
+            P: 1298badfc7896fc7
+            action: "audited"
+            r: 1298cd98c28e90a0
+            v: 1
   # Common parameters
   parameters:
     ElectionID:
