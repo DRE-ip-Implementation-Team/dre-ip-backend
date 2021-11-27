@@ -1,9 +1,6 @@
 openapi: 3.0.3
 info:
   title: DRE-ip Server API
-  description: "DRE-ip Server API. Mostly structured in a REST-ful manner,
-  but uses only GET and POST in order to be compatible with no-Javascript
-  environments."
   version: 1.0.0
 servers:
   - description: Backend Server
@@ -186,7 +183,7 @@ paths:
           description: Logout successful, authentication token removed.
   # --- Election Management API ---
   # Create an election.
-  /election/create:
+  /election:
     post:
       summary: Create a new empty election.
       tags:
@@ -212,14 +209,14 @@ paths:
           $ref: "#/components/responses/NotLoggedIn"
         403:
           $ref: "#/components/responses/PermissionDenied"
-  # Modify an election
-  /election/{electionID}/modify:
+  /election/{electionID}:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
-    post:
+    # Modify an election
+    put:
       summary: Replace the given election with the supplied structure.
-      description: "An election can only be modified if it is not finalised.
-      If you wish to modify a finalised election, you must use `/cancel` first."
+      description: "Any modification to an election will reset it,
+      destroying any votes that have already been cast for it."
       tags:
         - Election Management API
       requestBody:
@@ -241,29 +238,8 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
-  /election/{electionID}/cancel:
-    parameters:
-      - $ref: "#/components/parameters/ElectionID"
-    post:
-      summary: Cancel a finalised election.
-      description: "This allows a previously finalised election to be
-      modified. Be aware that this will destroy all current votes (if any)."
-      tags:
-        - Election Management API
-      responses:
-        200:
-          description: Cancellation successful.
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
-        404:
-          $ref: "#/components/responses/NotFound"
-  # Delete an election.
-  /election/{electionID}/delete:
-    parameters:
-      - $ref: "#/components/parameters/ElectionID"
-    post:
+    # Delete an election.
+    delete:
       summary: Permanently delete the given election.
       tags:
         - Election Management API
