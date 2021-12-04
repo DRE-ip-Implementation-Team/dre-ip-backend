@@ -1,12 +1,17 @@
 #[macro_use]
 extern crate rocket;
-use crate::model::{otp::Otp, user::User};
+use crate::model::{
+    election::{Ballot, Election},
+    otp::Otp,
+    user::User,
+};
 use mongodb::Client;
 use once_cell::sync::OnceCell;
 use rocket::{Build, Rocket};
 use serde::Deserialize;
 
 pub mod api;
+pub mod error;
 pub mod model;
 
 pub async fn build() -> Rocket<Build> {
@@ -21,6 +26,8 @@ pub async fn build() -> Rocket<Build> {
 
     let users = db.collection::<User>("users");
     let otps = db.collection::<Otp>("otps");
+    let elections = db.collection::<Election>("elections");
+    let ballots = db.collection::<Ballot>("ballots");
 
     let admin_password: AdminPassword = figment
         .extract_inner("admin_password")
@@ -32,6 +39,8 @@ pub async fn build() -> Rocket<Build> {
         .mount("/", api::routes())
         .manage(users)
         .manage(otps)
+        .manage(elections)
+        .manage(ballots)
         .manage(admin_password)
 }
 
