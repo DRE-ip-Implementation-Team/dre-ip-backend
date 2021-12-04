@@ -1,5 +1,6 @@
 use crate::{
     conf,
+    error::Error,
     model::{
         otp::{Code, Otp},
         sms::Sms,
@@ -53,11 +54,8 @@ async fn login_voter_request_otp(
     cookies: &CookieJar<'_>,
     users: &State<Collection<User>>,
     otps: &State<Collection<Otp>>,
-) -> Result<Status, Status> {
-    let (user, otp) = if let Some(user) = users
-        .find_one(doc! { "sms": &request.sms }, None)
-        .await
-        .map_err(|_| Status::InternalServerError)?
+) -> Result<Status, Error> {
+    let (user, otp) = if let Some(user) = users.find_one(doc! { "sms": &request.sms }, None).await?
     {
         // User already exists, so re-generate and upsert an OTP for their confirmation state
 
@@ -75,8 +73,7 @@ async fn login_voter_request_otp(
             &otp,
             ReplaceOptions::builder().upsert(true).build(),
         )
-        .await
-        .map_err(|_| Status::InternalServerError)?;
+        .await?;
 
         (user, otp)
     } else {
@@ -85,17 +82,14 @@ async fn login_voter_request_otp(
         let mut user = User::new(request.sms.clone());
         let user_id = users
             .insert_one(&user, None)
-            .await
-            .map_err(|_| Status::InternalServerError)?
+            .await?
             .inserted_id
             .as_object_id()
             .unwrap(); // Valid because `inserted_id` came from DB
         user.id = Some(user_id);
 
         let otp = Otp::to_register(&user).unwrap(); // Valid because `id` and `expire_at` exist
-        otps.insert_one(&otp, None)
-            .await
-            .map_err(|_| Status::InternalServerError)?;
+        otps.insert_one(&otp, None).await?;
 
         (user, otp)
     };
@@ -117,23 +111,27 @@ async fn login_voter_submit_otp(
     cookies: &CookieJar<'_>,
     users: &State<Collection<User>>,
     otps: &State<Collection<Otp>>,
-) -> Result<Status, Status> {
+) -> Result<Status, Error> {
     let user_id = cookies
         .get_private("user_id")
-        .ok_or(Status::BadRequest)?
+        .ok_or(Error::BadRequest("Missing `user_id` cookie".to_string()))?
         .value()
-        .parse::<ObjectId>()
-        .map_err(|_| Status::BadRequest)?;
+        .parse::<ObjectId>()?;
 
     let otp = otps
         .find_one(doc! { "userId": user_id }, None)
-        .await
-        .map_err(|_| Status::InternalServerError)?
-        .ok_or(Status::BadRequest)?;
+        .await?
+        .ok_or(Error::BadRequest(format!(
+            "no user found for `user_id` {}",
+            user_id
+        )))?;
 
     // Verify submitted OTP code
     if otp.code != submission.code {
-        return Err(Status::Unauthorized);
+        Err(Error::Unauthorized(format!(
+            "incorrect OTP code {:?}",
+            submission.code
+        )))?
     }
 
     // Cancel user expiry
@@ -143,13 +141,10 @@ async fn login_voter_submit_otp(
             doc! { "$unset": { "expireAt": "" } },
             None,
         )
-        .await
-        .map_err(|_| Status::InternalServerError)?;
+        .await?;
 
     // Disallow OTP reuse
-    otps.delete_one(doc! { "_id": otp.id }, None)
-        .await
-        .map_err(|_| Status::InternalServerError)?;
+    otps.delete_one(doc! { "_id": otp.id }, None).await?;
 
     // Set authentication token and remove `user_id` cookie
     cookies.add(Claims::for_user_id(user_id).into());
