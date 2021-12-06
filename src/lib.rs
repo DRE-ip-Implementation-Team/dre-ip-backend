@@ -18,8 +18,9 @@ pub async fn build() -> Rocket<Build> {
     let rocket = rocket::build();
     let figment = rocket.figment();
 
-    let db_port = figment.extract_inner("db_port").unwrap_or("27017");
-    let client = Client::with_uri_str(format!("mongodb://localhost:{}", db_port))
+    let db_host = figment.extract_inner("db_host").unwrap_or("localhost");
+    let db_port = figment.extract_inner("db_port").unwrap_or(27017);
+    let client = Client::with_uri_str(format!("mongodb://{}:{}", db_host, db_port))
         .await
         .expect("Could not connect to database");
     let db = client.database("dreip");
