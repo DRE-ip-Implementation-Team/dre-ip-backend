@@ -1,6 +1,9 @@
 use crate::{
     error::Error,
-    model::election::{Ballot, Election},
+    model::{
+        election::{Ballot, Election},
+        pagination::{Pagination, PaginationResult},
+    },
 };
 use futures::stream::TryStreamExt;
 use mongodb::{
@@ -22,31 +25,31 @@ async fn get_elections(
     Ok(Json(elections.find(None, None).await?.try_collect().await?))
 }
 
-#[get("/election/<election_id>/ballots?<page_num>&<page_size>")]
+#[get("/election/<election_id>/ballots?<_page_size>&<_page_num>")]
 async fn get_ballots(
     election_id: Id,
-    page_num: Option<usize>,
-    page_size: Option<usize>,
+    _page_size: Option<usize>,
+    _page_num: Option<usize>,
+    pagination: Pagination,
     ballots: &State<Collection<Ballot>>,
 ) -> Result<Json<PaginatedBallots>, Error> {
-    let page_num = page_num.map(|n| n - 1).unwrap_or(0);
-    let page_size = page_size.unwrap_or(50);
+    // TODO: Tell if query found nothing?
     let ballots = ballots
         .find(
             doc! { "electionId": election_id },
             FindOptions::builder()
-                .skip((page_num * page_size) as u64)
-                .limit(page_size as i64)
-                .batch_size(page_size as u32)
+                .skip(pagination.skip())
+                .limit(pagination.page_size() as i64)
+                .batch_size(pagination.page_size() as u32)
                 .build(),
         )
         .await?
-        .try_collect()
+        .try_collect::<Vec<Ballot>>()
         .await?;
-    let pagination = Pagination::new(page_num, page_size, 3000);
+    let pagination_result = pagination.result(ballots.len());
     Ok(Json(PaginatedBallots {
         ballots,
-        pagination,
+        pagination_result,
     }))
 }
 
@@ -81,22 +84,5 @@ impl<'a> FromParam<'a> for Id {
 pub struct PaginatedBallots {
     ballots: Vec<Ballot>,
     #[serde(flatten)]
-    pagination: Pagination,
-}
-
-#[derive(Serialize)]
-pub struct Pagination {
-    page_num: usize,
-    page_size: usize,
-    total: usize,
-}
-
-impl Pagination {
-    fn new(page_num: usize, page_size: usize, total: usize) -> Self {
-        Self {
-            page_num,
-            page_size,
-            total,
-        }
-    }
+    pagination_result: PaginationResult,
 }
