@@ -25,11 +25,9 @@ async fn get_elections(
     Ok(Json(elections.find(None, None).await?.try_collect().await?))
 }
 
-#[get("/election/<election_id>/ballots?<_page_size>&<_page_num>")]
+#[get("/election/<election_id>/ballots?<pagination..>")]
 async fn get_ballots(
     election_id: Id,
-    _page_size: Option<usize>,
-    _page_num: Option<usize>,
     pagination: Pagination,
     ballots: &State<Collection<Ballot>>,
 ) -> Result<Json<PaginatedBallots>, Error> {

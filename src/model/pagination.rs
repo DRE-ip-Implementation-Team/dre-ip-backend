@@ -1,7 +1,4 @@
-use rocket::{
-    http::Status,
-    request::{self, FromRequest, Request},
-};
+use rocket::form::{self, DataField, Errors, FromForm, FromFormField, ValueField};
 use serde::Serialize;
 
 pub struct Pagination {
@@ -31,26 +28,61 @@ impl Pagination {
     }
 }
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for Pagination {
-    type Error = ();
+pub struct PaginationContext<'f> {
+    page_num: usize,
+    page_size: usize,
+    errors: Errors<'f>,
+}
 
-    async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let page_num = if let Ok(page_num) = req.query_value::<usize>("page_num").unwrap_or(Ok(1)) {
-            page_num
+#[rocket::async_trait]
+impl<'r> FromForm<'r> for Pagination {
+    type Context = PaginationContext<'r>;
+
+    fn init(_opts: form::Options) -> Self::Context {
+        PaginationContext {
+            page_num: 1,
+            page_size: 50,
+            errors: Errors::default(),
+        }
+    }
+
+    fn push_value(ctxt: &mut Self::Context, field: ValueField<'r>) {
+        if field.name == "page_num" {
+            match usize::from_value(field) {
+                Ok(page_num) => ctxt.page_num = page_num,
+                Err(errs) => ctxt.errors.extend(errs),
+            }
+        } else if field.name == "page_size" {
+            match usize::from_value(field) {
+                Ok(page_size) => ctxt.page_size = page_size,
+                Err(errs) => ctxt.errors.extend(errs),
+            }
+        }
+    }
+
+    async fn push_data(ctxt: &mut Self::Context, field: DataField<'r, '_>) {
+        if field.name == "page_num" {
+            match usize::from_data(field).await {
+                Ok(page_num) => ctxt.page_num = page_num,
+                Err(errs) => ctxt.errors.extend(errs),
+            }
+        } else if field.name == "page_size" {
+            match usize::from_data(field).await {
+                Ok(page_size) => ctxt.page_size = page_size,
+                Err(errs) => ctxt.errors.extend(errs),
+            }
+        }
+    }
+
+    fn finalize(ctxt: Self::Context) -> form::Result<'r, Self> {
+        if ctxt.errors.is_empty() {
+            Ok(Self {
+                page_num: ctxt.page_num,
+                page_size: ctxt.page_size,
+            })
         } else {
-            return request::Outcome::Failure((Status::BadRequest, ()));
-        };
-        let page_size =
-            if let Ok(page_size) = req.query_value::<usize>("page_size").unwrap_or(Ok(50)) {
-                page_size
-            } else {
-                return request::Outcome::Failure((Status::BadRequest, ()));
-            };
-        request::Outcome::Success(Self {
-            page_num,
-            page_size,
-        })
+            Err(ctxt.errors)
+        }
     }
 }
 
