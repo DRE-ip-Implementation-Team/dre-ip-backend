@@ -2,21 +2,17 @@ use rocket::form::{self, DataField, Errors, FromForm, FromFormField, ValueField}
 use serde::Serialize;
 
 pub struct Pagination {
-    page_num: usize,
-    page_size: usize,
+    page_num: u32,
+    page_size: u32,
 }
 
 impl Pagination {
-    pub fn page_num(&self) -> usize {
-        self.page_num
+    pub fn skip(&self) -> u32 {
+        (self.page_num - 1) * self.page_size
     }
 
-    pub fn page_size(&self) -> usize {
+    pub fn page_size(&self) -> u32 {
         self.page_size
-    }
-
-    pub fn skip(&self) -> u64 {
-        ((self.page_num - 1) * self.page_size) as u64
     }
 
     pub fn result(self, total: usize) -> PaginationResult {
@@ -29,8 +25,8 @@ impl Pagination {
 }
 
 pub struct PaginationContext<'f> {
-    page_num: usize,
-    page_size: usize,
+    page_num: u32,
+    page_size: u32,
     errors: Errors<'f>,
 }
 
@@ -48,12 +44,12 @@ impl<'r> FromForm<'r> for Pagination {
 
     fn push_value(ctxt: &mut Self::Context, field: ValueField<'r>) {
         if field.name == "page_num" {
-            match usize::from_value(field) {
+            match u32::from_value(field) {
                 Ok(page_num) => ctxt.page_num = page_num,
                 Err(errs) => ctxt.errors.extend(errs),
             }
         } else if field.name == "page_size" {
-            match usize::from_value(field) {
+            match u32::from_value(field) {
                 Ok(page_size) => ctxt.page_size = page_size,
                 Err(errs) => ctxt.errors.extend(errs),
             }
@@ -62,12 +58,12 @@ impl<'r> FromForm<'r> for Pagination {
 
     async fn push_data(ctxt: &mut Self::Context, field: DataField<'r, '_>) {
         if field.name == "page_num" {
-            match usize::from_data(field).await {
+            match u32::from_data(field).await {
                 Ok(page_num) => ctxt.page_num = page_num,
                 Err(errs) => ctxt.errors.extend(errs),
             }
         } else if field.name == "page_size" {
-            match usize::from_data(field).await {
+            match u32::from_data(field).await {
                 Ok(page_size) => ctxt.page_size = page_size,
                 Err(errs) => ctxt.errors.extend(errs),
             }
@@ -88,7 +84,7 @@ impl<'r> FromForm<'r> for Pagination {
 
 #[derive(Serialize)]
 pub struct PaginationResult {
-    page_num: usize,
-    page_size: usize,
+    page_num: u32,
+    page_size: u32,
     total: usize,
 }

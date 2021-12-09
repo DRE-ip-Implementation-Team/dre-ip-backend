@@ -1,17 +1,14 @@
 use crate::{
     error::Error,
     model::{
+        bson::Id,
         election::{Ballot, Election},
         pagination::{Pagination, PaginationResult},
     },
 };
 use futures::stream::TryStreamExt;
-use mongodb::{
-    bson::{doc, oid::ObjectId, Bson},
-    options::FindOptions,
-    Collection,
-};
-use rocket::{request::FromParam, serde::json::Json, Route, State};
+use mongodb::{bson::doc, options::FindOneOptions, Collection};
+use rocket::{serde::json::Json, Route, State};
 use serde::Serialize;
 
 pub fn routes() -> Vec<Route> {
@@ -29,21 +26,28 @@ async fn get_elections(
 async fn get_ballots(
     election_id: Id,
     pagination: Pagination,
-    ballots: &State<Collection<Ballot>>,
+    elections: &State<Collection<Election>>,
 ) -> Result<Json<PaginatedBallots>, Error> {
-    // TODO: Tell if query found nothing?
-    let ballots = ballots
-        .find(
-            doc! { "electionId": election_id },
-            FindOptions::builder()
-                .skip(pagination.skip())
-                .limit(pagination.page_size() as i64)
-                .batch_size(pagination.page_size() as u32)
+    let ballots = elections
+        .find_one(
+            doc! { "electionId": &election_id },
+            FindOneOptions::builder()
+                .projection(doc! {
+                    "ballots": {
+                        "$slice": [
+                            pagination.skip(),
+                            pagination.page_size(),
+                        ]
+                    }
+                })
                 .build(),
         )
         .await?
-        .try_collect::<Vec<Ballot>>()
-        .await?;
+        .ok_or(Error::NotFound(format!(
+            "an election with ID `{:?}` does not exist",
+            election_id
+        )))?
+        .ballots();
     let pagination_result = pagination.result(ballots.len());
     Ok(Json(PaginatedBallots {
         ballots,
@@ -57,25 +61,9 @@ async fn get_ballot(
     ballots: &State<Collection<Ballot>>,
 ) -> Result<Option<Json<Ballot>>, Error> {
     Ok(ballots
-        .find_one(doc! { "_id": ballot_id }, None)
+        .find_one(doc! { "_id": &ballot_id }, None)
         .await?
         .map(Json))
-}
-
-pub struct Id(ObjectId);
-
-impl From<Id> for Bson {
-    fn from(id: Id) -> Self {
-        id.0.into()
-    }
-}
-
-impl<'a> FromParam<'a> for Id {
-    type Error = mongodb::bson::oid::Error;
-
-    fn from_param(param: &'a str) -> Result<Self, Self::Error> {
-        Ok(Self(param.parse::<ObjectId>()?))
-    }
 }
 
 #[derive(Serialize)]

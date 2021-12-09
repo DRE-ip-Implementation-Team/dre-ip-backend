@@ -1,10 +1,11 @@
 use mongodb::bson::{oid::ObjectId, Bson};
 use rocket::request::FromParam;
 
+#[derive(Debug)]
 pub struct Id(ObjectId);
 
-impl From<Id> for Bson {
-    fn from(id: Id) -> Self {
+impl From<&Id> for Bson {
+    fn from(id: &Id) -> Self {
         id.0.into()
     }
 }
