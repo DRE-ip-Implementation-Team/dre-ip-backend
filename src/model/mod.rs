@@ -1,3 +1,4 @@
+pub mod bson;
 pub mod election;
 pub mod otp;
 pub mod pagination;
