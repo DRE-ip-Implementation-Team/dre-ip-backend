@@ -1,10 +1,10 @@
 use crate::{
     conf,
-    error::Error,
+    error::{Error, Result},
     model::{
-        otp::{code::Code, Otp},
+        otp::{code::Code, Otp, Otps},
         sms::Sms,
-        user::{claims::Claims, User},
+        user::{claims::Claims, User, Users},
     },
     AdminPassword,
 };
@@ -12,7 +12,6 @@ use crate::{
 use mongodb::{
     bson::{doc, oid::ObjectId},
     options::ReplaceOptions,
-    Collection,
 };
 use rocket::{
     form::{Form, Strict},
@@ -53,9 +52,9 @@ fn login_admin(
 async fn login_voter_request_otp(
     request: Form<Strict<OtpRequest>>,
     cookies: &CookieJar<'_>,
-    users: &State<Collection<User>>,
-    otps: &State<Collection<Otp>>,
-) -> Result<Status, Error> {
+    users: &State<Users>,
+    otps: &State<Otps>,
+) -> Result<()> {
     let (user, otp) = if let Some(user) = users.find_one(doc! { "sms": &request.sms }, None).await?
     {
         // User already exists, so re-generate and upsert an OTP for their confirmation state
@@ -103,16 +102,17 @@ async fn login_voter_request_otp(
             .max_age(time::Duration::new(conf!(otp_ttl) as i64, 0))
             .finish(),
     );
-    Ok(Status::Ok)
+
+    Ok(())
 }
 
 #[post("/login/voter/submit-otp", data = "<submission>")]
 async fn login_voter_submit_otp(
     submission: Form<Strict<OtpSubmission>>,
     cookies: &CookieJar<'_>,
-    users: &State<Collection<User>>,
-    otps: &State<Collection<Otp>>,
-) -> Result<Status, Error> {
+    users: &State<Users>,
+    otps: &State<Otps>,
+) -> Result<()> {
     let user_id = cookies
         .get_private("user_id")
         .ok_or(Error::BadRequest("Missing `user_id` cookie".to_string()))?
@@ -151,7 +151,7 @@ async fn login_voter_submit_otp(
     cookies.add(Claims::for_user_id(user_id).into());
     cookies.remove_private(Cookie::named("user_id"));
 
-    Ok(Status::Ok)
+    Ok(())
 }
 
 #[post("/login/voter/logout")]

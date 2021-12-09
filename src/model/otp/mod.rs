@@ -1,7 +1,10 @@
 use crate::conf;
 use crate::model::user::User;
 
-use mongodb::bson::{doc, oid::ObjectId, DateTime};
+use mongodb::{
+    bson::{doc, oid::ObjectId, DateTime},
+    Collection,
+};
 use serde::{Deserialize, Serialize};
 
 use std::time::{Duration, SystemTime};
@@ -52,3 +55,5 @@ impl Otp {
         self.expire_at
     }
 }
+
+pub type Otps = Collection<Otp>;
