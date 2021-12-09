@@ -49,21 +49,14 @@ impl User {
     }
 }
 
-#[derive(Debug)]
-pub enum UserAuthError {
-    NoCookie,
-    BadCookie(String),
-    NoUser,
-    DbError(DbError),
-    JwtError(JwtError),
-}
+pub type Users = Collection<User>;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for User {
     type Error = UserAuthError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let users: &State<Collection<User>> = req.guard().await.unwrap();
+        let users: &State<Users> = req.guard().await.unwrap();
         if let Some(cookie) = req.cookies().get("auth_token") {
             let token = cookie.value();
             match token.parse::<Claims>() {
@@ -98,4 +91,13 @@ impl<'r> FromRequest<'r> for User {
             Outcome::Failure((Status::Unauthorized, UserAuthError::NoCookie))
         }
     }
+}
+
+#[derive(Debug)]
+pub enum UserAuthError {
+    NoCookie,
+    BadCookie(String),
+    NoUser,
+    DbError(DbError),
+    JwtError(JwtError),
 }

@@ -1,11 +1,12 @@
 use crate::{
-    error::Error,
+    error::{Error, Result},
     model::{
         bson::Id,
-        election::{Ballot, Election},
+        election::{Ballot, Election, Elections},
         pagination::{Pagination, PaginationResult},
     },
 };
+
 use futures::stream::TryStreamExt;
 use mongodb::{bson::doc, options::FindOneOptions, Collection};
 use rocket::{serde::json::Json, Route, State};
@@ -16,9 +17,7 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[get("/elections")]
-async fn get_elections(
-    elections: &State<Collection<Election>>,
-) -> Result<Json<Vec<Election>>, Error> {
+async fn get_elections(elections: &State<Collection<Election>>) -> Result<Json<Vec<Election>>> {
     Ok(Json(elections.find(None, None).await?.try_collect().await?))
 }
 
@@ -26,8 +25,8 @@ async fn get_elections(
 async fn get_ballots(
     election_id: Id,
     pagination: Pagination,
-    elections: &State<Collection<Election>>,
-) -> Result<Json<PaginatedBallots>, Error> {
+    elections: &State<Elections>,
+) -> Result<Json<PaginatedBallots>> {
     let ballots = elections
         .find_one(
             doc! { "electionId": &election_id },
@@ -55,15 +54,31 @@ async fn get_ballots(
     }))
 }
 
-#[get("/election/<ballot_id>")]
+#[get("/election/<election_id>/ballots/<ballot_id>")]
 async fn get_ballot(
+    election_id: Id,
     ballot_id: Id,
-    ballots: &State<Collection<Ballot>>,
-) -> Result<Option<Json<Ballot>>, Error> {
-    Ok(ballots
-        .find_one(doc! { "_id": &ballot_id }, None)
+    elections: &State<Elections>,
+) -> Result<Option<Json<Ballot>>> {
+    Ok(elections
+        .find_one(
+            doc! { "_id": &election_id },
+            FindOneOptions::builder()
+                .projection(doc! {
+                    "ballots": {
+                        "_id": &ballot_id,
+                    }
+                })
+                .build(),
+        )
         .await?
-        .map(Json))
+        .ok_or(Error::NotFound(format!(
+            "an election with ID `{:?}` does not exist",
+            election_id
+        )))?
+        .ballots()
+        .first()
+        .map(|ballot| Json(ballot.clone())))
 }
 
 #[derive(Serialize)]
