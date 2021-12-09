@@ -2,12 +2,13 @@ use crate::{
     conf,
     error::Error,
     model::{
-        otp::{Code, Otp},
+        otp::{code::Code, Otp},
         sms::Sms,
-        user::{Claims, User},
+        user::{claims::Claims, User},
     },
     AdminPassword,
 };
+
 use mongodb::{
     bson::{doc, oid::ObjectId},
     options::ReplaceOptions,
