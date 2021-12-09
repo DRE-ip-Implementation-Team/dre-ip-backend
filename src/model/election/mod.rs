@@ -12,6 +12,13 @@ pub struct Election {
     end_time: DateTime,
     groups: Vec<Group>,
     questions: Vec<Question>,
+    ballots: Vec<Ballot>,
+}
+
+impl Election {
+    pub fn ballots(self) -> Vec<Ballot> {
+        self.ballots
+    }
 }
 
 #[derive(Serialize, Deserialize)]

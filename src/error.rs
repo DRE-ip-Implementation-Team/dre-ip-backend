@@ -13,6 +13,8 @@ pub enum Error {
     BadRequest(String),
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+    #[error("Not found: {0}")]
+    NotFound(String),
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
@@ -21,6 +23,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
             Self::Jwt(_) | Self::Db(_) => Status::InternalServerError,
             Self::OidParse(_) | Self::BadRequest(_) => Status::BadRequest,
             Self::Unauthorized(_) => Status::BadRequest,
+            Self::NotFound(_) => Status::NotFound,
         })
     }
 }
