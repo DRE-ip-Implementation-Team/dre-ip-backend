@@ -24,8 +24,8 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
         Err(match self {
             Self::Jwt(_) | Self::Db(_) => Status::InternalServerError,
             Self::OidParse(_) | Self::BadRequest(_) => Status::BadRequest,
-            Self::Unauthorized(_) => Status::BadRequest,
             Self::NotFound(_) => Status::NotFound,
+            Self::Unauthorized(_) => Status::Unauthorized,
         })
     }
 }

@@ -1,18 +1,14 @@
 use crate::{
-    conf,
     error::{Error, Result},
     model::{
-        otp::{code::Code, Otp, Otps},
+        otp::{challenge::Challenge, code::Code},
         sms::Sms,
         user::{claims::Claims, User, Users},
     },
     AdminPassword,
 };
 
-use mongodb::{
-    bson::{doc, oid::ObjectId},
-    options::ReplaceOptions,
-};
+use mongodb::bson::doc;
 use rocket::{
     form::{Form, Strict},
     http::{Cookie, CookieJar, Status},
@@ -41,69 +37,9 @@ fn login_admin(
     Status::Ok
 }
 
-// TODO: Separate endpoints for:
-// - Non-existent user
-// - Existing unconfirmed user (contains `expiredAt`)
-// - Existing confirmed user
-
-// TODO: Mitigate DoS attacks
-
 #[post("/login/voter/request-otp", data = "<request>")]
-async fn login_voter_request_otp(
-    request: Form<Strict<OtpRequest>>,
-    cookies: &CookieJar<'_>,
-    users: &State<Users>,
-    otps: &State<Otps>,
-) -> Result<()> {
-    let (user, otp) = if let Some(user) = users.find_one(doc! { "sms": &request.sms }, None).await?
-    {
-        // User already exists, so re-generate and upsert an OTP for their confirmation state
-
-        let otp = match user.expire_at() {
-            Some(_) => Otp::to_register(&user),
-            None => Otp::to_authenticate(&user),
-        }
-        // Valid because `to_register` and `to_authenticate` will succeed:
-        //  - `to_register` and `to_authenticate` require `id` (user came from DB)
-        //  - `to_register` requires `expire_at` (checked in match)
-        .unwrap();
-
-        otps.replace_one(
-            doc! { "userId": user.id },
-            &otp,
-            ReplaceOptions::builder().upsert(true).build(),
-        )
-        .await?;
-
-        (user, otp)
-    } else {
-        // User does not exist, so create them, generate a registration OTP and insert the pair
-
-        let mut user = User::new(request.sms.clone());
-        let user_id = users
-            .insert_one(&user, None)
-            .await?
-            .inserted_id
-            .as_object_id()
-            .unwrap(); // Valid because `inserted_id` came from DB
-        user.id = Some(user_id);
-
-        let otp = Otp::to_register(&user).unwrap(); // Valid because `id` and `expire_at` exist
-        otps.insert_one(&otp, None).await?;
-
-        (user, otp)
-    };
-
-    // TODO: Send OTP via SMS server
-    println!("{:?}", otp.code);
-
-    cookies.add_private(
-        Cookie::build("user_id", user.id.unwrap().to_string()) // Valid because upserted user has `id`
-            .max_age(time::Duration::new(conf!(otp_ttl) as i64, 0))
-            .finish(),
-    );
-
-    Ok(())
+fn login_voter_request_otp(request: Form<Strict<OtpRequest>>, cookies: &CookieJar<'_>) {
+    cookies.add_private(Challenge::cookie(request.into_inner().into_inner().sms));
 }
 
 #[post("/login/voter/submit-otp", data = "<submission>")]
@@ -111,45 +47,30 @@ async fn login_voter_submit_otp(
     submission: Form<Strict<OtpSubmission>>,
     cookies: &CookieJar<'_>,
     users: &State<Users>,
-    otps: &State<Otps>,
 ) -> Result<()> {
-    let user_id = cookies
-        .get_private("user_id")
-        .ok_or(Error::BadRequest("Missing `user_id` cookie".to_string()))?
+    let challenge = cookies
+        .get_private("challenge")
+        .ok_or_else(|| Error::BadRequest("Missing `challenge` cookie".to_string()))?
         .value()
-        .parse::<ObjectId>()?;
-
-    let otp = otps
-        .find_one(doc! { "userId": user_id }, None)
-        .await?
-        .ok_or(Error::BadRequest(format!(
-            "no user found for `user_id` {}",
-            user_id
-        )))?;
+        .parse::<Challenge>()?;
 
     // Verify submitted OTP code
-    if otp.code != submission.code {
-        Err(Error::Unauthorized(format!(
-            "incorrect OTP code {:?}",
+    if challenge.code() != submission.code {
+        return Err(Error::Unauthorized(format!(
+            "Incorrect OTP code {:?}",
             submission.code
-        )))?
+        )));
     }
 
-    // Cancel user expiry
-    users
-        .update_one(
-            doc! { "_id": user_id },
-            doc! { "$unset": { "expireAt": "" } },
-            None,
-        )
-        .await?;
+    let user_id = users
+        .insert_one(User::new(challenge.sms()), None)
+        .await?
+        .inserted_id
+        .as_object_id()
+        .unwrap(); // Valid because the ID comes directly from the database
 
-    // Disallow OTP reuse
-    otps.delete_one(doc! { "_id": otp.id }, None).await?;
-
-    // Set authentication token and remove `user_id` cookie
     cookies.add(Claims::for_user_id(user_id).into());
-    cookies.remove_private(Cookie::named("user_id"));
+    cookies.remove(Cookie::named("challenge"));
 
     Ok(())
 }

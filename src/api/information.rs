@@ -61,10 +61,12 @@ async fn get_ballots(
                 .build(),
         )
         .await?
-        .ok_or(Error::NotFound(format!(
-            "an election with ID `{:?}` does not exist",
-            election_id
-        )))?
+        .ok_or_else(|| {
+            Error::NotFound(format!(
+                "an election with ID `{:?}` does not exist",
+                election_id
+            ))
+        })?
         .ballots();
     let pagination_result = pagination.result(ballots.len());
     Ok(Json(PaginatedBallots {
@@ -91,10 +93,12 @@ async fn get_ballot(
                 .build(),
         )
         .await?
-        .ok_or(Error::NotFound(format!(
-            "an election with ID `{:?}` does not exist",
-            election_id
-        )))?
+        .ok_or_else(|| {
+            Error::NotFound(format!(
+                "an election with ID `{:?}` does not exist",
+                election_id
+            ))
+        })?
         .ballots()
         .first()
         .map(|ballot| Json(ballot.clone())))

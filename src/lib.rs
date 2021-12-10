@@ -1,10 +1,11 @@
 #[macro_use]
 extern crate rocket;
+
 use crate::model::{
     election::{Ballot, Election},
-    otp::Otp,
     user::User,
 };
+
 use mongodb::Client;
 use once_cell::sync::OnceCell;
 use rocket::{Build, Rocket};
@@ -26,20 +27,18 @@ pub async fn build() -> Rocket<Build> {
     let db = client.database("dreip");
 
     let users = db.collection::<User>("users");
-    let otps = db.collection::<Otp>("otps");
     let elections = db.collection::<Election>("elections");
     let ballots = db.collection::<Ballot>("ballots");
 
     let admin_password: AdminPassword = figment
         .extract_inner("admin_password")
-        .unwrap_or(AdminPassword(String::new()));
+        .unwrap_or_else(|_| AdminPassword(String::new()));
 
     CONFIG.set(figment.extract::<Config>().unwrap_or_default());
 
     rocket
         .mount("/", api::routes())
         .manage(users)
-        .manage(otps)
         .manage(elections)
         .manage(ballots)
         .manage(admin_password)
