@@ -1,8 +1,6 @@
-use std::{
-    str::FromStr,
-    time::{Duration, SystemTime},
-};
+use std::str::FromStr;
 
+use chrono::{Duration, Utc};
 use jsonwebtoken as jwt;
 use jwt::{errors::Error as JwtError, DecodingKey, EncodingKey};
 use mongodb::bson::oid::ObjectId;
@@ -17,27 +15,8 @@ pub struct Claims {
     pub user_id: Option<ObjectId>,
     #[serde(rename = "adm")]
     pub is_admin: bool,
-    #[serde(rename = "exp", with = "timestamp")]
-    pub expire_at: SystemTime,
-}
-
-mod timestamp {
-    use serde::{Deserialize, Deserializer, Serializer};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    pub fn serialize<S>(time: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u64(time.duration_since(UNIX_EPOCH).unwrap().as_secs())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Ok(UNIX_EPOCH + Duration::from_secs(u64::deserialize(deserializer)?))
-    }
+    #[serde(rename = "exp")]
+    pub expire_at: u64,
 }
 
 impl Claims {
@@ -60,8 +39,8 @@ impl Claims {
     /// Returns a time at which the JWT represented by the `Claims` will cease to be valid.
     ///
     /// See [`Config`] to customise the number of seconds until the JWT's expiry.
-    fn expire_at() -> SystemTime {
-        SystemTime::now() + Duration::from_secs(conf!(jwt_duration))
+    fn expire_at() -> u64 {
+        (Utc::now() + Duration::seconds(conf!(jwt_duration) as i64)).timestamp() as u64
     }
 
     /// Encodes the `Claims` as a JWT string with a standard header.
