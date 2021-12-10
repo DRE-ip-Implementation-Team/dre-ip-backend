@@ -5,12 +5,14 @@ info:
 servers:
   - description: Backend Server
     url: Self-Hosted
+  - description: localhost
+    url: http://127.0.0.1:8000
 security:
   - AuthToken: [ ]  # Require AuthToken by default.
 
 tags:
+  - name: Authentication API
   - name: Information API
-  - name: Login API
   - name: Election Management API
     description: Requires an admin-level AUTHTOKEN cookie.
   - name: Voting API
@@ -40,12 +42,13 @@ paths:
   /election/{electionID}/votes:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
-      - $ref: "#/components/parameters/PageNum"
-      - $ref: "#/components/parameters/PageSize"
     get:
       summary: Retrieve votes for an election.
-      description: "There may be a large number of votes, so this request is
-      paginated. The page size may be at most 1000, and defaults to 50."
+      description:
+        There may be a large number of votes, so this request is paginated.
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
       security: [ ]  # No authentication needed.
       tags:
         - Information API
@@ -109,14 +112,23 @@ paths:
                 $ref: "#/components/schemas/Stage2Receipt"
         404:
           $ref: "#/components/responses/NotFound"
-  # --- Login API ---
-  # Admin login via password
-  /login/admin:
+  # --- Authentication API ---
+  /auth:
+    delete:
+      summary: Remove proof of authentication.
+      description: Removes the `auth_token` JWT cookie.
+      security: [ ] # No token needed to logout
+      tags:
+        - Authentication API
+      responses:
+        200:
+          description: Logout successful, authentication token removed.
+  /auth/admin:
     post:
-      summary: Attempt to authenticate as admin via the admin password.
+      summary: Authenticate as an admin via valid credentials.
       security: [ ]  # No token needed before login.
       tags:
-        - Login API
+        - Authentication API
       requestBody:
         description: Admin password.
         required: true
@@ -131,34 +143,51 @@ paths:
           $ref: "#/components/responses/BadFormat"
         401:
           description: Incorrect password.
-  # User request OTP
-  /login/voter/request-otp:
-    post:
-      summary: Request an OTP for voter authentication.
+  /auth/voter:
+    get:
+      summary: Request an SMS OTP for user authentication.
+      description:
+        Sets an encrypted JWT cookie claiming a randomly generated OTP and the given SMS number to which it is sent.
+        The JWT and cookie expire simultaneously after a configurable duration.
+      parameters:
+        - in: query
+          name: sms
+          schema:
+            type: string
+            pattern: '^\+?[1-9]\d{1,14}$'
+            example: "+441234567890"
       security: [ ]  # No token needed before login.
       tags:
-        - Login API
-      requestBody:
-        description: Voter SMS number.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VoterSMSNumber"
+        - Authentication API
       responses:
         200:
           description: OTP successfully sent.
+          headers:
+            Set-Cookie:
+              description:
+                Encrypted JWT claiming an SMS number and OTP.
+                Cookie expires when JWT does.
+              schema:
+                type: string
+                example: "challenge=PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
         400:
           $ref: "#/components/responses/BadFormat"
-  # User login via OTP
-  /login/voter/submit-otp:
     post:
-      summary: Submit an OTP to authenticate as a voter.
+      summary: Authenticate as a user via a OTP.
+      description:
+        Saves a user with the claimed SMS number if the submitted OTP matches the claimed OTP.
+        Sets a user `auth_token` that expires after a configurable duration.
+      parameters:
+        - in: cookie
+          name: challenge
+          schema:
+            type: string
+            example: "PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
       security: [ ]  # No token needed before login.
       tags:
-        - Login API
+        - Authentication API
       requestBody:
-        description: Voter SMS number and OTP.
+        description: Submitted OTP.
         required: true
         content:
           application/json:
@@ -171,16 +200,6 @@ paths:
           $ref: "#/components/responses/BadFormat"
         401:
           description: Incorrect OTP.
-  # User logout
-  /login/voter/logout:
-    post:
-      summary: Removes a voter's proof of authentication.
-      security: [ ] # No token needed to logout
-      tags:
-        - Login API
-      responses:
-        200:
-          description: Logout successful, authentication token removed.
   # --- Election Management API ---
   # Create an election.
   /election:
@@ -189,8 +208,9 @@ paths:
       tags:
         - Election Management API
       requestBody:
-        description: "Initial election structure (optional).
-        The ID field is ignored, as one will be allocated."
+        description:
+          Initial election structure (optional).
+          The ID field is ignored, as one will be allocated.
         required: false
         content:
           application/json:
@@ -215,13 +235,14 @@ paths:
     # Modify an election
     put:
       summary: Replace the given election with the supplied structure.
-      description: "Any modification to an election will reset it,
-      destroying any votes that have already been cast for it."
+      description:
+        Any modification to an election will reset it, destroying any votes that have already been cast for it.
       tags:
         - Election Management API
       requestBody:
-        description: "New election structure.
-        The ID must match the ID in the URL."
+        description:
+          New election structure.
+          The ID must match the ID in the URL.
         required: true
         content:
           application/json:
@@ -258,9 +279,9 @@ paths:
       - $ref: "#/components/parameters/ElectionID"
     get:
       summary: Retrieve the groups that the current voter belongs to.
-      description: "This information is deliberately available for only
-      the current user; not even the admin can see it. This is because
-      group membership may constitute personal information."
+      description:
+        This information is deliberately available for only the current user; not even the admin can see it.
+        This is because group membership may constitute personal information.
       tags:
         - Voting API
       responses:
@@ -357,9 +378,9 @@ paths:
       - $ref: "#/components/parameters/ElectionID"
     post:
       summary: Cancel the in-progress provisional vote.
-      description: "This audits the vote, allowing Cast As Intended to be
-      verified. The choices can be changed before submitting another
-      provisional vote."
+      description:
+        This audits the vote, allowing Cast As Intended to be verified.
+        The choices can be changed before submitting another provisional vote.
       tags:
         - Voting API
       responses:
@@ -383,8 +404,8 @@ paths:
       - $ref: "#/components/parameters/ElectionID"
     post:
       summary: Confirm the in-progress provisional vote.
-      description: "This confirms the vote, casting the ballot and locking
-      in the choices."
+      description:
+        This confirms the vote, casting the ballot and locking in the choices.
       tags:
         - Voting API
       responses:
@@ -415,7 +436,7 @@ components:
     AuthToken:
       type: apiKey
       in: cookie
-      name: AUTHTOKEN
+      name: auth_token
   # Payload Schemas
   schemas:
     AdminLogin:
@@ -439,19 +460,15 @@ components:
     VoterOTP:
       type: object
       properties:
-        sms:
-          type: string
         otp:
           type: string
       required:
-        - sms
         - otp
       example:
-        sms: "+441234567890"
         otp: "123456"
     AuthToken:
       type: string
-      example: AUTHTOKEN=abc.123.xyz
+      example: "auth_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1aWQiOnsiJG9pZCI6IjYxYjJkZDNkYzEwODY3MzAyMjcwNjRhMCJ9LCJhZG0iOmZhbHNlLCJleHAiOjE2MzkxMTkxOTh9.bJqzVrH3ZFJuyKnoI9UAoYjqMsaQ51Fon43WUs5bGmQ; Path=/; HttpOnly;"
     Candidate:
       type: object
       properties:
@@ -656,11 +673,9 @@ components:
             Z: 8a6db9c9ee90f122
             P: 1298badfc7896fc7
     Stage2Receipt:
-      description: "A stage 2 receipt contains all the information of a stage 1
-      receipt, but additionally has been either confirmed or audited.
-
-      An audited receipt will include the secrets `r` and `v` for verification
-      purposes; a confirmed receipt will not."
+      description:
+        A stage 2 receipt contains all the information of a stage 1 receipt, but additionally has been either confirmed or audited.
+        An audited receipt will include the secrets `r` and `v` for verification purposes; a confirmed receipt will not.
       type: object
       properties:
         id:
@@ -690,7 +705,7 @@ components:
       description: The ID of the election to operate on.
       schema:
         type: string
-      example: .../7b1c5646-4cf8-4507-8ff4-bb8580214622/...
+        example: 7b1c5646-4cf8-4507-8ff4-bb8580214622
     VoteID:
       name: voteID
       in: path
@@ -698,26 +713,30 @@ components:
       description: The ID of the vote to operate on.
       schema:
         type: integer
-      example: .../12345/...
+        example: 12345
     PageNum:
       name: page_num
       in: query
       description: The page index into paginated data, starting at 1.
       schema:
         type: integer
-      example: ?page_num=5
+        default: 1
+        example: 5
     PageSize:
       name: page_size
       in: query
-      description: "The requested size of a single paginated batch.
-      The API may impose a maximum or minimum on this parameter."
+      description:
+        The requested size of a single paginated batch.
+        The API may impose a maximum or minimum on this parameter.
       schema:
         type: integer
-      example: ?page_size=100
+        default: 50
+        maximum: 1000
+        example: 100
   # Common Responses
   responses:
     AuthToken:
-      description: Login successful, token returned.
+      description: Authenticated successfully.
       headers:
         Set-Cookie:
           schema:

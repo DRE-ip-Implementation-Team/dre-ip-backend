@@ -15,8 +15,8 @@ impl Pagination {
         self.page_size
     }
 
-    pub fn result(self, total: usize) -> PaginationResult {
-        PaginationResult {
+    pub fn into_metadata(self, total: usize) -> Metadata {
+        Metadata {
             page_num: self.page_num,
             page_size: self.page_size,
             total,
@@ -24,7 +24,7 @@ impl Pagination {
     }
 }
 
-pub struct PaginationContext<'f> {
+pub struct Context<'f> {
     page_num: u32,
     page_size: u32,
     errors: Errors<'f>,
@@ -32,10 +32,10 @@ pub struct PaginationContext<'f> {
 
 #[rocket::async_trait]
 impl<'r> FromForm<'r> for Pagination {
-    type Context = PaginationContext<'r>;
+    type Context = Context<'r>;
 
     fn init(_opts: form::Options) -> Self::Context {
-        PaginationContext {
+        Context {
             page_num: 1,
             page_size: 50,
             errors: Errors::default(),
@@ -83,7 +83,7 @@ impl<'r> FromForm<'r> for Pagination {
 }
 
 #[derive(Serialize)]
-pub struct PaginationResult {
+pub struct Metadata {
     page_num: u32,
     page_size: u32,
     total: usize,
