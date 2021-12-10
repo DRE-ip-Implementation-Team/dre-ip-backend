@@ -15,39 +15,39 @@ use crate::{
     model::{admin::db::DbAdmin, voter::db::DbVoter},
 };
 
-use super::token::Privileges;
+use super::token::Rights;
 
 #[derive(Serialize, Deserialize)]
 pub struct Claims {
     id: ObjectId,
-    #[serde(rename = "prv")]
-    privileges: Privileges,
+    #[serde(rename = "rgt")]
+    rights: Rights,
     #[serde(rename = "exp")]
     expire_at: u64,
 }
 
 impl Claims {
-    pub fn privileges(&self) -> Privileges {
-        self.privileges
+    pub fn rights(&self) -> Rights {
+        self.rights
     }
 
-    pub fn permits(&self, target_level: Privileges) -> bool {
-        self.privileges >= target_level
+    pub fn permits(&self, target: Rights) -> bool {
+        self.rights >= target
     }
 
-    pub fn for_voter(voter: DbVoter) -> Cookie<'static> {
+    pub fn for_voter(voter: &DbVoter) -> Cookie<'static> {
         Self {
             id: voter.id(),
-            privileges: Privileges::Voter,
+            rights: Rights::Voter,
             expire_at: Self::expire_at(),
         }
         .into()
     }
 
-    pub fn for_admin(admin: DbAdmin) -> Cookie<'static> {
+    pub fn for_admin(admin: &DbAdmin) -> Cookie<'static> {
         Self {
             id: admin.id(),
-            privileges: Privileges::Admin,
+            rights: Rights::Admin,
             expire_at: Self::expire_at(),
         }
         .into()

@@ -14,12 +14,12 @@ use super::claims::Claims;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
-pub enum Privileges {
+pub enum Rights {
     Voter = 0,
     Admin = 1,
 }
 
-impl Display for Privileges {
+impl Display for Rights {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             formatter,
@@ -33,7 +33,7 @@ impl Display for Privileges {
 }
 
 pub trait User {
-    fn privileges() -> Privileges;
+    fn rights() -> Rights;
 }
 
 pub struct Token<U: User>(PhantomData<U>);
@@ -55,20 +55,18 @@ where
             .parse::<Claims>()
             .map_err(TokenError::Jwt)
             .into_outcome(Status::BadRequest));
-        if claims.permits(U::privileges()) {
+        if claims.permits(U::rights()) {
             request::Outcome::Success(Token(PhantomData))
+        } else if let Rights::Voter = U::rights() {
+            request::Outcome::Failure((
+                Status::Unauthorized,
+                TokenError::NotPermitted {
+                    target: U::rights(),
+                    actual: claims.rights(),
+                },
+            ))
         } else {
-            if let Privileges::Voter = U::privileges() {
-                request::Outcome::Failure((
-                    Status::Unauthorized,
-                    TokenError::NotPermitted {
-                        target: U::privileges(),
-                        actual: claims.privileges(),
-                    },
-                ))
-            } else {
-                request::Outcome::Forward(())
-            }
+            request::Outcome::Forward(())
         }
     }
 }
@@ -77,11 +75,8 @@ where
 pub enum TokenError {
     #[error("Missing `auth_token` cookie")]
     Missing,
-    #[error("Required {target} privileges, got {actual}")]
-    NotPermitted {
-        target: Privileges,
-        actual: Privileges,
-    },
+    #[error("Required {target} rights, got {actual} rights")]
+    NotPermitted { target: Rights, actual: Rights },
     #[error(transparent)]
     Jwt(#[from] JwtError),
 }

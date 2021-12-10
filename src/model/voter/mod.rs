@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use self::db::DbVoter;
 
 use super::{
-    auth::token::{Privileges, User},
+    auth::token::{Rights, User},
     sms::Sms,
 };
 
@@ -29,8 +29,8 @@ impl Voter {
 }
 
 impl User for Voter {
-    fn privileges() -> Privileges {
-        Privileges::Voter
+    fn rights() -> Rights {
+        Rights::Voter
     }
 }
 
