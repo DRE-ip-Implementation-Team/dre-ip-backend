@@ -72,7 +72,7 @@ async fn get_elections_voter(
     .await
 }
 
-#[get("/election/<election_id>/votes?<pagination..>")]
+#[get("/elections/<election_id>/votes?<pagination..>")]
 async fn get_votes(
     election_id: Id,
     pagination: Pagination,
@@ -80,7 +80,7 @@ async fn get_votes(
 ) -> Result<Json<PaginatedBallots>> {
     let ballots = elections
         .find_one(
-            doc! { "electionId": &election_id },
+            doc! { "_id": &election_id },
             FindOneOptions::builder()
                 .projection(doc! {
                     "ballots": {
@@ -107,7 +107,7 @@ async fn get_votes(
     }))
 }
 
-#[get("/election/<election_id>/votes/<vote_id>")]
+#[get("/elections/<election_id>/votes/<vote_id>")]
 async fn get_vote(
     election_id: Id,
     vote_id: Id,
