@@ -1,11 +1,13 @@
 use crate::{
+    conf,
     error::{Error, Result},
     model::{
+        admin::{db::GetAdmins, Credentials},
+        auth::claims::Claims,
         otp::{challenge::Challenge, code::Code},
         sms::Sms,
-        user::{claims::Claims, User, Users},
+        voter::{db::GetVoters, PutVoters, Voter},
     },
-    AdminPassword,
 };
 
 use mongodb::bson::doc;
@@ -19,17 +21,32 @@ pub fn routes() -> Vec<Route> {
     routes![authenticate_admin, request_otp, authenticate_user, logout]
 }
 
-#[post("/auth/admin", data = "<login>")]
-fn authenticate_admin(
-    cookies: &CookieJar,
-    login: Form<Strict<AdminLogin>>,
-    admin_password: &State<AdminPassword>,
-) -> Status {
-    if login.password != **admin_password {
-        return Status::Unauthorized;
-    }
-    cookies.add(Claims::for_admin().into());
-    Status::Ok
+#[post("/auth/admin", data = "<credentials>")]
+async fn authenticate_admin(
+    cookies: &CookieJar<'_>,
+    credentials: Form<Strict<Credentials<'_>>>,
+    admins: &State<GetAdmins>,
+) -> Result<()> {
+    let password_hash = argon2::hash_encoded(
+        credentials.password().as_bytes(),
+        conf!(salt),
+        &argon2::Config::default(),
+    )?;
+    let admin = admins
+        .find_one(
+            doc! {
+                "username": credentials.username(),
+                "password_hash": password_hash
+            },
+            None,
+        )
+        .await?
+        .ok_or(Error::NotFound(format!(
+            "No admin found for username `{}` with the given password",
+            credentials.username()
+        )))?;
+    cookies.add(Claims::for_admin(admin));
+    Ok(())
 }
 
 #[get("/auth/voter?<sms>")]
@@ -41,7 +58,8 @@ fn request_otp(sms: Sms, cookies: &CookieJar<'_>) {
 async fn authenticate_user(
     code: Form<Strict<Code>>,
     cookies: &CookieJar<'_>,
-    users: &State<Users>,
+    put_voters: &State<PutVoters>,
+    get_voters: &State<GetVoters>,
 ) -> Result<()> {
     let challenge = cookies
         .get_private("challenge")
@@ -56,14 +74,20 @@ async fn authenticate_user(
         )));
     }
 
-    let user_id = users
-        .insert_one(User::new(challenge.sms()), None)
-        .await?
-        .inserted_id
-        .as_object_id()
-        .unwrap(); // Valid because the ID comes directly from the database
+    let sms = challenge.sms();
+    let voter = Voter::new(sms.clone());
+    let id = if let Some(voter) = get_voters.find_one(doc! { "sms": sms }, None).await? {
+        voter.id()
+    } else {
+        put_voters
+            .insert_one(&voter, None)
+            .await?
+            .inserted_id
+            .as_object_id()
+            .unwrap() // Valid because the ID comes directly from the database
+    };
 
-    cookies.add(Claims::for_user_id(user_id).into());
+    cookies.add(Claims::for_voter(voter.into_db_voter(id)));
     cookies.remove(Cookie::named("challenge"));
 
     Ok(())
@@ -73,9 +97,4 @@ async fn authenticate_user(
 fn logout(cookies: &CookieJar) -> Status {
     cookies.remove(Cookie::named("auth_token"));
     Status::Ok
-}
-
-#[derive(FromForm)]
-struct AdminLogin<'a> {
-    password: &'a str,
 }

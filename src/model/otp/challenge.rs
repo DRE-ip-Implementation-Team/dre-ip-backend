@@ -44,7 +44,7 @@ impl Challenge {
                 &challenge,
                 &EncodingKey::from_secret(conf!(jwt_secret)),
             )
-            .unwrap(),
+            .unwrap(), // Valid because Challenge serialization never fails
         )
         .max_age(time::Duration::seconds(conf!(otp_ttl) as i64))
         .finish()
