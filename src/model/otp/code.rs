@@ -10,15 +10,15 @@ use std::str::FromStr;
 
 const LENGTH: usize = 6;
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Code {
     #[serde(with = "code")]
     inner: [u8; LENGTH],
 }
 
-impl Code {
-    pub fn new() -> Self {
+impl Default for Code {
+    fn default() -> Self {
         let mut inner = [0; LENGTH];
         let digit_dist = Uniform::from(0..=9);
         let mut rng = rand::thread_rng();
@@ -30,12 +30,12 @@ impl Code {
 }
 
 impl FromStr for Code {
-    type Err = CodeParseError;
+    type Err = ParseError;
 
     fn from_str(string: &str) -> Result<Self, Self::Err> {
         let len = string.len();
         if len != LENGTH {
-            Err(Self::Err::InvalidLength(len))?
+            return Err(Self::Err::InvalidLength(len));
         }
         let digits = string
             .chars()
@@ -45,32 +45,30 @@ impl FromStr for Code {
             })
             .collect::<Result<Vec<u8>, Self::Err>>()?;
         Ok(Self {
-            inner: digits.try_into().unwrap(),
+            inner: digits.try_into().unwrap(), // Valid because digits.len() == LENGTH
         })
     }
 }
 
 #[derive(Error, Debug)]
-pub enum CodeParseError {
+pub enum ParseError {
     #[error("code must contain exactly 6 characters")]
     InvalidLength(usize),
     #[error("code must contain only digits")]
     InvalidChar(char),
 }
 
-impl From<CodeParseError> for form::error::ErrorKind<'_> {
-    fn from(err: CodeParseError) -> Self {
+impl From<ParseError> for form::error::ErrorKind<'_> {
+    fn from(err: ParseError) -> Self {
         match err {
-            CodeParseError::InvalidLength(_) => form::error::ErrorKind::InvalidLength {
+            ParseError::InvalidLength(_) => form::error::ErrorKind::InvalidLength {
                 min: Some(LENGTH as u64),
                 max: Some(LENGTH as u64),
             },
-            CodeParseError::InvalidChar(c) => {
-                form::error::ErrorKind::Validation(Cow::Owned(format!(
-                    "OTP code must only consist of digit characters. Found non-digit character: '{}'",
-                    c
-                )))
-            }
+            ParseError::InvalidChar(c) => form::error::ErrorKind::Validation(Cow::Owned(format!(
+                "OTP code must only consist of digit characters. Found non-digit character: '{}'",
+                c
+            ))),
         }
     }
 }
@@ -95,7 +93,7 @@ mod code {
         type Value = Code;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(formatter, "a string of {} numbers", LENGTH)
+            write!(formatter, "a string of {} digits", LENGTH)
         }
 
         fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
@@ -119,7 +117,7 @@ mod code {
 impl<'r> FromFormField<'r> for Code {
     fn from_value(field: ValueField<'r>) -> form::Result<'r, Self> {
         if field.name != "code" {
-            Err(Errors::from(ErrorKind::Missing))?
+            return Err(Errors::from(ErrorKind::Missing));
         }
         let value = field.value;
         value.parse::<Code>().map_err(|err| err.into())
