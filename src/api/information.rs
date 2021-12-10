@@ -1,15 +1,18 @@
 use crate::{
     error::{Error, Result},
     model::{
+        admin::Admin,
+        auth::token::Token,
         bson::Id,
         election::{Ballot, Election, Elections},
         pagination::{Metadata, Pagination},
+        voter::Voter,
     },
 };
 
 use futures::stream::TryStreamExt;
 use mongodb::{
-    bson::doc,
+    bson::{doc, Document},
     options::{FindOneOptions, FindOptions},
     Collection,
 };
@@ -17,19 +20,26 @@ use rocket::{serde::json::Json, Route, State};
 use serde::Serialize;
 
 pub fn routes() -> Vec<Route> {
-    routes![get_elections, get_votes, get_vote]
+    routes![
+        get_elections_admin,
+        get_elections_voter,
+        get_votes,
+        get_vote
+    ]
 }
 
-#[get("/elections")]
-async fn get_elections(elections: &State<Collection<Election>>) -> Result<Json<Vec<Election>>> {
+async fn get_elections_with_filter(
+    elections: &State<Collection<Election>>,
+    filter: impl Into<Option<Document>>,
+) -> Result<Json<Vec<Election>>> {
     Ok(Json(
         elections
             .find(
-                None,
+                filter,
                 FindOptions::builder()
                     .projection(doc! {
                         "ballots": {
-                            "$slice": [0, 0] // Creates an empty Vec
+                            "$slice": 0 // Creates an empty Vec
                         },
                     })
                     .build(),
@@ -38,6 +48,28 @@ async fn get_elections(elections: &State<Collection<Election>>) -> Result<Json<V
             .try_collect()
             .await?,
     ))
+}
+
+#[get("/elections", rank = 1)]
+async fn get_elections_admin(
+    _token: Token<Admin>,
+    elections: &State<Collection<Election>>,
+) -> Result<Json<Vec<Election>>> {
+    get_elections_with_filter(elections, None).await
+}
+
+#[get("/elections", rank = 2)]
+async fn get_elections_voter(
+    _token: Token<Voter>,
+    elections: &State<Collection<Election>>,
+) -> Result<Json<Vec<Election>>> {
+    get_elections_with_filter(
+        elections,
+        doc! {
+            "finalised": true
+        },
+    )
+    .await
 }
 
 #[get("/election/<election_id>/votes?<pagination..>")]
