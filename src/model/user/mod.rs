@@ -83,7 +83,6 @@ impl<'r> FromRequest<'r> for User {
 #[derive(Debug)]
 pub enum UserAuthError {
     NoCookie,
-    BadCookie(String),
     NoUser,
     DbError(DbError),
     JwtError(JwtError),
