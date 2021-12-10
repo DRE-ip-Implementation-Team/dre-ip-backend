@@ -93,14 +93,14 @@ macro_rules! conf {
 #[derive(Deserialize)]
 struct AdminPassword(String);
 
-impl PartialEq<str> for AdminPassword {
-    fn eq(&self, other: &str) -> bool {
-        self.0 == other
+impl PartialEq<&str> for AdminPassword {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
     }
 }
 
-impl PartialEq<AdminPassword> for str {
+impl PartialEq<AdminPassword> for &str {
     fn eq(&self, other: &AdminPassword) -> bool {
-        self == other.0
+        *self == other.0
     }
 }

@@ -25,7 +25,7 @@ fn authenticate_admin(
     login: Form<Strict<AdminLogin>>,
     admin_password: &State<AdminPassword>,
 ) -> Status {
-    if login.password != admin_password.0 {
+    if login.password != **admin_password {
         return Status::Unauthorized;
     }
     cookies.add(Claims::for_admin().into());
