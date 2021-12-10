@@ -21,6 +21,7 @@ pub enum Error {
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
     fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
+        println!("{:?}", self);
         Err(match self {
             Self::Db(_) => Status::InternalServerError,
             Self::BadRequest(_) => Status::BadRequest,
