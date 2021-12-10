@@ -41,11 +41,13 @@ async fn authenticate_admin(
             None,
         )
         .await?
-        .ok_or(Error::NotFound(format!(
-            "No admin found for username `{}` with the given password",
-            credentials.username()
-        )))?;
-    cookies.add(Claims::for_admin(admin));
+        .ok_or_else(|| {
+            Error::NotFound(format!(
+                "No admin found for username `{}` with the given password",
+                credentials.username()
+            ))
+        })?;
+    cookies.add(Claims::for_admin(&admin));
     Ok(())
 }
 
@@ -57,16 +59,11 @@ fn request_otp(sms: Sms, cookies: &CookieJar<'_>) {
 #[post("/auth/voter", data = "<code>")]
 async fn authenticate_user(
     code: Form<Strict<Code>>,
+    challenge: Challenge,
     cookies: &CookieJar<'_>,
     put_voters: &State<PutVoters>,
     get_voters: &State<GetVoters>,
 ) -> Result<()> {
-    let challenge = cookies
-        .get_private("challenge")
-        .ok_or_else(|| Error::BadRequest("Missing `challenge` cookie".to_string()))?
-        .value()
-        .parse::<Challenge>()?;
-
     if challenge.code() != **code {
         return Err(Error::Unauthorized(format!(
             "Incorrect OTP code {:?}",
@@ -87,7 +84,7 @@ async fn authenticate_user(
             .unwrap() // Valid because the ID comes directly from the database
     };
 
-    cookies.add(Claims::for_voter(voter.into_db_voter(id)));
+    cookies.add(Claims::for_voter(&voter.into_db_voter(id)));
     cookies.remove(Cookie::named("challenge"));
 
     Ok(())

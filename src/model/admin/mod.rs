@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::conf;
 
-use super::auth::token::{Privileges, User};
+use super::auth::token::{Rights, User};
 
 pub mod db;
 
@@ -24,8 +24,8 @@ impl Admin {
 }
 
 impl User for Admin {
-    fn privileges() -> Privileges {
-        Privileges::Admin
+    fn rights() -> Rights {
+        Rights::Admin
     }
 }
 

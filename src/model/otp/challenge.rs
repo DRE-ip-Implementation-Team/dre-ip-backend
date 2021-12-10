@@ -6,8 +6,14 @@ use jsonwebtoken::{
     Validation,
 };
 use mongodb::bson::doc;
-use rocket::http::Cookie;
+use rocket::{
+    http::{Cookie, Status},
+    outcome::{try_outcome, IntoOutcome},
+    request::{self, FromRequest},
+    Request,
+};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use std::str::FromStr;
 
@@ -62,4 +68,29 @@ impl FromStr for Challenge {
         )
         .map(|data| data.claims)
     }
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for Challenge {
+    type Error = ChallengeError;
+
+    async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let cookie = try_outcome!(req
+            .cookies()
+            .get_private("challenge")
+            .into_outcome((Status::Unauthorized, ChallengeError::Missing)));
+        let token = cookie.value();
+        request::Outcome::Success(try_outcome!(token
+            .parse::<Challenge>()
+            .map_err(ChallengeError::Jwt)
+            .into_outcome(Status::BadRequest)))
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ChallengeError {
+    #[error("Missing `challenge` cookie")]
+    Missing,
+    #[error(transparent)]
+    Jwt(#[from] JwtError),
 }

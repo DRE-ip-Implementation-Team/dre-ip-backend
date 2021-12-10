@@ -26,7 +26,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
     fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
         println!("{:?}", self);
         Err(match self {
-            Self::BadRequest(_) => Status::BadRequest,
+            Self::BadRequest(_) | Self::Argon2(_) => Status::BadRequest,
             Self::NotFound(_) => Status::NotFound,
             Self::Unauthorized(_) => Status::Unauthorized,
             Self::Db(_) => Status::InternalServerError,
@@ -36,7 +36,6 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
                 }
                 _ => Status::BadRequest,
             },
-            Self::Argon2(_) => Status::BadRequest,
         })
     }
 }
