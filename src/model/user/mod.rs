@@ -6,6 +6,7 @@ use mongodb::{
 };
 use rocket::{
     http::Status,
+    outcome::{try_outcome, IntoOutcome},
     request::{FromRequest, Outcome},
     Request, State,
 };
@@ -56,40 +57,26 @@ impl<'r> FromRequest<'r> for User {
     type Error = UserAuthError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let token = try_outcome!(req
+            .cookies()
+            .get("auth_token")
+            .into_outcome((Status::Unauthorized, UserAuthError::NoCookie)))
+        .value();
+        let claims = try_outcome!(token
+            .parse::<Claims>()
+            .map_err(UserAuthError::JwtError)
+            .into_outcome(Status::BadRequest));
+        let user_id = claims.user_id.unwrap();
         let users: &State<Users> = req.guard().await.unwrap();
-        if let Some(cookie) = req.cookies().get("auth_token") {
-            let token = cookie.value();
-            match token.parse::<Claims>() {
-                Ok(claims) => {
-                    let user_id = claims.user_id.unwrap();
-                    match users.find_one(doc! { "_id": user_id }, None).await {
-                        Ok(result) => match result {
-                            Some(user) => Outcome::Success(user),
-                            None => {
-                                // No user found
-                                Outcome::Failure((
-                                    Status::InternalServerError,
-                                    UserAuthError::NoUser,
-                                ))
-                            }
-                        },
-                        Err(db_err) => {
-                            // DB failed to fetch user
-                            Outcome::Failure((
-                                Status::InternalServerError,
-                                UserAuthError::DbError(db_err),
-                            ))
-                        }
-                    }
-                }
-                Err(jwt_err) => {
-                    return Outcome::Failure((Status::BadRequest, UserAuthError::JwtError(jwt_err)))
-                }
-            }
-        } else {
-            // No `user_id` cookie set
-            Outcome::Failure((Status::Unauthorized, UserAuthError::NoCookie))
-        }
+        let result = try_outcome!(users
+            .find_one(doc! { "_id": user_id }, None)
+            .await
+            .map_err(UserAuthError::DbError)
+            .into_outcome(Status::InternalServerError));
+        let user = try_outcome!(result
+            .ok_or(UserAuthError::NoUser)
+            .into_outcome(Status::InternalServerError));
+        Outcome::Success(user)
     }
 }
 
