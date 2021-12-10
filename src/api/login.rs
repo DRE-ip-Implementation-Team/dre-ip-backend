@@ -16,16 +16,11 @@ use rocket::{
 };
 
 pub fn routes() -> Vec<Route> {
-    routes![
-        login_admin,
-        login_voter_request_otp,
-        login_voter_submit_otp,
-        login_voter_logout
-    ]
+    routes![authenticate_admin, request_otp, authenticate_user, logout]
 }
 
-#[post("/login/admin", data = "<login>")]
-fn login_admin(
+#[post("/auth/admin", data = "<login>")]
+fn authenticate_admin(
     cookies: &CookieJar,
     login: Form<Strict<AdminLogin>>,
     admin_password: &State<AdminPassword>,
@@ -37,14 +32,14 @@ fn login_admin(
     Status::Ok
 }
 
-#[post("/login/voter/request-otp", data = "<request>")]
-fn login_voter_request_otp(request: Form<Strict<OtpRequest>>, cookies: &CookieJar<'_>) {
-    cookies.add_private(Challenge::cookie(request.into_inner().into_inner().sms));
+#[get("/auth/voter?<sms>")]
+fn request_otp(sms: Sms, cookies: &CookieJar<'_>) {
+    cookies.add_private(Challenge::cookie(sms));
 }
 
-#[post("/login/voter/submit-otp", data = "<submission>")]
-async fn login_voter_submit_otp(
-    submission: Form<Strict<OtpSubmission>>,
+#[post("/auth/voter", data = "<code>")]
+async fn authenticate_user(
+    code: Form<Strict<Code>>,
     cookies: &CookieJar<'_>,
     users: &State<Users>,
 ) -> Result<()> {
@@ -54,11 +49,10 @@ async fn login_voter_submit_otp(
         .value()
         .parse::<Challenge>()?;
 
-    // Verify submitted OTP code
-    if challenge.code() != submission.code {
+    if challenge.code() != **code {
         return Err(Error::Unauthorized(format!(
             "Incorrect OTP code {:?}",
-            submission.code
+            code
         )));
     }
 
@@ -75,8 +69,8 @@ async fn login_voter_submit_otp(
     Ok(())
 }
 
-#[post("/login/voter/logout")]
-fn login_voter_logout(cookies: &CookieJar) -> Status {
+#[delete("/auth")]
+fn logout(cookies: &CookieJar) -> Status {
     cookies.remove(Cookie::named("auth_token"));
     Status::Ok
 }
@@ -84,14 +78,4 @@ fn login_voter_logout(cookies: &CookieJar) -> Status {
 #[derive(FromForm)]
 struct AdminLogin<'a> {
     password: &'a str,
-}
-
-#[derive(FromForm)]
-struct OtpRequest {
-    sms: Sms,
-}
-
-#[derive(FromForm)]
-struct OtpSubmission {
-    code: Code,
 }

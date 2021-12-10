@@ -120,6 +120,6 @@ impl<'r> FromFormField<'r> for Code {
             return Err(Errors::from(ErrorKind::Missing));
         }
         let value = field.value;
-        value.parse::<Code>().map_err(|err| err.into())
+        value.parse::<Code>().map_err(Into::into)
     }
 }

@@ -3,7 +3,7 @@ use crate::{
     model::{
         bson::Id,
         election::{Ballot, Election, Elections},
-        pagination::{Pagination, PaginationResult},
+        pagination::{Metadata, Pagination},
     },
 };
 
@@ -68,7 +68,7 @@ async fn get_ballots(
             ))
         })?
         .ballots();
-    let pagination_result = pagination.result(ballots.len());
+    let pagination_result = pagination.into_metadata(ballots.len());
     Ok(Json(PaginatedBallots {
         ballots,
         pagination_result,
@@ -108,5 +108,5 @@ async fn get_ballot(
 pub struct PaginatedBallots {
     ballots: Vec<Ballot>,
     #[serde(flatten)]
-    pagination_result: PaginationResult,
+    pagination_result: Metadata,
 }
