@@ -17,7 +17,7 @@ use rocket::{serde::json::Json, Route, State};
 use serde::Serialize;
 
 pub fn routes() -> Vec<Route> {
-    routes![get_elections, get_ballots, get_ballot]
+    routes![get_elections, get_votes, get_vote]
 }
 
 #[get("/elections")]
@@ -40,8 +40,8 @@ async fn get_elections(elections: &State<Collection<Election>>) -> Result<Json<V
     ))
 }
 
-#[get("/election/<election_id>/ballots?<pagination..>")]
-async fn get_ballots(
+#[get("/election/<election_id>/votes?<pagination..>")]
+async fn get_votes(
     election_id: Id,
     pagination: Pagination,
     elections: &State<Elections>,
@@ -75,10 +75,10 @@ async fn get_ballots(
     }))
 }
 
-#[get("/election/<election_id>/ballots/<ballot_id>")]
-async fn get_ballot(
+#[get("/election/<election_id>/votes/<vote_id>")]
+async fn get_vote(
     election_id: Id,
-    ballot_id: Id,
+    vote_id: Id,
     elections: &State<Elections>,
 ) -> Result<Option<Json<Ballot>>> {
     Ok(elections
@@ -87,7 +87,7 @@ async fn get_ballot(
             FindOneOptions::builder()
                 .projection(doc! {
                     "ballots": {
-                        "_id": &ballot_id,
+                        "_id": &vote_id,
                     }
                 })
                 .build(),
