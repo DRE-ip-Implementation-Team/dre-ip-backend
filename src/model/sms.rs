@@ -59,7 +59,8 @@ impl<'r> FromFormField<'r> for Sms {
         if field.name != "sms" {
             return Err(ErrorKind::Missing.into());
         }
-        dbg!(field.value)
+        field
+            .value
             .parse::<PhoneNumber>()
             .map(|number| Sms { inner: number })
             .map_err(|err| ErrorKind::Custom(Box::new(err)).into())
