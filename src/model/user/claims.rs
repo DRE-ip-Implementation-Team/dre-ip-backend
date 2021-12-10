@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::conf;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Claims {
     #[serde(rename = "uid", skip_serializing_if = "Option::is_none")]
     pub user_id: Option<ObjectId>,
