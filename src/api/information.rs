@@ -8,7 +8,11 @@ use crate::{
 };
 
 use futures::stream::TryStreamExt;
-use mongodb::{bson::doc, options::FindOneOptions, Collection};
+use mongodb::{
+    bson::doc,
+    options::{FindOneOptions, FindOptions},
+    Collection,
+};
 use rocket::{serde::json::Json, Route, State};
 use serde::Serialize;
 
@@ -18,7 +22,22 @@ pub fn routes() -> Vec<Route> {
 
 #[get("/elections")]
 async fn get_elections(elections: &State<Collection<Election>>) -> Result<Json<Vec<Election>>> {
-    Ok(Json(elections.find(None, None).await?.try_collect().await?))
+    Ok(Json(
+        elections
+            .find(
+                None,
+                FindOptions::builder()
+                    .projection(doc! {
+                        "ballots": {
+                            "$slice": [0, 0] // Creates an empty Vec
+                        },
+                    })
+                    .build(),
+            )
+            .await?
+            .try_collect()
+            .await?,
+    ))
 }
 
 #[get("/election/<election_id>/ballots?<pagination..>")]
