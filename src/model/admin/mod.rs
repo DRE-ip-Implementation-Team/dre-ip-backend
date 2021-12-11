@@ -1,8 +1,7 @@
-use argon2::Error as Argon2Error;
+use argon2::{hash_encoded, Config, Error as Argon2Error};
 use mongodb::Collection;
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-
-use crate::conf;
 
 use super::auth::token::{Rights, User};
 
@@ -47,12 +46,20 @@ impl Credentials<'_> {
     }
 
     pub fn into_admin(self) -> Result<Admin, Argon2Error> {
+        // 16 bytes is recommended for password hashing:
+        //  https://en.wikipedia.org/wiki/Argon2
+        // Also useful:
+        //  https://www.twelve21.io/how-to-choose-the-right-parameters-for-argon2/
+        let salt = [0u8; 16];
+        // Valid because `OsRng` is "highly unlikely" to fail
+        // Also, panicking here is still secure and more efficient than indeterminately busy-looping
+        thread_rng().fill(&mut salt);
         Ok(Admin::new(
             self.username.to_string(),
-            argon2::hash_encoded(
+            hash_encoded(
                 self.password.as_bytes(),
-                conf!(salt),
-                &argon2::Config::default(),
+                &salt,
+                &Config::default(), // TODO: Tune hash configuration
             )?,
         ))
     }

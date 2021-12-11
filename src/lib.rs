@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate rocket;
-extern crate argon2;
 
 use crate::model::{
     election::{Ballot, Election},
@@ -61,7 +60,6 @@ pub struct Config {
     otp_ttl: u64,
     jwt_secret: &'static [u8],
     auth_ttl: u64,
-    salt: &'static [u8],
 }
 
 impl Default for Config {
@@ -70,7 +68,6 @@ impl Default for Config {
             otp_ttl: Duration::minutes(5).num_seconds() as u64,
             jwt_secret: b"$!~B.4uQLt@d*K5w",
             auth_ttl: Duration::days(1).num_seconds() as u64,
-            salt: b"F)x8vwP~!xPEF[z$",
         }
     }
 }
