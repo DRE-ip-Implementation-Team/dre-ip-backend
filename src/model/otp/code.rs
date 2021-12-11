@@ -1,4 +1,5 @@
 use rand::distributions::{Distribution, Uniform};
+use rand::thread_rng;
 use rocket::form::Errors;
 use rocket::form::{self, prelude::ErrorKind, FromFormField, ValueField};
 use serde::{Deserialize, Serialize};
@@ -21,7 +22,7 @@ impl Default for Code {
     fn default() -> Self {
         let mut inner = [0; LENGTH];
         let digit_dist = Uniform::from(0..=9);
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         for digit in &mut inner {
             *digit = digit_dist.sample(&mut rng);
         }
