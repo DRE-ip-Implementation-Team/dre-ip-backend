@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use mongodb::{bson::oid::ObjectId, Collection};
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,14 @@ pub struct DbAdmin {
 impl DbAdmin {
     pub fn id(&self) -> ObjectId {
         self.id
+    }
+}
+
+impl Deref for DbAdmin {
+    type Target = Admin;
+
+    fn deref(&self) -> &Self::Target {
+        &self.admin
     }
 }
 

@@ -5,7 +5,10 @@ use rocket::{
 
 use crate::{
     error::Result,
-    model::admin::{Credentials, PutAdmins},
+    model::{
+        admin::{Admin, Credentials, PutAdmins},
+        auth::token::Token,
+    },
 };
 
 pub fn routes() -> Vec<Route> {
@@ -14,6 +17,7 @@ pub fn routes() -> Vec<Route> {
 
 #[post("/admins", data = "<credentials>")]
 async fn create_admin(
+    _token: Token<Admin>,
     credentials: Form<Strict<Credentials<'_>>>,
     admins: &State<PutAdmins>,
 ) -> Result<()> {
