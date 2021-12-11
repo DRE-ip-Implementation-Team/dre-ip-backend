@@ -5,28 +5,126 @@ info:
 servers:
   - description: Backend Server
     url: Self-Hosted
+  - description: localhost
+    url: http://127.0.0.1:8000
 security:
   - AuthToken: [ ]  # Require AuthToken by default.
 
 tags:
-  - name: Information API
-  - name: Login API
-  - name: Election Management API
-    description: Requires an admin-level AUTHTOKEN cookie.
-  - name: Voting API
-    description: Requires a voter-level AUTHTOKEN cookie.
+  - name: Authentication
+  - name: Administration
+    description: Requires an admin `auth_token` cookie.
+  - name: Public
+  - name: Voting
+    description: Requires a voter `auth_token` cookie.
 
 paths:
-  # --- Information API ---
-  # Retrieve all elections
+  /admins:
+    post:
+      summary: Create an administrator.
+      tags:
+        - Administration
+      requestBody:
+        description: Administrator credentials.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminCredentials'
+      responses:
+        201:
+          description: Administrator created successfully.
+  /auth:
+    delete:
+      summary: Remove proof of authentication.
+      description: Removes the `auth_token` JWT cookie.
+      security: [ ] # No token needed to logout
+      tags:
+        - Authentication
+      responses:
+        200:
+          description: Logout successful, authentication token removed.
+  /auth/admin:
+    post:
+      summary: Authenticate as an admin via valid credentials.
+      security: [ ]  # No token needed before login.
+      tags:
+        - Authentication
+      requestBody:
+        description: Admin password.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCredentials"
+      responses:
+        200:
+          $ref: "#/components/responses/AuthToken"
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          description: Incorrect password.
+  /auth/voter:
+    get:
+      summary: Request an SMS OTP for voter authentication.
+      description:
+        Sets an encrypted JWT cookie claiming a randomly generated OTP and the given SMS number to which it is sent.
+        The JWT and cookie expire simultaneously after a configurable duration.
+      parameters:
+        - in: query
+          name: sms
+          schema:
+            type: string
+            pattern: '^\+?[1-9]\d{1,14}$'
+            example: "+441234567890"
+      security: [ ]  # No token needed before login.
+      tags:
+        - Authentication
+      responses:
+        200:
+          description: OTP successfully sent.
+          headers:
+            Set-Cookie:
+              description:
+                Encrypted JWT claiming an SMS number and OTP.
+                Cookie expires when JWT does.
+              schema:
+                type: string
+                example: "challenge=PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
+        400:
+          $ref: "#/components/responses/BadFormat"
+    post:
+      summary: Authenticate as a voter via a OTP.
+      description:
+        Saves a voter with the claimed SMS number if the submitted OTP matches the claimed OTP.
+        Sets a voter `auth_token` that expires after a configurable duration.
+      parameters:
+        - in: cookie
+          name: challenge
+          schema:
+            type: string
+            example: "PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
+      security: [ ]  # No token needed before login.
+      tags:
+        - Authentication
+      requestBody:
+        description: Submitted OTP.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoterOTP"
+      responses:
+        200:
+          $ref: "#/components/responses/AuthToken"
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          description: Incorrect OTP.
   /elections:
     get:
-      summary: Retrieve all elections.
-      description: "Non-finalised elections are excluded from the result unless
-      authenticated as admin."
-      security: [ ]  # No authentication needed.
+      summary: Fetch elections, excluding non-finalised if not authenticated as an admin.
       tags:
-        - Information API
+        - Public
       responses:
         200:
           description: Array of elections.
@@ -36,19 +134,45 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Election"
-  # Retrieve all votes for an election
-  /election/{electionID}/votes:
+    post:
+      summary: Create an election.
+      tags:
+        - Administration
+      requestBody:
+        description:
+          Initial election structure (optional).
+          The ID field is ignored, as one will be allocated.
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Election"
+      responses:
+        201:
+          description: Creation successful. Returns the resulting Election object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        400:
+          $ref: "#/components/responses/BadFormat"
+        401:
+          $ref: "#/components/responses/NotLoggedIn"
+        403:
+          $ref: "#/components/responses/PermissionDenied"
+  /elections/{electionID}/votes:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
-      - $ref: "#/components/parameters/PageNum"
-      - $ref: "#/components/parameters/PageSize"
     get:
-      summary: Retrieve votes for an election.
-      description: "There may be a large number of votes, so this request is
-      paginated. The page size may be at most 1000, and defaults to 50."
+      summary: Fetch an election's votes.
+      description:
+        There may be a large number of votes, so this request is paginated.
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
       security: [ ]  # No authentication needed.
       tags:
-        - Information API
+        - Public
       responses:
         200:
           description: Votes plus pagination metadata.
@@ -90,16 +214,15 @@ paths:
                 total_votes: 52
         404:
           $ref: "#/components/responses/NotFound"
-  # Retrieve a specific vote by ID
-  /election/{electionID}/vote/{voteID}:
+  /elections/{electionID}/votes/{voteID}:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
       - $ref: "#/components/parameters/VoteID"
     get:
-      summary: Retrieve a single vote.
+      summary: Fetch an election vote.
       security: [ ]  # No authentication needed.
       tags:
-        - Information API
+        - Public
       responses:
         200:
           description: A single vote record.
@@ -109,119 +232,14 @@ paths:
                 $ref: "#/components/schemas/Stage2Receipt"
         404:
           $ref: "#/components/responses/NotFound"
-  # --- Login API ---
-  # Admin login via password
-  /login/admin:
-    post:
-      summary: Attempt to authenticate as admin via the admin password.
-      security: [ ]  # No token needed before login.
-      tags:
-        - Login API
-      requestBody:
-        description: Admin password.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminLogin"
-      responses:
-        200:
-          $ref: "#/components/responses/AuthToken"
-        400:
-          $ref: "#/components/responses/BadFormat"
-        401:
-          description: Incorrect password.
-  # User request OTP
-  /login/voter/request-otp:
-    post:
-      summary: Request an OTP for voter authentication.
-      security: [ ]  # No token needed before login.
-      tags:
-        - Login API
-      requestBody:
-        description: Voter SMS number.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VoterSMSNumber"
-      responses:
-        200:
-          description: OTP successfully sent.
-        400:
-          $ref: "#/components/responses/BadFormat"
-  # User login via OTP
-  /login/voter/submit-otp:
-    post:
-      summary: Submit an OTP to authenticate as a voter.
-      security: [ ]  # No token needed before login.
-      tags:
-        - Login API
-      requestBody:
-        description: Voter SMS number and OTP.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VoterOTP"
-      responses:
-        200:
-          $ref: "#/components/responses/AuthToken"
-        400:
-          $ref: "#/components/responses/BadFormat"
-        401:
-          description: Incorrect OTP.
-  # User logout
-  /login/voter/logout:
-    post:
-      summary: Removes a voter's proof of authentication.
-      security: [ ] # No token needed to logout
-      tags:
-        - Login API
-      responses:
-        200:
-          description: Logout successful, authentication token removed.
-  # --- Election Management API ---
-  # Create an election.
-  /election:
-    post:
-      summary: Create a new empty election.
-      tags:
-        - Election Management API
-      requestBody:
-        description: "Initial election structure (optional).
-        The ID field is ignored, as one will be allocated."
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Election"
-      responses:
-        201:
-          description: Creation successful. Returns the resulting Election object.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Election"
-        400:
-          $ref: "#/components/responses/BadFormat"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
-  /election/{electionID}:
-    parameters:
-      - $ref: "#/components/parameters/ElectionID"
-    # Modify an election
+  /elections/{electionID}/details:
     put:
-      summary: Replace the given election with the supplied structure.
-      description: "Any modification to an election will reset it,
-      destroying any votes that have already been cast for it."
+      summary: Replace a non-finalised election's details.
       tags:
-        - Election Management API
+        - Administration
       requestBody:
-        description: "New election structure.
-        The ID must match the ID in the URL."
+        description:
+          New election details.
         required: true
         content:
           application/json:
@@ -238,11 +256,13 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
-    # Delete an election.
+  /elections/{electionID}:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     delete:
-      summary: Permanently delete the given election.
+      summary: Delete a non-finalised election.
       tags:
-        - Election Management API
+        - Administration
       responses:
         200:
           description: Deletion successful.
@@ -252,17 +272,15 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
-  # --- Voting API ---
-  /election/{electionID}/voter/groups:
+  /elections/{electionID}/groups:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Retrieve the groups that the current voter belongs to.
-      description: "This information is deliberately available for only
-      the current user; not even the admin can see it. This is because
-      group membership may constitute personal information."
+      summary: Fetch the voter's groups.
+      description:
+        Access is restricted to the voter because group membership may constitute personal information.
       tags:
-        - Voting API
+        - Voting
       responses:
         200:
           description: List of group IDs, or null if groups not yet set.
@@ -276,11 +294,14 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
+  /elections/{electionID}/groups/join:
     post:
-      summary: Set the groups of the current voter.
-      description: This can only be done once per voter per election.
+      summary: Add the voter to groups.
+      description:
+        Can only be done once per voter per election.
+        Fails if groups do not conform to their exclusion requirements.
       tags:
-        - Voting API
+        - Voting
       requestBody:
         description: List of group IDs.
         required: true
@@ -301,13 +322,13 @@ paths:
           $ref: "#/components/responses/NotFound"
         409:
           description: Groups already set.
-  /election/{electionID}/voter/voted:
+  /elections/{electionID}/questions/confirmed:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Retrieve the questions that the current voter has already voted on.
+      summary: Fetch questions for which the voter has confirmed their candidate decision.
       tags:
-        - Voting API
+        - Voting
       responses:
         200:
           description: List of question IDs.
@@ -321,14 +342,15 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
-  # Submit provisional vote(s)
-  /election/{electionID}/vote:
+  /elections/{electionID}/votes/cast:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     post:
-      summary: Submit provisional vote(s) and get a stage-1 receipt.
+      summary: Submit provisional votes for stage-1 receipts.
+      description:
+        Register the voter's interest in voting for the given candidates on the given questions.
       tags:
-        - Voting API
+        - Voting
       requestBody:
         description: "List of votes: question-candidate ID pairs."
         required: true
@@ -338,11 +360,11 @@ paths:
               $ref: "#/components/schemas/VoteList"
       responses:
         200:
-          description: Stage-1 receipt.
+          description: List of Stage-1 receipts.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Stage1Receipt"
+                $ref: "#/components/schemas/Stage1ReceiptList"
         400:
           $ref: "#/components/responses/BadFormat"
         401:
@@ -351,24 +373,22 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
-  # Cancel provisional vote
-  /election/{electionID}/vote/cancel:
+  /elections/{electionID}/votes/audit:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     post:
-      summary: Cancel the in-progress provisional vote.
-      description: "This audits the vote, allowing Cast As Intended to be
-      verified. The choices can be changed before submitting another
-      provisional vote."
+      summary: Cancel provisional votes for stage-2 receipts.
+      description:
+        Allows the voter to audit the choices, ensuring it is Cast As Intended.
       tags:
-        - Voting API
+        - Voting
       responses:
         200:
-          description: Stage-2 receipt.
+          description: List of Stage-2 receipts.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Stage2Receipt"
+                $ref: "#/components/schemas/Stage2ReceiptList"
         400:
           $ref: "#/components/responses/NoPendingVote"
         401:
@@ -377,16 +397,15 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         404:
           $ref: "#/components/responses/NotFound"
-  # Confirm provisional vote
-  /election/{electionID}/vote/confirm:
+  /elections/{electionID}/votes/confirm:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     post:
-      summary: Confirm the in-progress provisional vote.
-      description: "This confirms the vote, casting the ballot and locking
-      in the choices."
+      summary: Confirm provisional votes for stage-2 receipts.
+      description:
+        This confirms the provisional votes, locking in the voter's candidate decisions.
       tags:
-        - Voting API
+        - Voting
       responses:
         200:
           description: Stage-2 receipt.
@@ -415,17 +434,21 @@ components:
     AuthToken:
       type: apiKey
       in: cookie
-      name: AUTHTOKEN
+      name: auth_token
   # Payload Schemas
   schemas:
-    AdminLogin:
+    AdminCredentials:
       type: object
       properties:
+        username:
+          type: string
         password:
           type: string
       required:
+        - username
         - password
       example:
+        username: "coordinator"
         password: "CorrectHorseBatteryStaple"
     VoterSMSNumber:
       type: object
@@ -439,19 +462,15 @@ components:
     VoterOTP:
       type: object
       properties:
-        sms:
-          type: string
         otp:
           type: string
       required:
-        - sms
         - otp
       example:
-        sms: "+441234567890"
         otp: "123456"
     AuthToken:
       type: string
-      example: AUTHTOKEN=abc.123.xyz
+      example: "auth_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1aWQiOnsiJG9pZCI6IjYxYjJkZDNkYzEwODY3MzAyMjcwNjRhMCJ9LCJhZG0iOmZhbHNlLCJleHAiOjE2MzkxMTkxOTh9.bJqzVrH3ZFJuyKnoI9UAoYjqMsaQ51Fon43WUs5bGmQ; Path=/; HttpOnly;"
     Candidate:
       type: object
       properties:
@@ -558,6 +577,8 @@ components:
       type: array
       items:
         type: string
+      minItems: 1
+      uniqueItems: true
       example:
         - e041990c-5edc-4bdc-94ed-406a4b9759c3
         - 814d342b-acee-4848-b004-857ff77cf29f
@@ -579,6 +600,8 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/Vote"
+      minItems: 1
+      uniqueItems: true
       example:
         - question: 7b7c0917-060c-45cf-ace8-b8b834765d6f
           candidate: 398fc139-c26c-44ea-8af9-c09009091442
@@ -656,11 +679,9 @@ components:
             Z: 8a6db9c9ee90f122
             P: 1298badfc7896fc7
     Stage2Receipt:
-      description: "A stage 2 receipt contains all the information of a stage 1
-      receipt, but additionally has been either confirmed or audited.
-
-      An audited receipt will include the secrets `r` and `v` for verification
-      purposes; a confirmed receipt will not."
+      description:
+        A stage 2 receipt contains all the information of a stage 1 receipt, but additionally has been either confirmed or audited.
+        An audited receipt will include the secrets `r` and `v` for verification purposes; a confirmed receipt will not.
       type: object
       properties:
         id:
@@ -681,6 +702,18 @@ components:
             action: "audited"
             r: 1298cd98c28e90a0
             v: 1
+    Stage1ReceiptList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Stage1Receipt'
+      minItems: 1
+      uniqueItems: true
+    Stage2ReceiptList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Stage2Receipt'
+      minItems: 1
+      uniqueItems: true
   # Common parameters
   parameters:
     ElectionID:
@@ -690,7 +723,7 @@ components:
       description: The ID of the election to operate on.
       schema:
         type: string
-      example: .../7b1c5646-4cf8-4507-8ff4-bb8580214622/...
+        example: 7b1c5646-4cf8-4507-8ff4-bb8580214622
     VoteID:
       name: voteID
       in: path
@@ -698,26 +731,30 @@ components:
       description: The ID of the vote to operate on.
       schema:
         type: integer
-      example: .../12345/...
+        example: 12345
     PageNum:
       name: page_num
       in: query
       description: The page index into paginated data, starting at 1.
       schema:
         type: integer
-      example: ?page_num=5
+        default: 1
+        example: 5
     PageSize:
       name: page_size
       in: query
-      description: "The requested size of a single paginated batch.
-      The API may impose a maximum or minimum on this parameter."
+      description:
+        The requested size of a single paginated batch.
+        The API may impose a maximum or minimum on this parameter.
       schema:
         type: integer
-      example: ?page_size=100
+        default: 50
+        maximum: 1000
+        example: 100
   # Common Responses
   responses:
     AuthToken:
-      description: Login successful, token returned.
+      description: Authenticated successfully.
       headers:
         Set-Cookie:
           schema:
