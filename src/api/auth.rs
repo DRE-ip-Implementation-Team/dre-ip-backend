@@ -39,7 +39,7 @@ async fn authenticate_admin(
                 credentials.username()
             ))
         })?;
-    if verify_encoded(admin.password_hash(), credentials.password().as_bytes())? {
+    if !verify_encoded(admin.password_hash(), credentials.password().as_bytes())? {
         return Err(Error::Unauthorized(
             "Password provided does not match stored hash".to_string(),
         ));
