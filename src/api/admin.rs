@@ -21,7 +21,7 @@ async fn create_admin(
     credentials: Form<Strict<Credentials<'_>>>,
     admins: &State<PutAdmins>,
 ) -> Result<()> {
-    let admin = credentials.into_admin()?;
+    let admin = credentials.into_admin();
     admins.insert_one(admin, None).await?;
     Ok(())
 }

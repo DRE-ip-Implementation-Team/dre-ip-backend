@@ -12,7 +12,6 @@ use crate::{
     },
 };
 
-use argon2::verify_encoded;
 use mongodb::bson::doc;
 use rocket::{
     form::{Form, Strict},
@@ -33,17 +32,12 @@ async fn authenticate_admin(
     let admin = admins
         .find_one(doc! { "username": credentials.username() }, None)
         .await?
+        .filter(|admin| admin.verify_password(credentials.password()))
         .ok_or_else(|| {
-            Error::NotFound(format!(
-                "No admin found for username `{}` with the given password",
-                credentials.username()
-            ))
+            Error::NotFound(
+                "No admin found with the provided username and password combination.".to_string(),
+            )
         })?;
-    if !verify_encoded(admin.password_hash(), credentials.password().as_bytes())? {
-        return Err(Error::Unauthorized(
-            "Password provided does not match stored hash".to_string(),
-        ));
-    }
     cookies.add(Claims::for_admin(&admin));
     Ok(())
 }
