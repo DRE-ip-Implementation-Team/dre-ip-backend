@@ -12,7 +12,7 @@ pub fn routes() -> Vec<Route> {
     routes![create_admin]
 }
 
-#[post("/admin", data = "<credentials>")]
+#[post("/admins", data = "<credentials>")]
 async fn create_admin(
     credentials: Form<Strict<Credentials<'_>>>,
     admins: &State<PutAdmins>,
