@@ -326,7 +326,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Fetch questions for which the voter has provisonally voted.
+      summary: Fetch questions for which the voter has confirmed their candidate decision.
       tags:
         - Voting
       responses:
