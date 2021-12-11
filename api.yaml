@@ -403,7 +403,7 @@ paths:
     post:
       summary: Confirm provisional votes for stage-2 receipts.
       description:
-        This casts ballots, locking in the voter's candidate decisions.
+        This confirms the provisional votes, locking in the voter's candidate decisions.
       tags:
         - Voting
       responses:
