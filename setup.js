@@ -1,11 +1,9 @@
 conn = new Mongo();
 db = conn.getDB("dreip");
 db.dropDatabase();
-db.createCollection("users");
-users = db.getCollection("users");
-db.createCollection("otps");
-otps = db.getCollection("otps");
-users.createIndex({ sms: 1 }, { unique: true });
-users.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
-otps.createIndex({ userId: 1 }, { unique: true });
-otps.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
+db.createCollection("voters");
+voters = db.getCollection("voters");
+voters.createIndex({sms: 1}, {unique: true});
+db.createCollection("admins");
+admins = db.getCollection("admins");
+admins.createIndex({username: 1}, {unique: true});
