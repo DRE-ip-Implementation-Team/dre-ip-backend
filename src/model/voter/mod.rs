@@ -1,10 +1,5 @@
-use mongodb::{
-    bson::{doc, oid::ObjectId},
-    Collection,
-};
+use mongodb::{bson::doc, Collection};
 use serde::{Deserialize, Serialize};
-
-use self::db::DbVoter;
 
 use super::{
     auth::token::{Rights, User},
@@ -21,10 +16,6 @@ pub struct Voter {
 impl Voter {
     pub fn new(sms: Sms) -> Self {
         Self { sms }
-    }
-
-    pub fn into_db_voter(self, id: ObjectId) -> DbVoter {
-        DbVoter::new(id, self)
     }
 }
 

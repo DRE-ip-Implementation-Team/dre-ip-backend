@@ -1,15 +1,18 @@
 use crate::{
-    conf,
     error::{Error, Result},
     model::{
         admin::{db::GetAdmins, Credentials},
         auth::claims::Claims,
         otp::{challenge::Challenge, code::Code},
         sms::Sms,
-        voter::{db::GetVoters, PutVoters, Voter},
+        voter::{
+            db::{DbVoter, GetVoters},
+            PutVoters, Voter,
+        },
     },
 };
 
+use argon2::verify_encoded;
 use mongodb::bson::doc;
 use rocket::{
     form::{Form, Strict},
@@ -27,19 +30,8 @@ async fn authenticate_admin(
     credentials: Form<Strict<Credentials<'_>>>,
     admins: &State<GetAdmins>,
 ) -> Result<()> {
-    let password_hash = argon2::hash_encoded(
-        credentials.password().as_bytes(),
-        conf!(salt),
-        &argon2::Config::default(),
-    )?;
     let admin = admins
-        .find_one(
-            doc! {
-                "username": credentials.username(),
-                "password_hash": password_hash
-            },
-            None,
-        )
+        .find_one(doc! { "username": credentials.username() }, None)
         .await?
         .ok_or_else(|| {
             Error::NotFound(format!(
@@ -47,6 +39,11 @@ async fn authenticate_admin(
                 credentials.username()
             ))
         })?;
+    if verify_encoded(admin.password_hash(), credentials.password().as_bytes())? {
+        return Err(Error::Unauthorized(
+            "Password provided does not match stored hash".to_string(),
+        ));
+    }
     cookies.add(Claims::for_admin(&admin));
     Ok(())
 }
@@ -84,7 +81,7 @@ async fn authenticate_user(
             .unwrap() // Valid because the ID comes directly from the database
     };
 
-    cookies.add(Claims::for_voter(&voter.into_db_voter(id)));
+    cookies.add(Claims::for_voter(&DbVoter::new(id, voter)));
     cookies.remove(Cookie::named("challenge"));
 
     Ok(())

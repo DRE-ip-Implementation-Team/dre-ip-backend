@@ -20,6 +20,10 @@ impl Admin {
             password_hash,
         }
     }
+
+    pub fn password_hash(&self) -> &str {
+        &self.password_hash
+    }
 }
 
 impl User for Admin {
@@ -50,7 +54,7 @@ impl Credentials<'_> {
         //  https://en.wikipedia.org/wiki/Argon2
         // Also useful:
         //  https://www.twelve21.io/how-to-choose-the-right-parameters-for-argon2/
-        let salt = [0u8; 16];
+        let mut salt = [0_u8; 16];
         // Valid because `OsRng` is "highly unlikely" to fail
         // Also, panicking here is still secure and more efficient than indeterminately busy-looping
         thread_rng().fill(&mut salt);

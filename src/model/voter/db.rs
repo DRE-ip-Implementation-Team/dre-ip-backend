@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use mongodb::{
     bson::{doc, oid::ObjectId},
     Collection,
@@ -22,6 +24,14 @@ impl DbVoter {
 
     pub fn id(&self) -> ObjectId {
         self.id
+    }
+}
+
+impl Deref for DbVoter {
+    type Target = Voter;
+
+    fn deref(&self) -> &Self::Target {
+        &self.voter
     }
 }
 
