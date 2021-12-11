@@ -322,7 +322,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         409:
           description: Groups already set.
-  /elections/{electionID}/questions:
+  /elections/{electionID}/questions/confirmed:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
