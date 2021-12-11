@@ -344,7 +344,7 @@ paths:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/cast:
     parameters:
-      - $ref: '#/components/parameters/ElectionID'
+      - $ref: "#/components/parameters/ElectionID"
     post:
       summary: Submit provisional votes for stage-1 receipts.
       description:
