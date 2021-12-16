@@ -28,28 +28,6 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-async fn get_elections_with_filter(
-    elections: &State<Collection<Election>>,
-    filter: impl Into<Option<Document>>,
-) -> Result<Json<Vec<Election>>> {
-    Ok(Json(
-        elections
-            .find(
-                filter,
-                FindOptions::builder()
-                    .projection(doc! {
-                        "ballots": {
-                            "$slice": 0 // Creates an empty Vec
-                        },
-                    })
-                    .build(),
-            )
-            .await?
-            .try_collect()
-            .await?,
-    ))
-}
-
 #[get("/elections", rank = 1)]
 async fn get_elections_admin(
     _token: Token<Admin>,
@@ -134,6 +112,28 @@ async fn get_vote(
         .ballots()
         .first()
         .map(|ballot| Json(ballot.clone())))
+}
+
+async fn get_elections_with_filter(
+    elections: &State<Collection<Election>>,
+    filter: impl Into<Option<Document>>,
+) -> Result<Json<Vec<Election>>> {
+    Ok(Json(
+        elections
+            .find(
+                filter,
+                FindOptions::builder()
+                    .projection(doc! {
+                        "ballots": {
+                            "$slice": 0 // Creates an empty Vec
+                        },
+                    })
+                    .build(),
+            )
+            .await?
+            .try_collect()
+            .await?,
+    ))
 }
 
 #[derive(Serialize)]
