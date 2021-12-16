@@ -15,6 +15,7 @@ use mongodb::Client;
 use once_cell::sync::OnceCell;
 use rocket::{Build, Rocket};
 use serde::Deserialize;
+use std::env;
 
 pub mod api;
 pub mod error;
@@ -24,9 +25,10 @@ pub async fn build() -> Rocket<Build> {
     let rocket = rocket::build();
     let figment = rocket.figment();
 
-    let db_host = figment.extract_inner("db_host").unwrap_or("localhost");
+    let db_host = figment.extract_inner("db_host").unwrap_or("mongo");
     let db_port = figment.extract_inner("db_port").unwrap_or(27017);
-    let client = Client::with_uri_str(format!("mongodb://{}:{}", db_host, db_port))
+    let password = env!("DB_PASSWORD");
+    let client = Client::with_uri_str(format!("mongodb://root:{}@{}:{}", password, db_host, db_port))
         .await
         .expect("Could not connect to database");
     let db = client.database("dreip");
