@@ -14,7 +14,6 @@ use futures::stream::TryStreamExt;
 use mongodb::{
     bson::{doc, Document},
     options::{FindOneOptions, FindOptions},
-    Collection,
 };
 use rocket::{serde::json::Json, Route, State};
 use serde::Serialize;
@@ -23,6 +22,8 @@ pub fn routes() -> Vec<Route> {
     routes![
         get_elections_admin,
         get_elections_voter,
+        get_election_admin,
+        get_election_voter,
         get_votes,
         get_vote
     ]
@@ -31,7 +32,7 @@ pub fn routes() -> Vec<Route> {
 #[get("/elections", rank = 1)]
 async fn get_elections_admin(
     _token: Token<Admin>,
-    elections: &State<Collection<Election>>,
+    elections: &State<Elections>,
 ) -> Result<Json<Vec<Election>>> {
     get_elections_with_filter(elections, None).await
 }
@@ -39,10 +40,35 @@ async fn get_elections_admin(
 #[get("/elections", rank = 2)]
 async fn get_elections_voter(
     _token: Token<Voter>,
-    elections: &State<Collection<Election>>,
+    elections: &State<Elections>,
 ) -> Result<Json<Vec<Election>>> {
     get_elections_with_filter(
         elections,
+        doc! {
+            "finalised": true
+        },
+    )
+    .await
+}
+
+#[get("/elections/<election_id>", rank = 1)]
+async fn get_election_admin(
+    _token: Token<Admin>,
+    election_id: Id,
+    elections: &State<Elections>,
+) -> Result<Json<Election>> {
+    get_election_with_filter(elections, election_id, None).await
+}
+
+#[get("/elections/<election_id>", rank = 2)]
+async fn get_election_voter(
+    _token: Token<Voter>,
+    election_id: Id,
+    elections: &State<Elections>,
+) -> Result<Json<Election>> {
+    get_election_with_filter(
+        elections,
+        election_id,
         doc! {
             "finalised": true
         },
@@ -58,7 +84,7 @@ async fn get_votes(
 ) -> Result<Json<PaginatedBallots>> {
     let ballots = elections
         .find_one(
-            doc! { "_id": &election_id },
+            doc! { "_id": *election_id },
             FindOneOptions::builder()
                 .projection(doc! {
                     "ballots": {
@@ -93,11 +119,11 @@ async fn get_vote(
 ) -> Result<Option<Json<Ballot>>> {
     Ok(elections
         .find_one(
-            doc! { "_id": &election_id },
+            doc! { "_id": *election_id },
             FindOneOptions::builder()
                 .projection(doc! {
                     "ballots": {
-                        "_id": &vote_id,
+                        "_id": *vote_id,
                     }
                 })
                 .build(),
@@ -115,7 +141,7 @@ async fn get_vote(
 }
 
 async fn get_elections_with_filter(
-    elections: &State<Collection<Election>>,
+    elections: &State<Elections>,
     filter: impl Into<Option<Document>>,
 ) -> Result<Json<Vec<Election>>> {
     Ok(Json(
@@ -134,6 +160,16 @@ async fn get_elections_with_filter(
             .try_collect()
             .await?,
     ))
+}
+
+async fn get_election_with_filter(
+    elections: &State<Elections>,
+    id: Id,
+    filter: impl Into<Option<Document>>,
+) -> Result<Json<Election>> {
+    Ok(Json(elections.find_one(filter, None).await?.ok_or_else(
+        || Error::NotFound(format!("Could not find an election with ID `{}`", *id)),
+    )?))
 }
 
 #[derive(Serialize)]
