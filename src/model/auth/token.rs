@@ -54,12 +54,12 @@ where
         let claims = try_outcome!(token
             .parse::<Claims>()
             .map_err(TokenError::Jwt)
-            .into_outcome(Status::BadRequest));
+            .into_outcome(Status::Unauthorized));
         if claims.permits(U::rights()) {
             request::Outcome::Success(Token(PhantomData))
         } else if let Rights::Voter = U::rights() {
             request::Outcome::Failure((
-                Status::Unauthorized,
+                Status::Forbidden,
                 TokenError::NotPermitted {
                     target: U::rights(),
                     actual: claims.rights(),

@@ -1,12 +1,16 @@
-use mongodb::bson::{oid::ObjectId, Bson};
+use std::ops::Deref;
+
+use mongodb::bson::oid::ObjectId;
 use rocket::request::FromParam;
 
 #[derive(Debug)]
 pub struct Id(ObjectId);
 
-impl From<&Id> for Bson {
-    fn from(id: &Id) -> Self {
-        id.0.into()
+impl Deref for Id {
+    type Target = ObjectId;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

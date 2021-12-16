@@ -32,7 +32,7 @@ paths:
               $ref: '#/components/schemas/AdminCredentials'
       responses:
         201:
-          description: Administrator created successfully.
+          description: Successfully created administrator.
   /auth:
     delete:
       summary: Remove proof of authentication.
@@ -60,7 +60,7 @@ paths:
         200:
           $ref: "#/components/responses/AuthToken"
         400:
-          $ref: "#/components/responses/BadFormat"
+          $ref: "#/components/responses/BadRequest"
         401:
           description: Incorrect password.
   /auth/voter:
@@ -81,7 +81,7 @@ paths:
         - Authentication
       responses:
         200:
-          description: OTP successfully sent.
+          description: Successfully sent OTP.
           headers:
             Set-Cookie:
               description:
@@ -91,7 +91,7 @@ paths:
                 type: string
                 example: "challenge=PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
         400:
-          $ref: "#/components/responses/BadFormat"
+          $ref: "#/components/responses/BadRequest"
     post:
       summary: Authenticate as a voter via a OTP.
       description:
@@ -117,7 +117,7 @@ paths:
         200:
           $ref: "#/components/responses/AuthToken"
         400:
-          $ref: "#/components/responses/BadFormat"
+          $ref: "#/components/responses/BadRequest"
         401:
           description: Incorrect OTP.
   /elections:
@@ -127,7 +127,7 @@ paths:
         - Public
       responses:
         200:
-          description: Array of elections.
+          description: Successfully fetched elections.
           content:
             application/json:
               schema:
@@ -149,17 +149,17 @@ paths:
               $ref: "#/components/schemas/Election"
       responses:
         201:
-          description: Creation successful. Returns the resulting Election object.
+          description: Successfully created election.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Election"
         400:
-          $ref: "#/components/responses/BadFormat"
+          $ref: "#/components/responses/BadRequest"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
   /elections/{electionID}/votes:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
@@ -175,7 +175,7 @@ paths:
         - Public
       responses:
         200:
-          description: Votes plus pagination metadata.
+          description: Successfully fetched election's votes.
           content:
             application/json:
               schema:
@@ -225,7 +225,7 @@ paths:
         - Public
       responses:
         200:
-          description: A single vote record.
+          description: Successfully fetched election vote.
           content:
             application/json:
               schema:
@@ -247,29 +247,46 @@ paths:
               $ref: "#/components/schemas/Election"
       responses:
         200:
-          description: Modification successful.
+          description: Successfully modified election.
         400:
-          $ref: "#/components/responses/BadFormat"
+          $ref: "#/components/responses/BadRequest"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
+    get:
+      summary: Fetch an election; finalised elections only accessible to admins
+      tags:
+        - Public
+      responses:
+        200:
+          description: Successfully fetched election.
+          content:
+            application.json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
     delete:
       summary: Delete a non-finalised election.
       tags:
         - Administration
       responses:
         200:
-          description: Deletion successful.
+          description: Successfully deleted election.
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/groups:
@@ -283,15 +300,15 @@ paths:
         - Voting
       responses:
         200:
-          description: List of group IDs, or null if groups not yet set.
+          description: Successfully fetched the voter's groups.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IDList"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/groups/join:
@@ -311,13 +328,13 @@ paths:
               $ref: "#/components/schemas/IDList"
       responses:
         200:
-          description: Group selection successful.
+          description: Successfully added the user to groups.
         400:
-          $ref: "#/components/responses/BadFormat"
+          $ref: "#/components/responses/BadRequest"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
         409:
@@ -331,15 +348,15 @@ paths:
         - Voting
       responses:
         200:
-          description: List of question IDs.
+          description: Successfully fetched completed questions.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IDList"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/cast:
@@ -360,17 +377,17 @@ paths:
               $ref: "#/components/schemas/VoteList"
       responses:
         200:
-          description: List of Stage-1 receipts.
+          description: Successfully submitted provisional votes.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Stage1ReceiptList"
         400:
-          $ref: "#/components/responses/BadFormat"
+          $ref: "#/components/responses/BadRequest"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/audit:
@@ -384,17 +401,17 @@ paths:
         - Voting
       responses:
         200:
-          description: List of Stage-2 receipts.
+          description: Successfully cancelled provisional votes.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Stage2ReceiptList"
         400:
-          $ref: "#/components/responses/NoPendingVote"
+          $ref: "#/components/responses/BadRequest"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/confirm:
@@ -408,7 +425,7 @@ paths:
         - Voting
       responses:
         200:
-          description: Stage-2 receipt.
+          description: Successfully confirmed provisional votes.
           content:
             application/json:
               schema:
@@ -420,11 +437,11 @@ paths:
                 P: 1298badfc7896fc7
                 action: "confirmed"
         400:
-          $ref: "#/components/responses/NoPendingVote"
+          $ref: "#/components/responses/BadRequest"
         401:
-          $ref: "#/components/responses/NotLoggedIn"
+          $ref: "#/components/responses/Unauthorized"
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
 
@@ -754,18 +771,18 @@ components:
   # Common Responses
   responses:
     AuthToken:
-      description: Authenticated successfully.
+      description: Successfully authenticated.
       headers:
         Set-Cookie:
           schema:
             $ref: "#/components/schemas/AuthToken"
-    BadFormat:
-      description: Bad request format.
-    NotLoggedIn:
-      description: No AUTHTOKEN cookie present.
-    PermissionDenied:
-      description: AUTHTOKEN cookie is invalid or does not give you the required permissions.
+    BadRequest:
+      description: Request was malformed.
+    Unauthorized:
+      description:
+        "`auth_token` cookie is absent, formatted incorrectly or expired."
+    Forbidden:
+      description:
+        "`auth_token` cookie does not grant the required permissions."
     NotFound:
-      description: Not Found.
-    NoPendingVote:
-      description: No in-progress provisional vote.
+      description: Requested resource was not found.
