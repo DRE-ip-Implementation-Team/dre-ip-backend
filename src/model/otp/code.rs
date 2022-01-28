@@ -7,15 +7,78 @@ use thiserror::Error;
 
 use std::borrow::Cow;
 use std::convert::TryInto;
+use std::fmt::Display;
+use std::ops::Deref;
 use std::str::FromStr;
 
-const LENGTH: usize = 6;
+pub const LENGTH: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
 pub struct Code {
     #[serde(with = "code")]
-    inner: [u8; LENGTH],
+    code: [u8; LENGTH],
+}
+
+impl Deref for Code {
+    type Target = [u8; LENGTH];
+
+    fn deref(&self) -> &Self::Target {
+        &self.code
+    }
+}
+
+mod code {
+    use serde::{
+        de::{Error, Unexpected, Visitor},
+        Deserializer, Serializer,
+    };
+
+    use crate::model::otp::code::LENGTH;
+
+    pub fn serialize<S>(code: &[u8; 6], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&code.iter().map(|n| (n + 48) as char).collect::<String>())
+    }
+
+    struct StrVisitor;
+
+    impl<'de> Visitor<'de> for StrVisitor {
+        type Value = [u8; LENGTH];
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(formatter, "a string of {} digits", LENGTH)
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            if v.len() != LENGTH {
+                return Err(E::invalid_length(
+                    v.len(),
+                    &format!("a string of {} digit characters", LENGTH).as_str(),
+                ));
+            }
+
+            v.chars()
+                .map(|c| {
+                    c.to_digit(10)
+                        .map(|digit| digit as u8)
+                        .ok_or_else(|| E::invalid_value(Unexpected::Char(c), &"a digit character"))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(|digits| digits.try_into().unwrap()) // Valid because the input length has been checked
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 6], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(StrVisitor)
+    }
 }
 
 impl Default for Code {
@@ -26,7 +89,20 @@ impl Default for Code {
         for digit in &mut inner {
             *digit = digit_dist.sample(&mut rng);
         }
-        Self { inner }
+        Self { code: inner }
+    }
+}
+
+impl Display for Code {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}",
+            self.code
+                .iter()
+                .map(|digit| char::from_digit(*digit as u32, 10).unwrap())
+                .collect::<String>()
+        )
     }
 }
 
@@ -46,7 +122,7 @@ impl FromStr for Code {
             })
             .collect::<Result<Vec<u8>, Self::Err>>()?;
         Ok(Self {
-            inner: digits.try_into().unwrap(), // Valid because digits.len() == LENGTH
+            code: digits.try_into().unwrap(), // Valid because digits.len() == LENGTH
         })
     }
 }
@@ -71,47 +147,6 @@ impl From<ParseError> for form::error::ErrorKind<'_> {
                 c
             ))),
         }
-    }
-}
-
-mod code {
-    use serde::{de::Visitor, Deserializer, Serializer};
-
-    use crate::model::otp::code::LENGTH;
-
-    use super::Code;
-
-    pub fn serialize<S>(code: &[u8; 6], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&code.iter().map(|n| (n + 48) as char).collect::<String>())
-    }
-
-    struct StrVisitor;
-
-    impl Visitor<'_> for StrVisitor {
-        type Value = Code;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(formatter, "a string of {} digits", LENGTH)
-        }
-
-        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            s.parse::<Self::Value>().map_err(|err| E::custom(err))
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 6], D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer
-            .deserialize_str(StrVisitor)
-            .map(|code| code.inner)
     }
 }
 

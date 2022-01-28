@@ -1,14 +1,30 @@
 use mongodb::bson::{to_bson, Bson};
 use phonenumber::PhoneNumber;
-use rocket::form::{self, error::ErrorKind, FromFormField, ValueField};
+use rocket::{
+    form::{self, prelude::ErrorKind, FromFormField, ValueField},
+    http::{
+        impl_from_uri_param_identity,
+        uri::fmt::{Query, UriDisplay},
+    },
+    request::FromParam,
+};
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+use std::{ops::Deref, str::FromStr};
+use thiserror::Error;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Sms {
     #[serde(with = "phone_number")]
     inner: PhoneNumber,
+}
+
+impl Deref for Sms {
+    type Target = PhoneNumber;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 mod phone_number {
@@ -47,9 +63,13 @@ mod phone_number {
     }
 }
 
-impl Display for Sms {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        self.inner.fmt(formatter)
+impl FromStr for Sms {
+    type Err = phonenumber::ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Sms {
+            inner: s.parse::<PhoneNumber>()?,
+        })
     }
 }
 
@@ -67,8 +87,51 @@ impl<'r> FromFormField<'r> for Sms {
     }
 }
 
+impl UriDisplay<Query> for Sms {
+    fn fmt(
+        &self,
+        formatter: &mut rocket::http::uri::fmt::Formatter<'_, Query>,
+    ) -> std::fmt::Result {
+        formatter.write_value(self.to_string())
+    }
+}
+
+impl<'a> FromParam<'a> for Sms {
+    type Error = SmsError<'a>;
+
+    fn from_param(param: &'a str) -> Result<Self, Self::Error> {
+        if !param.starts_with("sms=") {
+            return Err(SmsError::WrongName(param));
+        }
+        Ok(Self {
+            inner: param[4..].parse::<PhoneNumber>()?,
+        })
+    }
+}
+
+impl_from_uri_param_identity!([Query] Sms);
+
+#[derive(Debug, Error)]
+pub enum SmsError<'a> {
+    #[error("Expected `sms=<sms>`, got {0}")]
+    WrongName(&'a str),
+    #[error(transparent)]
+    Parse(#[from] phonenumber::ParseError),
+}
+
 impl From<Sms> for Bson {
     fn from(sms: Sms) -> Self {
         to_bson(&sms).unwrap() // Valid because `PhoneNumber` serialization doesn't fail
+    }
+}
+
+#[cfg(test)]
+mod examples {
+    use super::*;
+
+    impl Sms {
+        pub fn example() -> Self {
+            "+441234567890".parse().unwrap()
+        }
     }
 }

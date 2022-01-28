@@ -1,21 +1,19 @@
-use crate::{conf, model::sms::Sms};
+use crate::{model::sms::Sms, Config};
 
-use chrono::{Duration, Utc};
+use chrono::{serde::ts_seconds, DateTime, Utc};
 use jsonwebtoken::{
     decode, encode, errors::Error as JwtError, Algorithm, DecodingKey, EncodingKey, Header,
     Validation,
 };
 use mongodb::bson::doc;
 use rocket::{
-    http::{Cookie, Status},
+    http::{Cookie, SameSite, Status},
     outcome::{try_outcome, IntoOutcome},
     request::{self, FromRequest},
-    Request,
+    Request, State,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
-use std::str::FromStr;
 
 use super::code::Code;
 
@@ -24,8 +22,6 @@ pub struct Challenge {
     sms: Sms,
     #[serde(rename = "cod")]
     code: Code,
-    #[serde(rename = "exp")]
-    expire_at: u64,
 }
 
 impl Challenge {
@@ -37,36 +33,52 @@ impl Challenge {
         self.code
     }
 
-    pub fn cookie(sms: Sms) -> Cookie<'static> {
-        let challenge = Self {
-            sms,
-            code: dbg!(Code::default()),
-            expire_at: (Utc::now() + Duration::seconds(conf!(otp_ttl) as i64)).timestamp() as u64,
+    pub fn for_sms(sms: Sms) -> Self {
+        let code = Code::default();
+        println!("{}", code);
+        Self { sms, code }
+    }
+
+    pub fn into_cookie(self, config: &Config) -> Cookie<'static> {
+        let claims = Claims {
+            challenge: self,
+            expire_at: Utc::now() + config.otp_ttl(),
         };
         Cookie::build(
             "challenge",
             encode(
                 &Header::default(),
-                &challenge,
-                &EncodingKey::from_secret(conf!(jwt_secret)),
+                &claims,
+                &EncodingKey::from_secret(config.jwt_secret()),
             )
             .unwrap(), // Valid because Challenge serialization never fails
         )
-        .max_age(time::Duration::seconds(conf!(otp_ttl) as i64))
+        .max_age(time::Duration::seconds(config.otp_ttl().num_seconds()))
+        .same_site(SameSite::Strict)
         .finish()
     }
 }
 
-impl FromStr for Challenge {
-    type Err = JwtError;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    #[serde(flatten)]
+    challenge: Challenge,
+    #[serde(rename = "exp", with = "ts_seconds")]
+    expire_at: DateTime<Utc>,
+}
 
-    fn from_str(string: &str) -> Result<Self, Self::Err> {
+impl Claims {
+    pub fn from_str(string: &str, config: &Config) -> Result<Self, JwtError> {
         decode(
             string,
-            &DecodingKey::from_secret(conf!(jwt_secret)),
+            &DecodingKey::from_secret(config.jwt_secret()),
             &Validation::new(Algorithm::HS256),
         )
         .map(|data| data.claims)
+    }
+
+    pub fn into_challenge(self) -> Challenge {
+        self.challenge
     }
 }
 
@@ -75,15 +87,19 @@ impl<'r> FromRequest<'r> for Challenge {
     type Error = ChallengeError;
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let config = req.guard::<&State<Config>>().await.unwrap(); // Valid as `Config` is always managed
+
         let cookie = try_outcome!(req
             .cookies()
             .get_private("challenge")
             .into_outcome((Status::Unauthorized, ChallengeError::Missing)));
-        let token = cookie.value();
-        request::Outcome::Success(try_outcome!(token
-            .parse::<Challenge>()
+        let raw_claims = cookie.value();
+
+        let claims = try_outcome!(Claims::from_str(raw_claims, config)
             .map_err(ChallengeError::Jwt)
-            .into_outcome(Status::BadRequest)))
+            .into_outcome(Status::BadRequest));
+
+        request::Outcome::Success(claims.challenge)
     }
 }
 
