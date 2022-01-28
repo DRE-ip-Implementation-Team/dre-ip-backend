@@ -1,12 +1,20 @@
 use rocket::form::{self, DataField, Errors, FromForm, FromFormField, ValueField};
 use serde::Serialize;
 
+#[derive(UriDisplayQuery)]
 pub struct Pagination {
     page_num: u32,
     page_size: u32,
 }
 
 impl Pagination {
+    pub fn new(page_num: u32, page_size: u32) -> Self {
+        Self {
+            page_num,
+            page_size,
+        }
+    }
+
     pub fn skip(&self) -> u32 {
         (self.page_num - 1) * self.page_size
     }

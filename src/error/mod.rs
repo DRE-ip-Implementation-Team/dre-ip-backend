@@ -14,21 +14,15 @@ pub enum Error {
     Jwt(#[from] JwtError),
     #[error(transparent)]
     Argon2(#[from] Argon2Error),
-    #[error("Bad request: {0}")]
-    BadRequest(String),
-    #[error("Unauthorized: {0}")]
-    Unauthorized(String),
-    #[error("Not found: {0}")]
-    NotFound(String),
+    #[error("{0}: {1}")]
+    Status(Status, String),
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
     fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
         println!("{:?}", self);
         Err(match self {
-            Self::BadRequest(_) | Self::Argon2(_) => Status::BadRequest,
-            Self::NotFound(_) => Status::NotFound,
-            Self::Unauthorized(_) => Status::Unauthorized,
+            Self::Argon2(_) => Status::BadRequest,
             Self::Db(_) => Status::InternalServerError,
             Self::Jwt(err) => match err.into_kind() {
                 JwtErrorKind::ExpiredSignature | JwtErrorKind::ImmatureSignature => {
@@ -36,6 +30,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
                 }
                 _ => Status::BadRequest,
             },
+            Self::Status(status, _) => status,
         })
     }
 }

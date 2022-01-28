@@ -1,7 +1,8 @@
 use std::ops::Deref;
 
-use mongodb::{bson::oid::ObjectId, Collection};
 use serde::{Deserialize, Serialize};
+
+use crate::model::mongodb::{bson::Id, entity::DbEntity};
 
 use super::Admin;
 
@@ -9,15 +10,9 @@ use super::Admin;
 #[serde(rename_all = "camelCase")]
 pub struct DbAdmin {
     #[serde(rename = "_id")]
-    id: ObjectId,
+    id: Id,
     #[serde(flatten)]
     admin: Admin,
-}
-
-impl DbAdmin {
-    pub fn id(&self) -> ObjectId {
-        self.id
-    }
 }
 
 impl Deref for DbAdmin {
@@ -28,4 +23,8 @@ impl Deref for DbAdmin {
     }
 }
 
-pub type GetAdmins = Collection<DbAdmin>;
+impl DbEntity for DbAdmin {
+    fn id(&self) -> Id {
+        self.id
+    }
+}

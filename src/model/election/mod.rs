@@ -1,73 +1,196 @@
-use mongodb::{
-    bson::{oid::ObjectId, DateTime},
-    Collection,
-};
+use chrono::{DateTime, Utc};
+use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+use self::view::ElectionView;
+
+use super::ballot::Ballot;
+
+pub mod db;
+pub mod view;
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Election {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    id: Option<ObjectId>,
-    name: String,
-    finalised: bool,
-    start_time: DateTime,
-    end_time: DateTime,
-    groups: Vec<Group>,
+    #[serde(flatten)]
+    short: ElectionView,
+    groups: Vec<String>,
     questions: Vec<Question>,
-    ballots: Vec<Ballot>,
+    crypto: Crypto,
 }
 
 impl Election {
-    pub fn ballots(self) -> Vec<Ballot> {
-        self.ballots
+    pub fn new(
+        name: String,
+        finalised: bool,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+        groups: Vec<String>,
+        questions: Vec<Question>,
+    ) -> Self {
+        Self {
+            short: ElectionView::new(name, finalised, start_time, end_time),
+            groups,
+            questions,
+            crypto: Crypto {
+                private_key: (),
+                public_key: (),
+                g1: (),
+                g2: (),
+            },
+        }
+    }
+
+    pub fn groups(&self) -> &Vec<String> {
+        &self.groups
+    }
+
+    pub fn questions(&self) -> &Vec<Question> {
+        &self.questions
     }
 }
 
-pub type Elections = Collection<Election>;
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Crypto {
+    private_key: (),
+    public_key: (),
+    g1: (),
+    g2: (),
+}
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, FromForm)]
 #[serde(rename = "camelCase")]
 pub struct Group {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    id: Option<ObjectId>,
     name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Question {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    id: Option<ObjectId>,
-    description: String,
-    group_constraints: Vec<ObjectId>,
-    candidates: Vec<Candidate>,
+    #[serde(flatten)]
+    spec: QuestionSpec,
+    ballots: Vec<Ballot>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename = "camelCase")]
+pub struct QuestionSpec {
+    description: String,
+    group_constraints: Vec<String>,
+    candidates: Vec<String>,
+}
+
+impl From<QuestionSpec> for Question {
+    fn from(spec: QuestionSpec) -> Self {
+        Self {
+            spec,
+            ballots: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Candidate {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    id: Option<ObjectId>,
     name: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
-pub struct Ballot {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    id: Option<ObjectId>,
-    election_id: Option<ObjectId>,
-    r: String,
-    z: usize,
-    p: String,
     #[serde(flatten)]
-    action: Action,
+    sums: Sums,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "action")]
-pub enum Action {
-    Confirmed,
-    Audited { r: String, v: usize },
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct Sums {
+    tally: (),
+    rsum: (),
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElectionSpec {
+    name: String,
+    finalised: bool,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    start_time: DateTime<Utc>,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    end_time: DateTime<Utc>,
+    groups: Vec<String>,
+    questions: Vec<QuestionSpec>,
+}
+
+impl From<ElectionSpec> for Election {
+    fn from(spec: ElectionSpec) -> Self {
+        let ElectionSpec {
+            name,
+            finalised,
+            start_time,
+            end_time,
+            groups,
+            questions: question_specs,
+        } = spec;
+        Self::new(
+            name,
+            finalised,
+            start_time,
+            end_time,
+            groups,
+            question_specs.into_iter().map(QuestionSpec::into).collect(),
+        )
+    }
+}
+
+#[cfg(test)]
+mod examples {
+    use super::*;
+
+    use chrono::{Duration, MIN_DATETIME};
+
+    impl ElectionSpec {
+        pub fn name(&self) -> &String {
+            &self.name
+        }
+
+        pub fn example() -> Self {
+            Self::finalised_example()
+        }
+
+        pub fn finalised_example() -> Self {
+            Self {
+                name: "Sports Clubs Elections".to_string(),
+                finalised: true,
+                start_time: MIN_DATETIME,
+                end_time: MIN_DATETIME + Duration::days(30),
+                groups: vec!["Quidditch".to_string(), "Netball".to_string()],
+                questions: vec![QuestionSpec::example()],
+            }
+        }
+
+        pub fn unfinalised_example() -> Self {
+            Self {
+                name: "Sports Clubs Elections 2".to_string(),
+                finalised: false,
+                start_time: MIN_DATETIME,
+                end_time: MIN_DATETIME + Duration::days(30),
+                groups: vec!["Quidditch".to_string(), "Netball".to_string()],
+                questions: vec![QuestionSpec::example()],
+            }
+        }
+    }
+
+    impl QuestionSpec {
+        pub fn example() -> Self {
+            Self {
+                description: "Who should be captain of the Quidditch team?".to_string(),
+                group_constraints: vec!["Quidditch".to_string()],
+                candidates: vec!["Chris Riches".to_string()],
+            }
+        }
+    }
+
+    impl Candidate {
+        pub fn example() -> Self {
+            Self {
+                name: "Chris Riches".to_string(),
+                sums: Sums::default(),
+            }
+        }
+    }
 }

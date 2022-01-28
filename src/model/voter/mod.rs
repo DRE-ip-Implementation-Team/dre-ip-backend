@@ -1,28 +1,46 @@
-use mongodb::{bson::doc, Collection};
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
-use super::{
-    auth::token::{Rights, User},
-    sms::Sms,
-};
+use super::{election::Group, mongodb::bson::Id, sms::Sms};
 
 pub mod db;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Voter {
     sms: Sms,
+    election_groups: HashMap<Id, Vec<Group>>,
 }
 
 impl Voter {
     pub fn new(sms: Sms) -> Self {
-        Self { sms }
+        Self {
+            sms,
+            election_groups: HashMap::default(),
+        }
+    }
+
+    pub fn sms(&self) -> &Sms {
+        &self.sms
+    }
+
+    pub fn election_groups(&self) -> &HashMap<Id, Vec<Group>> {
+        &self.election_groups
     }
 }
 
-impl User for Voter {
-    fn rights() -> Rights {
-        Rights::Voter
+#[cfg(test)]
+mod examples {
+    use super::*;
+
+    use std::collections::HashMap;
+
+    impl Voter {
+        pub fn example() -> Self {
+            Self {
+                sms: Sms::example(),
+                election_groups: HashMap::default(),
+            }
+        }
     }
 }
-
-pub type PutVoters = Collection<Voter>;

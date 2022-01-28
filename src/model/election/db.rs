@@ -4,32 +4,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::{bson::Id, entity::DbEntity};
 
-use super::Voter;
+use super::Election;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DbVoter {
+pub struct DbElection {
     #[serde(rename = "_id")]
     id: Id,
     #[serde(flatten)]
-    voter: Voter,
+    election: Election,
 }
 
-impl DbVoter {
-    pub fn new(id: Id, voter: Voter) -> Self {
-        Self { id, voter }
+impl DbElection {
+    pub fn new(id: Id, election: Election) -> Self {
+        Self { id, election }
     }
 }
 
-impl Deref for DbVoter {
-    type Target = Voter;
+impl Deref for DbElection {
+    type Target = Election;
 
     fn deref(&self) -> &Self::Target {
-        &self.voter
+        &self.election
     }
 }
 
-impl DbEntity for DbVoter {
+impl DbEntity for DbElection {
     fn id(&self) -> Id {
         self.id
     }

@@ -12,18 +12,20 @@ security:
 
 tags:
   - name: Authentication
-  - name: Administration
-    description: Requires an admin `auth_token` cookie.
+    description: Adds/removes admin/voter `auth_token` cookie.
+  - name: Administrator
+    description: Requires *__admin__* `auth_token` cookie.
+  - name: Voter
+    description: Requires *__voter__* `auth_token` cookie.
   - name: Public
-  - name: Voting
-    description: Requires a voter `auth_token` cookie.
+    description: With *__admin__* `auth_token` cookie, includes non-finalised election data.
 
 paths:
   /admins:
     post:
       summary: Create an administrator.
       tags:
-        - Administration
+        - Administrator
       requestBody:
         description: Administrator credentials.
         content:
@@ -33,17 +35,9 @@ paths:
       responses:
         201:
           description: Successfully created administrator.
-  /auth:
-    delete:
-      summary: Remove proof of authentication.
-      description: Removes the `auth_token` JWT cookie.
-      security: [ ] # No token needed to logout
-      tags:
-        - Authentication
-      responses:
-        200:
-          description: Logout successful, authentication token removed.
-  /auth/admin:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /admins/authenticate:
     post:
       summary: Authenticate as an admin via valid credentials.
       security: [ ]  # No token needed before login.
@@ -59,70 +53,13 @@ paths:
       responses:
         200:
           $ref: "#/components/responses/AuthToken"
-        400:
-          $ref: "#/components/responses/BadRequest"
         401:
-          description: Incorrect password.
-  /auth/voter:
-    get:
-      summary: Request an SMS OTP for voter authentication.
-      description:
-        Sets an encrypted JWT cookie claiming a randomly generated OTP and the given SMS number to which it is sent.
-        The JWT and cookie expire simultaneously after a configurable duration.
-      parameters:
-        - in: query
-          name: sms
-          schema:
-            type: string
-            pattern: '^\+?[1-9]\d{1,14}$'
-            example: "+441234567890"
-      security: [ ]  # No token needed before login.
-      tags:
-        - Authentication
-      responses:
-        200:
-          description: Successfully sent OTP.
-          headers:
-            Set-Cookie:
-              description:
-                Encrypted JWT claiming an SMS number and OTP.
-                Cookie expires when JWT does.
-              schema:
-                type: string
-                example: "challenge=PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
-        400:
-          $ref: "#/components/responses/BadRequest"
-    post:
-      summary: Authenticate as a voter via a OTP.
-      description:
-        Saves a voter with the claimed SMS number if the submitted OTP matches the claimed OTP.
-        Sets a voter `auth_token` that expires after a configurable duration.
-      parameters:
-        - in: cookie
-          name: challenge
-          schema:
-            type: string
-            example: "PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
-      security: [ ]  # No token needed before login.
-      tags:
-        - Authentication
-      requestBody:
-        description: Submitted OTP.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VoterOTP"
-      responses:
-        200:
-          $ref: "#/components/responses/AuthToken"
-        400:
-          $ref: "#/components/responses/BadRequest"
-        401:
-          description: Incorrect OTP.
+          description: Incorrect credentials.
+        500:
+          $ref: "#/components/responses/InternalServerError"
   /elections:
     get:
-      summary: Fetch elections, excluding non-finalised if not authenticated as an admin.
+      summary: Fetch elections
       tags:
         - Public
       responses:
@@ -134,10 +71,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Election"
+        500:
+          $ref: "#/components/responses/InternalServerError"
     post:
       summary: Create an election.
       tags:
-        - Administration
+        - Administrator
       requestBody:
         description:
           Initial election structure (optional).
@@ -160,13 +99,53 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         403:
           $ref: "#/components/responses/Forbidden"
-  /elections/{electionID}/votes:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /elections/{electionID}:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Fetch an election's votes.
+      summary: Fetch an election
+      tags:
+        - Public
+      responses:
+        200:
+          description: Successfully fetched election.
+          content:
+            application.json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      summary: Delete a non-finalised election.
+      tags:
+        - Administrator
+      responses:
+        200:
+          description: Successfully deleted election.
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /elections/{electionID}/{questionID}/ballots:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+      - $ref: "#/components/parameters/QuestionID"
+    get:
+      summary: Fetch an election question's ballots.
       description:
-        There may be a large number of votes, so this request is paginated.
+        There may be a large number of ballots, so this request is paginated.
       parameters:
         - $ref: "#/components/parameters/PageNum"
         - $ref: "#/components/parameters/PageSize"
@@ -175,15 +154,15 @@ paths:
         - Public
       responses:
         200:
-          description: Successfully fetched election's votes.
+          description: Successfully fetched election question's ballots.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  votes:
+                  ballots:
                     type: array
-                    description: List of vote receipts.
+                    description: List of ballot receipts.
                     items:
                       $ref: "#/components/schemas/Stage2Receipt"
                   page_num:
@@ -192,9 +171,9 @@ paths:
                   page_size:
                     type: integer
                     description: The actual page size used.
-                  total_votes:
+                  total:
                     type: integer
-                    description: The total number of votes for this election.
+                    description: The total number of ballots for this election.
               example:
                 votes:
                   - id: 51
@@ -214,32 +193,37 @@ paths:
                 total_votes: 52
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/votes/{voteID}:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /elections/{electionID}/{questionID}/ballots/{voteID}:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
-      - $ref: "#/components/parameters/VoteID"
+      - $ref: "#/components/parameters/QuestionID"
+      - $ref: "#/components/parameters/BallotID"
     get:
-      summary: Fetch an election vote.
+      summary: Fetch an election question's ballot.
       security: [ ]  # No authentication needed.
       tags:
         - Public
       responses:
         200:
-          description: Successfully fetched election vote.
+          description: Successfully fetched election question ballot.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Stage2Receipt"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/details:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /elections/{electionID}/spec:
     put:
-      summary: Replace a non-finalised election's details.
+      summary: Respecify a non-finalised election's details.
       tags:
-        - Administration
+        - Administrator
       requestBody:
         description:
-          New election details.
+          New election specification.
         required: true
         content:
           application/json:
@@ -256,48 +240,84 @@ paths:
           $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}:
-    parameters:
-      - $ref: "#/components/parameters/ElectionID"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /voter/challenge:
     get:
-      summary: Fetch an election; finalised elections only accessible to admins
+      summary: Request an SMS OTP challenge for voter authentication.
+      description:
+        Sets an encrypted JWT cookie claiming a randomly generated OTP and the given SMS number to which it is sent.
+        The JWT and cookie expire simultaneously after a configurable duration.
+      parameters:
+        - in: query
+          name: sms
+          schema:
+            type: string
+            pattern: '^\+?[1-9]\d{1,14}$'
+            example: "+441234567890"
+      security: [ ]  # No token needed before login.
       tags:
-        - Public
+        - Authentication
       responses:
         200:
-          description: Successfully fetched election.
-          content:
-            application.json:
+          description: Successfully sent OTP.
+          headers:
+            Set-Cookie:
+              description:
+                Encrypted JWT claiming an SMS number and OTP.
+                Cookie expires when JWT does.
               schema:
-                $ref: "#/components/schemas/Election"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
-        404:
-          $ref: "#/components/responses/NotFound"
-    delete:
-      summary: Delete a non-finalised election.
+                $ref: "#/components/schemas/Challenge"
+        400:
+          $ref: "#/components/responses/BadRequest"
+  /voter/verify:
+    post:
+      summary: Verify SMS OTP challenge to authenticate the voter.
+      description:
+        Saves a voter with the claimed SMS number if the submitted OTP matches the claimed OTP.
+        Sets a voter `auth_token` that expires after a configurable duration.
+      parameters:
+        - in: cookie
+          name: challenge
+          schema:
+            $ref: "#/components/schemas/Challenge"
+      security: [ ]  # No token needed before login.
       tags:
-        - Administration
+        - Authentication
+      requestBody:
+        description: Submitted OTP.
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+              required:
+                - otp
+              example:
+                otp: "123456"
       responses:
         200:
-          description: Successfully deleted election.
+          $ref: "#/components/responses/AuthToken"
+        400:
+          $ref: "#/components/responses/BadRequest"
         401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
-        404:
-          $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/groups:
+          description: Incorrect OTP.
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /voter/elections/{electionID}/groups:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Fetch the voter's groups.
+      summary: Fetch the voter's groups for an election.
       description:
         Access is restricted to the voter because group membership may constitute personal information.
       tags:
-        - Voting
+        - Voter
       responses:
         200:
           description: Successfully fetched the voter's groups.
@@ -311,16 +331,20 @@ paths:
           $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/groups/join:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /voter/elections/{electionID}/groups/join:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
     post:
-      summary: Add the voter to groups.
+      summary: Add the voter to an election's groups.
       description:
         Can only be done once per voter per election.
         Fails if groups do not conform to their exclusion requirements.
       tags:
-        - Voting
+        - Voter
       requestBody:
-        description: List of group IDs.
+        description: The election ID and a list of group IDs.
         required: true
         content:
           application/json:
@@ -339,13 +363,15 @@ paths:
           $ref: "#/components/responses/NotFound"
         409:
           description: Groups already set.
-  /elections/{electionID}/questions/confirmed:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /voter/elections/{electionID}/questions/confirmed:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Fetch questions for which the voter has confirmed their candidate decision.
+      summary: Fetch election questions for which the voter has confirmed their candidate decision.
       tags:
-        - Voting
+        - Voter
       responses:
         200:
           description: Successfully fetched completed questions.
@@ -359,7 +385,9 @@ paths:
           $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/votes/cast:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /voter/elections/{electionID}/votes/cast:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     post:
@@ -367,7 +395,7 @@ paths:
       description:
         Register the voter's interest in voting for the given candidates on the given questions.
       tags:
-        - Voting
+        - Voter
       requestBody:
         description: "List of votes: question-candidate ID pairs."
         required: true
@@ -390,7 +418,9 @@ paths:
           $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/votes/audit:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /voter/elections/{electionID}/votes/audit:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     post:
@@ -398,7 +428,7 @@ paths:
       description:
         Allows the voter to audit the choices, ensuring it is Cast As Intended.
       tags:
-        - Voting
+        - Voter
       responses:
         200:
           description: Successfully cancelled provisional votes.
@@ -414,7 +444,9 @@ paths:
           $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/votes/confirm:
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /voter/elections/{electionID}/votes/confirm:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     post:
@@ -422,7 +454,7 @@ paths:
       description:
         This confirms the provisional votes, locking in the voter's candidate decisions.
       tags:
-        - Voting
+        - Voter
       responses:
         200:
           description: Successfully confirmed provisional votes.
@@ -444,6 +476,18 @@ paths:
           $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /auth:
+    delete:
+      summary: Remove proof of authentication.
+      description: Removes the `auth_token` JWT cookie.
+      security: [ ] # No token needed to logout
+      tags:
+        - Authentication
+      responses:
+        200:
+          description: Logout successful, authentication token removed.
 
 components:
   # Security
@@ -454,6 +498,19 @@ components:
       name: auth_token
   # Payload Schemas
   schemas:
+    ID:
+      type: string
+      example: 07b185d2-7f75-4409-ad47-9dc8bb95cb4d
+    IDList:
+      type: array
+      items:
+        $ref: "#/components/schemas/ID"
+      minItems: 1
+      uniqueItems: true
+      example:
+        - e041990c-5edc-4bdc-94ed-406a4b9759c3
+        - 814d342b-acee-4848-b004-857ff77cf29f
+        - ddf94a22-6d6f-4c73-9cba-00d1d83dd537
     AdminCredentials:
       type: object
       properties:
@@ -467,24 +524,9 @@ components:
       example:
         username: "coordinator"
         password: "CorrectHorseBatteryStaple"
-    VoterSMSNumber:
-      type: object
-      properties:
-        sms:
-          type: string
-      required:
-        - sms
-      example:
-        sms: "+441234567890"
-    VoterOTP:
-      type: object
-      properties:
-        otp:
-          type: string
-      required:
-        - otp
-      example:
-        otp: "123456"
+    Challenge:
+      type: string
+      example:  "PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
     AuthToken:
       type: string
       example: "auth_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1aWQiOnsiJG9pZCI6IjYxYjJkZDNkYzEwODY3MzAyMjcwNjRhMCJ9LCJhZG0iOmZhbHNlLCJleHAiOjE2MzkxMTkxOTh9.bJqzVrH3ZFJuyKnoI9UAoYjqMsaQ51Fon43WUs5bGmQ; Path=/; HttpOnly;"
@@ -492,7 +534,7 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/ID"
         name:
           type: string
       required:
@@ -502,25 +544,24 @@ components:
       type: object
       properties:
         id:
+          $ref: "#/components/schemas/ID"
+        description:
           type: string
-        desc:
-          type: string
+          example: Course Representative (Computer Science)
         groupConstraints:
-          type: array
-          items:
-            type: string
+          $ref: "#/components/schemas/IDList"
         candidates:
           type: array
           items:
             $ref: "#/components/schemas/Candidate"
       required:
         - id
-        - desc
+        - description
         - groupConstraints
         - candidates
       example:
         id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
-        desc: Course Representative (Computer Science)
+        description: Course Representative (Computer Science)
         groupConstraints: [07b185d2-7f75-4409-ad47-9dc8bb95cb4d]
         candidates:
           - id: 398fc139-c26c-44ea-8af9-c09009091442
@@ -531,11 +572,13 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/ID"
         name:
           type: string
+          example: Computer Science Students
         mutexSet:
           type: string
+          example: courses
       required:
         - id
         - name
@@ -547,15 +590,17 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: '#/components/schemas/ID'
         name:
           type: string
         finalised:
           type: boolean
         startTime:
           type: string
+          format: date-time
         endTime:
           type: string
+          format: date-time
         groups:
           type: array
           items:
@@ -590,16 +635,6 @@ components:
                 name: Alice
               - id: cc75eb78-dd87-472b-b80c-4eeb55a69e2c
                 name: Bob
-    IDList:
-      type: array
-      items:
-        type: string
-      minItems: 1
-      uniqueItems: true
-      example:
-        - e041990c-5edc-4bdc-94ed-406a4b9759c3
-        - 814d342b-acee-4848-b004-857ff77cf29f
-        - ddf94a22-6d6f-4c73-9cba-00d1d83dd537
     Vote:
       type: object
       properties:
@@ -739,13 +774,19 @@ components:
       required: true
       description: The ID of the election to operate on.
       schema:
-        type: string
-        example: 7b1c5646-4cf8-4507-8ff4-bb8580214622
-    VoteID:
-      name: voteID
+        $ref: "#/components/schemas/ID"
+    QuestionID:
+      name: questionID
       in: path
       required: true
-      description: The ID of the vote to operate on.
+      description: The ID of the election question to operate on.
+      schema:
+        $ref: "#/components/schemas/ID"
+    BallotID:
+      name: ballotID
+      in: path
+      required: true
+      description: The ID of the ballot to operate on.
       schema:
         type: integer
         example: 12345
@@ -786,3 +827,5 @@ components:
         "`auth_token` cookie does not grant the required permissions."
     NotFound:
       description: Requested resource was not found.
+    InternalServerError:
+      description: The server encountered an error.
