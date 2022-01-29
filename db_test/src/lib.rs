@@ -21,7 +21,7 @@ pub fn db_test(_: TokenStream, input: TokenStream) -> TokenStream {
         return err.into_compile_error().into();
     }
 
-    // Rename the future so the test is named as expected
+    // Rename the future so the test can have its original name
     let name = item_fn.sig.ident;
     let new_name = format_ident!("{}_fut", name);
     item_fn.sig.ident = new_name.clone();
