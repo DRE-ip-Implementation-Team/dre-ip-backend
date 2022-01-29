@@ -3,10 +3,12 @@ extern crate rocket;
 
 #[cfg(test)]
 #[macro_use]
-extern crate db_test;
+extern crate backend_test;
+
+use std::panic::panic_any;
 
 use chrono::Duration;
-use mongodb::{Client, Database};
+use mongodb::Client;
 use rocket::{fairing::AdHoc, Build, Rocket};
 use serde::Deserialize;
 
@@ -14,38 +16,32 @@ pub mod api;
 pub mod error;
 pub mod model;
 
-#[cfg(not(test))]
-static DATABASE: &'static str = "dreip";
-
-#[cfg(test)]
-static DATABASE: &'static str = "test";
-
 pub async fn build() -> Rocket<Build> {
-    let (rocket, _) = rocket_with_db().await;
+    let rocket = rocket_for_db_client(db_client().await).await;
     rocket
 }
 
-pub(crate) async fn rocket_with_db() -> (Rocket<Build>, Database) {
-    let rocket = rocket::build();
-    let figment = rocket.figment();
+pub(crate) async fn db_client() -> Client {
+    let db_uri = env!("db_uri");
+    Client::with_uri_str(db_uri)
+        .await
+        .unwrap_or_else(|err| panic_any(err))
+}
 
-    let db_uri = figment
-        .extract_inner::<String>("db_uri")
-        .expect("`db_uri` not set");
-    let client = Client::with_uri_str(&db_uri).await.expect(&format!(
-        "Could not connect to database with `db_uri` \"{}\"",
-        db_uri
-    ));
+#[cfg(not(test))]
+const DATABASE: &'static str = "dreip";
+
+#[cfg(test)]
+const DATABASE: &'static str = "test";
+
+pub(crate) async fn rocket_for_db_client(client: Client) -> Rocket<Build> {
     let db = client.database(DATABASE);
 
-    (
-        rocket
-            .mount("/", api::routes())
-            .attach(AdHoc::config::<Config>())
-            .manage(client)
-            .manage(db.clone()),
-        db,
-    )
+    rocket::build()
+        .mount("/", api::routes())
+        .attach(AdHoc::config::<Config>())
+        .manage(client)
+        .manage(db.clone())
 }
 
 #[derive(Deserialize)]
@@ -73,13 +69,4 @@ impl Config {
     pub fn auth_ttl(&self) -> Duration {
         Duration::seconds(self.auth_ttl as i64)
     }
-}
-
-#[cfg(test)]
-async fn client_and_db() -> (rocket::local::asynchronous::Client, Database) {
-    let (rocket, db) = rocket_with_db().await;
-    let client = rocket::local::asynchronous::Client::tracked(rocket)
-        .await
-        .unwrap();
-    (client, db)
 }

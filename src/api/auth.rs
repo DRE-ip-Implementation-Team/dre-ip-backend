@@ -133,17 +133,14 @@ mod tests {
     use mongodb::Database;
     use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
 
-    use crate::{
-        client_and_db,
-        model::{
-            admin::Admin,
-            otp::{self, challenge, code::LENGTH},
-        },
+    use crate::model::{
+        admin::Admin,
+        otp::{self, challenge, code::LENGTH},
     };
 
     use super::*;
 
-    #[db_test]
+    #[backend_test]
     async fn admin_authenticate_valid(client: Client, db: Database) {
         // Ensure there is an admin to login as
         let admins = Coll::<Admin>::from_db(&db);
@@ -161,10 +158,8 @@ mod tests {
         assert!(client.cookies().get("auth_token").is_some());
     }
 
-    #[rocket::async_test]
-    async fn admin_authenticate_invalid() {
-        let (client, db) = client_and_db().await;
-
+    #[backend_test]
+    async fn admin_authenticate_invalid(client: Client, db: Database) {
         // Ensure there is an admin to fail to login as
         let admins = Coll::<Admin>::from_db(&db);
         admins.insert_one(Admin::example(), None).await.unwrap();
@@ -202,18 +197,10 @@ mod tests {
 
         assert_eq!(Status::Unauthorized, response.status());
         assert_eq!(None, client.cookies().get("auth_token"));
-
-        // Clean up admin
-        admins
-            .delete_one(doc! { "username": Admin::example().username() }, None)
-            .await
-            .unwrap();
     }
 
-    #[rocket::async_test]
-    async fn voter_authenticate() {
-        let (client, db) = client_and_db().await;
-
+    #[backend_test]
+    async fn voter_authenticate(client: Client, db: Database) {
         // Request challenge
         let response = client.get(uri!(challenge(Sms::example()))).dispatch().await;
 
@@ -249,18 +236,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(Voter::example(), voter);
-
-        // Clean up voter
-        voters
-            .delete_one(doc! { "sms": Sms::example() }, None)
-            .await
-            .unwrap();
     }
 
-    #[rocket::async_test]
-    async fn unique_challenges() {
-        let (client, _) = client_and_db().await;
-
+    #[backend_test]
+    async fn unique_challenges(client: Client) {
         // Request challenge
         client.get(uri!(challenge(Sms::example()))).dispatch().await;
         let cookie = client.cookies().get_private("challenge").unwrap();
@@ -274,19 +253,15 @@ mod tests {
         assert_ne!(challenge_value, next_challenge_value);
     }
 
-    #[rocket::async_test]
-    async fn invalid_voter_sms() {
-        let (client, _) = client_and_db().await;
-
+    #[backend_test]
+    async fn invalid_voter_sms(client: Client) {
         let response = client.get("/voter/challenge?5555555555").dispatch().await;
 
         assert_eq!(Status::NotFound, response.status());
     }
 
-    #[rocket::async_test]
-    async fn invalid_otp_code() {
-        let (client, _) = client_and_db().await;
-
+    #[backend_test]
+    async fn invalid_otp_code(client: Client) {
         client.get(uri!(challenge(Sms::example()))).dispatch().await;
         let cookie = client.cookies().get_private("challenge").unwrap();
         let raw_claims = cookie.value();
@@ -312,7 +287,7 @@ mod tests {
         assert_eq!(Status::Unauthorized, response.status());
     }
 
-    #[db_test]
+    #[backend_test]
     async fn logout_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
@@ -322,10 +297,8 @@ mod tests {
         assert_eq!(None, client.cookies().get("auth_token"));
     }
 
-    #[rocket::async_test]
-    async fn logout_voter() {
-        let (client, db) = client_and_db().await;
-
+    #[backend_test]
+    async fn logout_voter(client: Client) {
         client.get(uri!(challenge(Sms::example()))).dispatch().await;
 
         let cookie = client.cookies().get_private("challenge").unwrap();
@@ -348,19 +321,10 @@ mod tests {
 
         assert_eq!(Status::Ok, response.status());
         assert_eq!(None, client.cookies().get("auth_token"));
-
-        // Clean up voter
-        let voters = Coll::<Voter>::from_db(&db);
-        voters
-            .delete_one(doc! { "sms": Sms::example() }, None)
-            .await
-            .unwrap();
     }
 
-    #[rocket::async_test]
-    async fn logout_not_logged_in() {
-        let (client, _) = client_and_db().await;
-
+    #[backend_test]
+    async fn logout_not_logged_in(client: Client) {
         let response = client.delete(uri!(logout)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());

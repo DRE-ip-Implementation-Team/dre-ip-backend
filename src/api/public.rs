@@ -10,12 +10,11 @@ use crate::{
     },
 };
 
-use futures::stream::TryStreamExt;
 use mongodb::{
     bson::{doc, Document},
     options::FindOptions,
 };
-use rocket::{http::Status, serde::json::Json, Route};
+use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route};
 use serde::Serialize;
 
 pub fn routes() -> Vec<Route> {
@@ -179,7 +178,6 @@ mod tests {
 
     use crate::{
         api::auth::login_as_admin,
-        client_and_db,
         model::{
             election::{view::ElectionView, ElectionSpec},
             mongodb::entity::DbEntity,
@@ -188,7 +186,7 @@ mod tests {
 
     use super::*;
 
-    #[db_test]
+    #[backend_test]
     async fn get_all_elections_as_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
@@ -208,7 +206,7 @@ mod tests {
         assert_eq!(elections, fetched_elections);
     }
 
-    #[db_test]
+    #[backend_test]
     async fn get_finalised_elections_as_non_admin(client: Client, db: Database) {
         // Insert sample elections
         let elections = Coll::<ElectionSpec>::from_db(&db);
@@ -242,7 +240,7 @@ mod tests {
         assert_eq!(elections, fetched_elections);
     }
 
-    #[db_test]
+    #[backend_test]
     async fn get_finalised_election_as_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
@@ -269,7 +267,7 @@ mod tests {
         assert_eq!(election, fetched_election);
     }
 
-    #[db_test]
+    #[backend_test]
     async fn get_unfinalised_election_as_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
@@ -296,7 +294,7 @@ mod tests {
         assert_eq!(election, fetched_election);
     }
 
-    #[db_test]
+    #[backend_test]
     async fn get_finalised_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
@@ -321,7 +319,7 @@ mod tests {
         assert_eq!(election, fetched_election);
     }
 
-    #[db_test]
+    #[backend_test]
     async fn fail_to_get_unfinalised_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
@@ -336,19 +334,19 @@ mod tests {
         assert_eq!(Status::NotFound, response.status());
     }
 
-    #[rocket::async_test]
+    #[backend_test]
     async fn get_election_strips_vote_data() {
         // TODO Ask CR if this should really happen
     }
 
-    // #[rocket::async_test]
+    // #[backend_test]
     // async fn get_election_question_ballots_as_admin() {
     //     let (client, db) = client_and_db().await;
 
     //     let response = client.get(uri!(election_question_ballots_for_admin("")));
     // }
 
-    // #[rocket::async_test]
+    // #[backend_test]
     // async fn get_finalised_election_question_ballots_as_non_admin() {
     //     let (client, db) = client_and_db().await;
 
@@ -370,7 +368,7 @@ mod tests {
     //     assert_eq!(vec![Ballot::new(vec![], Pwf, State::Confirmed)], ballots);
     // }
 
-    // #[rocket::async_test]
+    // #[backend_test]
     // async fn fail_to_get_unfinalised_election_question_ballots_as_non_admin() {
     //     let (client, db) = client_and_db().await;
 

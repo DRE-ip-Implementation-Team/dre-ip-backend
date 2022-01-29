@@ -12,10 +12,8 @@ jsonwebtoken = "7.2.0"
 thiserror = "1.0.30"
 rand = "0.8.4"
 time = "0.2.11"
-futures = "0.3.17"
 serde_repr = "0.1"
 rust-argon2 = "0.8"
-db-test = { path = "db_test" }
 
 [dependencies.rocket]
 version = "=0.5.0-rc.1"
@@ -30,4 +28,4 @@ version = "0.4.19"
 features = ["serde"]
 
 [dev-dependencies]
-tokio = "1.16.1"
+backend-test = { path = "backend_test" }

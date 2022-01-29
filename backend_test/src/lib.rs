@@ -1,6 +1,10 @@
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, spanned::Spanned, FnArg, ItemFn, Pat, Signature, Type};
+use syn::{
+    parse_macro_input, punctuated::Punctuated, spanned::Spanned, token::Comma, FnArg, ItemFn, Pat,
+    Signature, Type,
+};
 
 #[proc_macro_attribute]
 /// Provides a [`rocket::local::asynchronous::Client`] and [`mongodb::Database`] to the function,
@@ -9,45 +13,48 @@ use syn::{parse_macro_input, spanned::Spanned, FnArg, ItemFn, Pat, Signature, Ty
 ///
 /// If a panic occurs via a failed assertion or other unwinding panic, the [`mongodb::Database`] is
 /// cleared, and the panic is "rethrown".
-///
-/// Note: this attribute requires that [`rocket::async_test`] and `client_and_db` are
-/// in scope. A dev dependency on `tokio` is required to run each test future within the closure
-/// passed to [`std::panic::catch_unwind`].
-pub fn db_test(_: TokenStream, input: TokenStream) -> TokenStream {
+pub fn backend_test(_: TokenStream, input: TokenStream) -> TokenStream {
     let mut item_fn = parse_macro_input!(input as ItemFn);
 
     // Reject invalid function signatures
-    if let Err(err) = check_sig(item_fn.sig.clone()) {
-        return err.into_compile_error().into();
-    }
+    let args_used = match check_sig(item_fn.sig.clone()) {
+        Ok(args) => args,
+        Err(err) => {
+            return err.into_compile_error().into();
+        }
+    };
 
     // Rename the future so the test can have its original name
     let name = item_fn.sig.ident;
     let new_name = format_ident!("{}_fut", name);
     item_fn.sig.ident = new_name.clone();
 
+    let test_args = args_used.into_iter().collect::<Punctuated<_, Comma>>();
+
     quote! {
         #[rocket::async_test]
         async fn #name() {
-            let (client, db) = client_and_db().await;
+            let db_client = crate::db_client().await;
+            let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_client(db_client.clone()).await).await.unwrap();
+            let db = db_client.database(crate::DATABASE);
 
             #item_fn
 
             // `Mutex<T>: UnwindSafe` circumvents `T: !UnwindSafe`:
             // - See https://stackoverflow.com/a/66529014/13112498
-            let client_mutex = std::sync::Mutex::new(client);
+            let client_mutex = std::sync::Mutex::new(rocket_client);
             let db_mutex = std::sync::Mutex::new(db.clone());
 
             let result = std::panic::catch_unwind(|| {
                 // Transfer mutexes across the unwind boundary
                 // Unwraps are valid as no poisoning occurs: mutexes are not given no other threads
-                let client = client_mutex.into_inner().unwrap();
+                let rocket_client = client_mutex.into_inner().unwrap();
                 let db = db_mutex.into_inner().unwrap();
 
                 // Manually run future inside
-                let handle = tokio::runtime::Handle::current();
+                let handle = rocket::tokio::runtime::Handle::current();
                 let _ = handle.enter();
-                futures::executor::block_on(#new_name(client, db));
+                rocket::futures::executor::block_on(#new_name(#test_args));
             });
 
             db.drop(None).await.unwrap();
@@ -62,23 +69,24 @@ pub fn db_test(_: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Ensure signature conforms to `async fn test_ident(client_ident: Client, db_ident: Database)`.
-fn check_sig(sig: Signature) -> Result<(), syn::Error> {
+fn check_sig(sig: Signature) -> Result<Vec<TokenStream2>, syn::Error> {
     if sig.asyncness.is_none() {
         return Err(syn::Error::new(sig.span(), "Test must be marked `async`"));
     }
 
     let inputs = sig.inputs;
-    if inputs.len() != 2 {
+    if inputs.len() > 2 {
         return Err(syn::Error::new(
             inputs.span(),
-            "Test arguments must be a `rocket::local::asynchronous::Client` and a `mongodb::Database`",
+            "Test arguments must be a `rocket::local::asynchronous::Client` and/or a `mongodb::Database`",
         ));
     }
 
     let mut has_client = false;
     let mut has_db = false;
+    let mut args_used = vec![];
 
-    for input in &inputs {
+    for input in inputs.iter() {
         if let FnArg::Typed(pat_type) = input {
             if let Pat::Ident(_) = *pat_type.pat {
                 if let Type::Path(type_path) = &*pat_type.ty {
@@ -86,11 +94,22 @@ fn check_sig(sig: Signature) -> Result<(), syn::Error> {
                         let raw_type_ident = type_ident.to_string();
                         match raw_type_ident.as_str() {
                             "Client" => {
+                                if has_client {
+                                    return Err(syn::Error::new(input.span(), "Test cannot accept more than one `rocket::local::asynchronous::Client`"));
+                                }
                                 has_client = true;
+                                args_used.push(quote! { rocket_client });
                                 continue;
                             }
                             "Database" => {
+                                if has_db {
+                                    return Err(syn::Error::new(
+                                        input.span(),
+                                        "Test cannot accept more than one `mongodb::Database`",
+                                    ));
+                                }
                                 has_db = true;
+                                args_used.push(quote! { db });
                                 continue;
                             }
                             _ => {}
@@ -106,12 +125,5 @@ fn check_sig(sig: Signature) -> Result<(), syn::Error> {
         ));
     }
 
-    if has_client && has_db {
-        Ok(())
-    } else {
-        Err(syn::Error::new(
-            inputs.span(),
-            "Test must accept a `rocket::local::asynchronous::Client` and `mongodb::Database`",
-        ))
-    }
+    Ok(args_used)
 }
