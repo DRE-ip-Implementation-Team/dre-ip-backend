@@ -16,7 +16,6 @@ futures = "0.3.17"
 serde_repr = "0.1"
 rust-argon2 = "0.8"
 db-test = { path = "db_test" }
-tokio = "1.16.1"
 
 [dependencies.rocket]
 version = "=0.5.0-rc.1"
@@ -29,3 +28,6 @@ features = ["bson-chrono-0_4"]
 [dependencies.chrono]
 version = "0.4.19"
 features = ["serde"]
+
+[dev-dependencies]
+tokio = "1.16.1"
