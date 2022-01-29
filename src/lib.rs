@@ -1,6 +1,10 @@
 #[macro_use]
 extern crate rocket;
 
+#[cfg(test)]
+#[macro_use]
+extern crate db_test;
+
 use chrono::Duration;
 use mongodb::{Client, Database};
 use rocket::{fairing::AdHoc, Build, Rocket};
@@ -78,24 +82,4 @@ async fn client_and_db() -> (rocket::local::asynchronous::Client, Database) {
         .await
         .unwrap();
     (client, db)
-}
-
-#[cfg(test)]
-async fn clear_db(db: Database) {
-    use crate::model::{admin::Admin, election::Election, mongodb::collection::Coll, voter::Voter};
-
-    use mongodb::bson::doc;
-
-    Coll::<Voter>::from_db(&db)
-        .delete_many(doc! {}, None)
-        .await
-        .unwrap();
-    Coll::<Admin>::from_db(&db)
-        .delete_many(doc! {}, None)
-        .await
-        .unwrap();
-    Coll::<Election>::from_db(&db)
-        .delete_many(doc! {}, None)
-        .await
-        .unwrap();
 }

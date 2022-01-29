@@ -44,21 +44,19 @@ async fn create_election(
 
 #[cfg(test)]
 mod tests {
+    use mongodb::Database;
     use rocket::{
         http::{ContentType, Status},
+        local::asynchronous::Client,
         serde::json::serde_json::json,
     };
 
-    use crate::{
-        api::auth::login_as_admin, clear_db, client_and_db, model::election::ElectionSpec,
-    };
+    use crate::{api::auth::login_as_admin, client_and_db, model::election::ElectionSpec};
 
     use super::*;
 
-    #[rocket::async_test]
-    async fn create_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn create_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
         // Create admin
@@ -81,14 +79,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(Admin::example2().username(), inserted_admin.username());
-
-        clear_db(db).await;
     }
 
-    #[rocket::async_test]
-    async fn create_election() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn create_election(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
         let response = client
@@ -109,7 +103,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(ElectionSpec::example(), inserted_election);
-
-        clear_db(db).await;
     }
 }

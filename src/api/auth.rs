@@ -130,10 +130,11 @@ pub async fn login_as_admin(client: &rocket::local::asynchronous::Client, db: &m
 
 #[cfg(test)]
 mod tests {
-    use rocket::{http::ContentType, serde::json::serde_json::json};
+    use mongodb::Database;
+    use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
 
     use crate::{
-        clear_db, client_and_db,
+        client_and_db,
         model::{
             admin::Admin,
             otp::{self, challenge, code::LENGTH},
@@ -142,10 +143,8 @@ mod tests {
 
     use super::*;
 
-    #[rocket::async_test]
-    async fn admin_authenticate_valid() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn admin_authenticate_valid(client: Client, db: Database) {
         // Ensure there is an admin to login as
         let admins = Coll::<Admin>::from_db(&db);
         admins.insert_one(Admin::example(), None).await.unwrap();
@@ -160,8 +159,6 @@ mod tests {
 
         assert_eq!(Status::Ok, response.status());
         assert!(client.cookies().get("auth_token").is_some());
-
-        clear_db(db).await;
     }
 
     #[rocket::async_test]
@@ -315,18 +312,14 @@ mod tests {
         assert_eq!(Status::Unauthorized, response.status());
     }
 
-    #[rocket::async_test]
-    async fn logout_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn logout_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
         let response = client.delete(uri!(logout)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
         assert_eq!(None, client.cookies().get("auth_token"));
-
-        clear_db(db).await;
     }
 
     #[rocket::async_test]

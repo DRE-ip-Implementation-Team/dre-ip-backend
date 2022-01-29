@@ -175,11 +175,11 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use mongodb::Database;
-    use rocket::serde::json::serde_json;
+    use rocket::{local::asynchronous::Client, serde::json::serde_json};
 
     use crate::{
         api::auth::login_as_admin,
-        clear_db, client_and_db,
+        client_and_db,
         model::{
             election::{view::ElectionView, ElectionSpec},
             mongodb::entity::DbEntity,
@@ -188,10 +188,8 @@ mod tests {
 
     use super::*;
 
-    #[rocket::async_test]
-    async fn get_all_elections_as_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn get_all_elections_as_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
         let response = client.get(uri!(elections)).dispatch().await;
@@ -208,14 +206,10 @@ mod tests {
         ];
 
         assert_eq!(elections, fetched_elections);
-
-        clear_db(db).await;
     }
 
-    #[rocket::async_test]
-    async fn get_finalised_elections_as_non_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn get_finalised_elections_as_non_admin(client: Client, db: Database) {
         // Insert sample elections
         let elections = Coll::<ElectionSpec>::from_db(&db);
         elections
@@ -246,14 +240,10 @@ mod tests {
         )];
 
         assert_eq!(elections, fetched_elections);
-
-        clear_db(db).await;
     }
 
-    #[rocket::async_test]
-    async fn get_finalised_election_as_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn get_finalised_election_as_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
         insert_elections(&db).await;
@@ -277,14 +267,10 @@ mod tests {
             ElectionView::new("a".to_string(), true, UNIX_EPOCH.into(), UNIX_EPOCH.into());
 
         assert_eq!(election, fetched_election);
-
-        clear_db(db).await;
     }
 
-    #[rocket::async_test]
-    async fn get_unfinalised_election_as_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn get_unfinalised_election_as_admin(client: Client, db: Database) {
         login_as_admin(&client, &db).await;
 
         insert_elections(&db).await;
@@ -310,10 +296,8 @@ mod tests {
         assert_eq!(election, fetched_election);
     }
 
-    #[rocket::async_test]
-    async fn get_finalised_election_as_non_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn get_finalised_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
         let finalised_election =
@@ -335,14 +319,10 @@ mod tests {
             ElectionView::new("a".to_string(), true, UNIX_EPOCH.into(), UNIX_EPOCH.into());
 
         assert_eq!(election, fetched_election);
-
-        clear_db(db).await;
     }
 
-    #[rocket::async_test]
-    async fn fail_to_get_unfinalised_election_as_non_admin() {
-        let (client, db) = client_and_db().await;
-
+    #[db_test]
+    async fn fail_to_get_unfinalised_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
         let unfinalised_election =
@@ -354,8 +334,6 @@ mod tests {
             .await;
 
         assert_eq!(Status::NotFound, response.status());
-
-        clear_db(db).await;
     }
 
     #[rocket::async_test]
