@@ -23,7 +23,7 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[post("/admins/authenticate", data = "<credentials>", format = "json")]
-async fn authenticate(
+pub async fn authenticate(
     cookies: &CookieJar<'_>,
     credentials: Json<Credentials<'_>>,
     admins: Coll<DbAdmin>,
@@ -112,23 +112,6 @@ pub fn logout(cookies: &CookieJar) -> Status {
 }
 
 #[cfg(test)]
-pub async fn login_as_admin(client: &rocket::local::asynchronous::Client, db: &mongodb::Database) {
-    use rocket::{http::ContentType, serde::json::serde_json::json};
-
-    Coll::<Admin>::from_db(&db)
-        .insert_one(Admin::example(), None)
-        .await
-        .unwrap();
-
-    client
-        .post(uri!(authenticate))
-        .header(ContentType::JSON)
-        .body(json!(Credentials::example()).to_string())
-        .dispatch()
-        .await;
-}
-
-#[cfg(test)]
 mod tests {
     use mongodb::Database;
     use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
@@ -141,9 +124,8 @@ mod tests {
     use super::*;
 
     #[backend_test]
-    async fn admin_authenticate_valid(client: Client, db: Database) {
+    async fn admin_authenticate_valid(client: Client, admins: Coll<Admin>) {
         // Ensure there is an admin to login as
-        let admins = Coll::<Admin>::from_db(&db);
         admins.insert_one(Admin::example(), None).await.unwrap();
 
         // Use valid credentials to attempt admin login
@@ -159,22 +141,15 @@ mod tests {
     }
 
     #[backend_test]
-    async fn admin_authenticate_invalid(client: Client, db: Database) {
+    async fn admin_authenticate_invalid(client: Client, admins: Coll<Admin>) {
         // Ensure there is an admin to fail to login as
-        let admins = Coll::<Admin>::from_db(&db);
         admins.insert_one(Admin::example(), None).await.unwrap();
 
         // Use invalid username to attempt admin login
         let response = client
             .post(uri!(authenticate))
             .header(ContentType::JSON)
-            .body(
-                json! ({
-                    "username": "",
-                    "password": "",
-                })
-                .to_string(),
-            )
+            .body(json!(Credentials::empty()).to_string())
             .dispatch()
             .await;
 
@@ -200,7 +175,7 @@ mod tests {
     }
 
     #[backend_test]
-    async fn voter_authenticate(client: Client, db: Database) {
+    async fn voter_authenticate(client: Client, voters: Coll<Voter>) {
         // Request challenge
         let response = client.get(uri!(challenge(Sms::example()))).dispatch().await;
 
@@ -228,7 +203,6 @@ mod tests {
         assert!(client.cookies().get("auth_token").is_some());
 
         // Check voter was inserted
-        let voters = Coll::<Voter>::from_db(&db);
         let voter = voters
             .find_one(doc! { "sms": Sms::example() }, None)
             .await
@@ -287,10 +261,8 @@ mod tests {
         assert_eq!(Status::Unauthorized, response.status());
     }
 
-    #[backend_test]
+    #[backend_test(admin)]
     async fn logout_admin(client: Client, db: Database) {
-        login_as_admin(&client, &db).await;
-
         let response = client.delete(uri!(logout)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());

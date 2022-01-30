@@ -103,5 +103,12 @@ mod examples {
                 password: "coordinator2",
             }
         }
+
+        pub fn empty() -> Self {
+            Self {
+                username: "",
+                password: "",
+            }
+        }
     }
 }

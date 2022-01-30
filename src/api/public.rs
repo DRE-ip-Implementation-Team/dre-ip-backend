@@ -176,20 +176,15 @@ mod tests {
     use mongodb::Database;
     use rocket::{local::asynchronous::Client, serde::json::serde_json};
 
-    use crate::{
-        api::auth::login_as_admin,
-        model::{
-            election::{view::ElectionView, ElectionSpec},
-            mongodb::entity::DbEntity,
-        },
+    use crate::model::{
+        election::{view::ElectionView, ElectionSpec},
+        mongodb::entity::DbEntity,
     };
 
     use super::*;
 
-    #[backend_test]
+    #[backend_test(admin)]
     async fn get_all_elections_as_admin(client: Client, db: Database) {
-        login_as_admin(&client, &db).await;
-
         let response = client.get(uri!(elections)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
@@ -240,10 +235,8 @@ mod tests {
         assert_eq!(elections, fetched_elections);
     }
 
-    #[backend_test]
+    #[backend_test(admin)]
     async fn get_finalised_election_as_admin(client: Client, db: Database) {
-        login_as_admin(&client, &db).await;
-
         insert_elections(&db).await;
 
         let finalised_election =
@@ -267,10 +260,8 @@ mod tests {
         assert_eq!(election, fetched_election);
     }
 
-    #[backend_test]
+    #[backend_test(admin)]
     async fn get_unfinalised_election_as_admin(client: Client, db: Database) {
-        login_as_admin(&client, &db).await;
-
         insert_elections(&db).await;
 
         let unfinalised_election =

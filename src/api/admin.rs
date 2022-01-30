@@ -51,14 +51,12 @@ mod tests {
         serde::json::serde_json::json,
     };
 
-    use crate::{api::auth::login_as_admin, model::election::ElectionSpec};
+    use crate::model::election::ElectionSpec;
 
     use super::*;
 
-    #[backend_test]
+    #[backend_test(admin)]
     async fn create_admin(client: Client, db: Database) {
-        login_as_admin(&client, &db).await;
-
         // Create admin
         let response = client
             .post(uri!(create_admin))
@@ -81,10 +79,8 @@ mod tests {
         assert_eq!(Admin::example2().username(), inserted_admin.username());
     }
 
-    #[backend_test]
+    #[backend_test(admin)]
     async fn create_election(client: Client, db: Database) {
-        login_as_admin(&client, &db).await;
-
         let response = client
             .post(uri!(create_election))
             .header(ContentType::JSON)

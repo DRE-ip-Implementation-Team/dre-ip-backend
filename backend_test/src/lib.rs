@@ -2,22 +2,25 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, punctuated::Punctuated, spanned::Spanned, token::Comma, FnArg, ItemFn, Pat,
+    parse_macro_input, spanned::Spanned, FnArg, GenericArgument, Ident, ItemFn, Pat, PathArguments,
     Signature, Type,
 };
 
 #[proc_macro_attribute]
-/// Provides a [`rocket::local::asynchronous::Client`] and [`mongodb::Database`] to the function,
-/// instruments it as a [`rocket::async_test`] and ensures that the [`mongodb::Database`] is
+/// Instruments a test as a [`rocket::async_test`], injects necessary dependencies and ensures that the [`mongodb::Database`] is
 /// cleared WHETHER OR NOT the test completes by passing, failing or otherwise panicking.
 ///
 /// If a panic occurs via a failed assertion or other unwinding panic, the [`mongodb::Database`] is
 /// cleared, and the panic is "rethrown".
-pub fn backend_test(_: TokenStream, input: TokenStream) -> TokenStream {
+///
+/// Injectable dependencies so far include [`rocket::local::asynchronous::Client`],
+/// [`mongodb::Database`] and [`crate::model::mongodb::collection::Coll<T>`]
+pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut item_fn = parse_macro_input!(input as ItemFn);
+    let sig = &mut item_fn.sig;
 
-    // Reject invalid function signatures
-    let args_used = match check_sig(item_fn.sig.clone()) {
+    // Extract type information and reject invalid function signatures
+    let (test_args, collection_idents, collection_types) = match check_sig(sig.clone()) {
         Ok(args) => args,
         Err(err) => {
             return err.into_compile_error().into();
@@ -25,11 +28,34 @@ pub fn backend_test(_: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     // Rename the future so the test can have its original name
-    let name = item_fn.sig.ident;
+    let name = sig.ident.clone();
     let new_name = format_ident!("{}_fut", name);
-    item_fn.sig.ident = new_name.clone();
+    sig.ident = new_name.clone();
 
-    let test_args = args_used.into_iter().collect::<Punctuated<_, Comma>>();
+    // Log in the client as admin if needed
+    let maybe_login_as_admin = parse_macro_input!(args as Option<Ident>)
+        .and_then(|args| {
+            if args == "admin" {
+                Some(quote! {
+                    crate::model::mongodb::collection::Coll::<crate::model::admin::Admin>::from_db(&db)
+                        .insert_one(crate::model::admin::Admin::example(), None)
+                        .await
+                        .unwrap();
+
+                    client
+                        .post(uri!(crate::api::auth::authenticate))
+                        .header(rocket::http::ContentType::JSON)
+                        .body(rocket::serde::json::json!(crate::model::admin::Credentials::example()).to_string())
+                        .dispatch()
+                        .await;
+                })
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| quote! {});
+
+    let stmts = item_fn.block.stmts;
 
     quote! {
         #[rocket::async_test]
@@ -38,7 +64,10 @@ pub fn backend_test(_: TokenStream, input: TokenStream) -> TokenStream {
             let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_client(db_client.clone()).await).await.unwrap();
             let db = db_client.database(crate::DATABASE);
 
-            #item_fn
+            #sig {
+                #maybe_login_as_admin
+                #(#stmts)*
+            }
 
             // `Mutex<T>: UnwindSafe` circumvents `T: !UnwindSafe`:
             // - See https://stackoverflow.com/a/66529014/13112498
@@ -51,10 +80,14 @@ pub fn backend_test(_: TokenStream, input: TokenStream) -> TokenStream {
                 let rocket_client = client_mutex.into_inner().unwrap();
                 let db = db_mutex.into_inner().unwrap();
 
+                #(
+                    let #collection_idents = crate::model::mongodb::collection::Coll::<#collection_types>::from_db(&db);
+                )*
+
                 // Manually run future inside
                 let handle = rocket::tokio::runtime::Handle::current();
                 let _ = handle.enter();
-                rocket::futures::executor::block_on(#new_name(#test_args));
+                rocket::futures::executor::block_on(#new_name(#(#test_args),* #(, #collection_idents)*));
             });
 
             db.drop(None).await.unwrap();
@@ -69,50 +102,59 @@ pub fn backend_test(_: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Ensure signature conforms to `async fn test_ident(client_ident: Client, db_ident: Database)`.
-fn check_sig(sig: Signature) -> Result<Vec<TokenStream2>, syn::Error> {
+fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident>), syn::Error> {
     if sig.asyncness.is_none() {
         return Err(syn::Error::new(sig.span(), "Test must be marked `async`"));
-    }
-
-    let inputs = sig.inputs;
-    if inputs.len() > 2 {
-        return Err(syn::Error::new(
-            inputs.span(),
-            "Test arguments must be a `rocket::local::asynchronous::Client` and/or a `mongodb::Database`",
-        ));
     }
 
     let mut has_client = false;
     let mut has_db = false;
     let mut args_used = vec![];
+    let mut collection_idents = vec![];
+    let mut collection_types = vec![];
 
-    for input in inputs.iter() {
+    for input in &sig.inputs {
         if let FnArg::Typed(pat_type) = input {
-            if let Pat::Ident(_) = *pat_type.pat {
+            if let Pat::Ident(pat_ident) = &*pat_type.pat {
                 if let Type::Path(type_path) = &*pat_type.ty {
                     if let Some(type_ident) = type_path.path.get_ident() {
-                        let raw_type_ident = type_ident.to_string();
-                        match raw_type_ident.as_str() {
-                            "Client" => {
-                                if has_client {
-                                    return Err(syn::Error::new(input.span(), "Test cannot accept more than one `rocket::local::asynchronous::Client`"));
-                                }
-                                has_client = true;
-                                args_used.push(quote! { rocket_client });
-                                continue;
+                        if type_ident == "Client" {
+                            if has_client {
+                                return Err(syn::Error::new(input.span(), "Test cannot accept more than one `rocket::local::asynchronous::Client`"));
                             }
-                            "Database" => {
-                                if has_db {
-                                    return Err(syn::Error::new(
-                                        input.span(),
-                                        "Test cannot accept more than one `mongodb::Database`",
-                                    ));
-                                }
-                                has_db = true;
-                                args_used.push(quote! { db });
-                                continue;
+                            has_client = true;
+                            args_used.push(quote! { rocket_client });
+                            continue;
+                        } else if type_ident == "Database" {
+                            if has_db {
+                                return Err(syn::Error::new(
+                                    input.span(),
+                                    "Test cannot accept more than one `mongodb::Database`",
+                                ));
                             }
-                            _ => {}
+                            has_db = true;
+                            args_used.push(quote! { db });
+                            continue;
+                        }
+                    } else {
+                        // Valid as the last path segment for any type is itself
+                        let possible_collection = type_path.path.segments.last().unwrap();
+                        if possible_collection.ident == "Coll" {
+                            if let PathArguments::AngleBracketed(generics) =
+                                &possible_collection.arguments
+                            {
+                                if let Some(arg) = generics.args.first() {
+                                    if let GenericArgument::Type(ty) = arg {
+                                        if let Type::Path(ty_path) = ty {
+                                            if let Some(ty_ident) = ty_path.path.get_ident() {
+                                                collection_idents.push(pat_ident.ident.clone());
+                                                collection_types.push(ty_ident.clone());
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -121,9 +163,9 @@ fn check_sig(sig: Signature) -> Result<Vec<TokenStream2>, syn::Error> {
 
         return Err(syn::Error::new(
             input.span(),
-            "Expected one of `client_ident: Client` or `db_ident: Database`",
+            "Expected one of `client_ident: Client`, `db_ident: Database` or `collection_ident: Coll<T>`",
         ));
     }
 
-    Ok(args_used)
+    Ok((args_used, collection_idents, collection_types))
 }
