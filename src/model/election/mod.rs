@@ -1,12 +1,15 @@
+use std::collections::HashSet;
+
 use chrono::{DateTime, Utc};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use serde::{Deserialize, Serialize};
 
-use self::view::ElectionView;
+use self::{electorate::Electorate, view::ElectionView};
 
-use super::ballot::Ballot;
+use super::{ballot::Ballot, mongodb::bson::Id};
 
 pub mod db;
+pub mod electorate;
 pub mod view;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -14,7 +17,7 @@ pub mod view;
 pub struct Election {
     #[serde(flatten)]
     short: ElectionView,
-    groups: Vec<String>,
+    electorates: Vec<Electorate>,
     questions: Vec<Question>,
     crypto: Crypto,
 }
@@ -61,6 +64,8 @@ pub struct Crypto {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, FromForm)]
 #[serde(rename = "camelCase")]
 pub struct Group {
+    #[serde(rename = "_id")]
+    id: Id,
     name: String,
 }
 
@@ -76,7 +81,8 @@ pub struct Question {
 #[serde(rename = "camelCase")]
 pub struct QuestionSpec {
     description: String,
-    group_constraints: Vec<String>,
+    /// IDs correspond to [`Group`], check if any user group is contained in this
+    groups: HashSet<Id>,
     candidates: Vec<String>,
 }
 
@@ -179,7 +185,7 @@ mod examples {
         pub fn example() -> Self {
             Self {
                 description: "Who should be captain of the Quidditch team?".to_string(),
-                group_constraints: vec!["Quidditch".to_string()],
+                groups: vec!["Quidditch".to_string()],
                 candidates: vec!["Chris Riches".to_string()],
             }
         }
