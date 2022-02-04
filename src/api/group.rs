@@ -5,7 +5,7 @@ use crate::{
     error::{Error, Result},
     model::{
         auth::token::AuthToken,
-        election::Group,
+        election::group::Group,
         mongodb::{bson::Id, collection::Coll},
         voter::{db::DbVoter, Voter},
     },

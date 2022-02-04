@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{election::Group, mongodb::bson::Id, sms::Sms};
+use super::{election::group::Group, mongodb::bson::Id, sms::Sms};
 
 pub mod db;
 
