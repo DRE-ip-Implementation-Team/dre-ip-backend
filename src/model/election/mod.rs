@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use chrono::{DateTime, Utc};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use serde::{Deserialize, Serialize};
@@ -10,6 +8,7 @@ use super::{ballot::Ballot, mongodb::bson::Id};
 
 pub mod db;
 pub mod electorate;
+pub mod group;
 pub mod view;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,12 +27,12 @@ impl Election {
         finalised: bool,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-        groups: Vec<String>,
+        electorates: Vec<Electorate>,
         questions: Vec<Question>,
     ) -> Self {
         Self {
             short: ElectionView::new(name, finalised, start_time, end_time),
-            groups,
+            electorates,
             questions,
             crypto: Crypto {
                 private_key: (),
@@ -44,8 +43,8 @@ impl Election {
         }
     }
 
-    pub fn groups(&self) -> &Vec<String> {
-        &self.groups
+    pub fn electorates(&self) -> &Vec<Electorate> {
+        &self.electorates
     }
 
     pub fn questions(&self) -> &Vec<Question> {
@@ -61,14 +60,6 @@ pub struct Crypto {
     g2: (),
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, FromForm)]
-#[serde(rename = "camelCase")]
-pub struct Group {
-    #[serde(rename = "_id")]
-    id: Id,
-    name: String,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Question {
@@ -81,8 +72,8 @@ pub struct Question {
 #[serde(rename = "camelCase")]
 pub struct QuestionSpec {
     description: String,
-    /// IDs correspond to [`Group`], check if any user group is contained in this
-    groups: HashSet<Id>,
+    /// IDs refer to [`Group`]s, check if any user group is contained in this
+    groups: Vec<Id>,
     candidates: Vec<String>,
 }
 
@@ -118,7 +109,7 @@ pub struct ElectionSpec {
     start_time: DateTime<Utc>,
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     end_time: DateTime<Utc>,
-    groups: Vec<String>,
+    electorates: Vec<Electorate>,
     questions: Vec<QuestionSpec>,
 }
 
@@ -129,7 +120,7 @@ impl From<ElectionSpec> for Election {
             finalised,
             start_time,
             end_time,
-            groups,
+            electorates,
             questions: question_specs,
         } = spec;
         Self::new(
@@ -137,7 +128,7 @@ impl From<ElectionSpec> for Election {
             finalised,
             start_time,
             end_time,
-            groups,
+            electorates,
             question_specs.into_iter().map(QuestionSpec::into).collect(),
         )
     }
@@ -164,7 +155,7 @@ mod examples {
                 finalised: true,
                 start_time: MIN_DATETIME,
                 end_time: MIN_DATETIME + Duration::days(30),
-                groups: vec!["Quidditch".to_string(), "Netball".to_string()],
+                electorates: vec![Electorate::example1(), Electorate::example2()],
                 questions: vec![QuestionSpec::example()],
             }
         }
@@ -175,7 +166,7 @@ mod examples {
                 finalised: false,
                 start_time: MIN_DATETIME,
                 end_time: MIN_DATETIME + Duration::days(30),
-                groups: vec!["Quidditch".to_string(), "Netball".to_string()],
+                electorates: vec![Electorate::example1(), Electorate::example2()],
                 questions: vec![QuestionSpec::example()],
             }
         }
@@ -185,7 +176,7 @@ mod examples {
         pub fn example() -> Self {
             Self {
                 description: "Who should be captain of the Quidditch team?".to_string(),
-                groups: vec!["Quidditch".to_string()],
+                groups: vec![],
                 candidates: vec!["Chris Riches".to_string()],
             }
         }
