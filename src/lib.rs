@@ -17,8 +17,7 @@ pub mod error;
 pub mod model;
 
 pub async fn build() -> Rocket<Build> {
-    let rocket = rocket_for_db_client(db_client().await).await;
-    rocket
+    rocket_for_db_client(db_client().await).await
 }
 
 pub(crate) async fn db_client() -> Client {
@@ -46,16 +45,16 @@ pub(crate) async fn rocket_for_db_client(client: Client) -> Rocket<Build> {
 
 #[derive(Deserialize)]
 pub struct Config {
-    otp_ttl: u64,
+    otp_ttl: u32,
     jwt_secret: String,
-    auth_ttl: u64,
+    auth_ttl: u32,
 }
 
 impl Config {
     /// Seconds until the OTP challenge expires.
     /// Configured via `OTP_TTL`.
     pub fn otp_ttl(&self) -> Duration {
-        Duration::seconds(self.otp_ttl as i64)
+        Duration::seconds(self.otp_ttl.into())
     }
 
     /// Key used to encrypt JWTs
@@ -67,6 +66,6 @@ impl Config {
     /// Seconds until the authentication token expires
     /// Configured via `AUTH_TTL`.
     pub fn auth_ttl(&self) -> Duration {
-        Duration::seconds(self.auth_ttl as i64)
+        Duration::seconds(self.auth_ttl.into())
     }
 }
