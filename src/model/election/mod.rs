@@ -134,6 +134,24 @@ impl From<ElectionSpec> for Election {
     }
 }
 
+impl From<ElectionSpec> for ElectionView {
+    fn from(spec: ElectionSpec) -> Self {
+        let ElectionSpec {
+            name,
+            finalised,
+            start_time,
+            end_time,
+            ..
+        } = spec;
+        Self::new(
+            name,
+            finalised,
+            start_time,
+            end_time,
+        )
+    }
+}
+
 #[cfg(test)]
 mod examples {
     use super::*;
