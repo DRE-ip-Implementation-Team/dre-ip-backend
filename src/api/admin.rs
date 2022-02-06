@@ -52,6 +52,7 @@ mod tests {
     };
 
     use crate::model::election::ElectionSpec;
+    use crate::model::election::view::ElectionView;
 
     use super::*;
 
@@ -90,7 +91,7 @@ mod tests {
 
         assert_eq!(Status::Ok, response.status());
 
-        let elections = Coll::<ElectionSpec>::from_db(&db);
+        let elections = Coll::<ElectionView>::from_db(&db);
         let with_name = doc! { "name": ElectionSpec::example().name() };
         let inserted_election = elections
             .find_one(with_name.clone(), None)
@@ -98,6 +99,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(ElectionSpec::example(), inserted_election);
+        assert_eq!(ElectionView::from(ElectionSpec::example()), inserted_election);
     }
 }

@@ -171,8 +171,6 @@ pub struct PaginatedBallots {
 
 #[cfg(test)]
 mod tests {
-    use std::time::UNIX_EPOCH;
-
     use mongodb::Database;
     use rocket::{local::asynchronous::Client, serde::json::serde_json};
 
@@ -180,11 +178,14 @@ mod tests {
         election::{view::ElectionView, ElectionSpec},
         mongodb::entity::DbEntity,
     };
+    use crate::model::election::Election;
 
     use super::*;
 
     #[backend_test(admin)]
     async fn get_all_elections_as_admin(client: Client, db: Database) {
+        insert_elections(&db).await;
+
         let response = client.get(uri!(elections)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
@@ -194,8 +195,8 @@ mod tests {
         let fetched_elections = serde_json::from_str::<Vec<ElectionView>>(&raw_response).unwrap();
 
         let elections = vec![
-            ElectionView::new("a".to_string(), true, UNIX_EPOCH.into(), UNIX_EPOCH.into()),
-            ElectionView::new("b".to_string(), false, UNIX_EPOCH.into(), UNIX_EPOCH.into()),
+            ElectionView::from(ElectionSpec::finalised_example()),
+            ElectionView::from(ElectionSpec::unfinalised_example()),
         ];
 
         assert_eq!(elections, fetched_elections);
@@ -203,18 +204,7 @@ mod tests {
 
     #[backend_test]
     async fn get_finalised_elections_as_non_admin(client: Client, db: Database) {
-        // Insert sample elections
-        let elections = Coll::<ElectionSpec>::from_db(&db);
-        elections
-            .insert_many(
-                [
-                    ElectionSpec::finalised_example(),
-                    ElectionSpec::unfinalised_example(),
-                ],
-                None,
-            )
-            .await
-            .unwrap();
+        insert_elections(&db).await;
 
         let response = client.get(uri!(finalised_elections)).dispatch().await;
 
@@ -225,12 +215,9 @@ mod tests {
 
         let fetched_elections = serde_json::from_str::<Vec<ElectionView>>(&raw_response).unwrap();
 
-        let elections = vec![ElectionView::new(
-            "a".to_string(),
-            true,
-            UNIX_EPOCH.into(),
-            UNIX_EPOCH.into(),
-        )];
+        let elections = vec![
+            ElectionView::from(ElectionSpec::finalised_example()),
+        ];
 
         assert_eq!(elections, fetched_elections);
     }
@@ -254,10 +241,9 @@ mod tests {
 
         let fetched_election = serde_json::from_str::<ElectionView>(&raw_response).unwrap();
 
-        let election =
-            ElectionView::new("a".to_string(), true, UNIX_EPOCH.into(), UNIX_EPOCH.into());
+        let expected = ElectionView::from(ElectionSpec::finalised_example());
 
-        assert_eq!(election, fetched_election);
+        assert_eq!(expected, fetched_election);
     }
 
     #[backend_test(admin)]
@@ -279,10 +265,9 @@ mod tests {
 
         let fetched_election = serde_json::from_str::<ElectionView>(&raw_response).unwrap();
 
-        let election =
-            ElectionView::new("b".to_string(), true, UNIX_EPOCH.into(), UNIX_EPOCH.into());
+        let expected = ElectionView::from(ElectionSpec::unfinalised_example());
 
-        assert_eq!(election, fetched_election);
+        assert_eq!(expected, fetched_election);
     }
 
     #[backend_test]
@@ -304,10 +289,9 @@ mod tests {
 
         let fetched_election = serde_json::from_str::<ElectionView>(&raw_response).unwrap();
 
-        let election =
-            ElectionView::new("a".to_string(), true, UNIX_EPOCH.into(), UNIX_EPOCH.into());
+        let expected = ElectionView::from(ElectionSpec::finalised_example());
 
-        assert_eq!(election, fetched_election);
+        assert_eq!(expected, fetched_election);
     }
 
     #[backend_test]
@@ -376,11 +360,11 @@ mod tests {
     // }
 
     async fn insert_elections(db: &Database) {
-        Coll::<ElectionSpec>::from_db(&db)
+        Coll::<Election>::from_db(&db)
             .insert_many(
                 [
-                    ElectionSpec::finalised_example(),
-                    ElectionSpec::unfinalised_example(),
+                    Election::from(ElectionSpec::finalised_example()),
+                    Election::from(ElectionSpec::unfinalised_example()),
                 ],
                 None,
             )

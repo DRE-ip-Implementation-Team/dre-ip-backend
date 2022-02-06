@@ -9,7 +9,7 @@ use rocket::{
 use crate::model::{
     admin::{db::DbAdmin, Admin},
     ballot::{db::DbBallot, Ballot},
-    election::{db::DbElection, view::ElectionView, Election, ElectionSpec},
+    election::{db::DbElection, view::ElectionView, Election},
     voter::{db::DbVoter, Voter},
 };
 
@@ -86,12 +86,6 @@ impl MongoCollection for DbElection {
 }
 
 impl MongoCollection for ElectionView {
-    fn collection_name() -> &'static str {
-        "elections"
-    }
-}
-
-impl MongoCollection for ElectionSpec {
     fn collection_name() -> &'static str {
         "elections"
     }
