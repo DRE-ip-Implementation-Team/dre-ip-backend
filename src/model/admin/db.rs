@@ -2,28 +2,29 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{bson::Id, entity::DbEntity};
+use crate::model::mongodb::{DbEntity, Id};
 
-use super::Admin;
+use super::admin_core::AdminCore;
 
+/// An admin user from the database, with its unique ID.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DbAdmin {
+pub struct Admin {
     #[serde(rename = "_id")]
     id: Id,
     #[serde(flatten)]
-    admin: Admin,
+    admin: AdminCore,
 }
 
-impl Deref for DbAdmin {
-    type Target = Admin;
+impl Deref for Admin {
+    type Target = AdminCore;
 
     fn deref(&self) -> &Self::Target {
         &self.admin
     }
 }
 
-impl DbEntity for DbAdmin {
+impl DbEntity for Admin {
     fn id(&self) -> Id {
         self.id
     }

@@ -12,6 +12,12 @@ use rocket::{
 };
 use serde::{Deserialize, Serialize};
 
+/// An object that is stored in the database and thus has an ID.
+pub trait DbEntity {
+    fn id(&self) -> Id;
+}
+
+/// A unique ID for an object in the database.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(ObjectId);
 

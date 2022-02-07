@@ -4,10 +4,10 @@ use rocket::{serde::json::Json, Route};
 use crate::{
     error::Result,
     model::{
-        admin::{Admin, Credentials},
-        auth::token::AuthToken,
-        election::{db::DbElection, Election, ElectionSpec},
-        mongodb::collection::Coll,
+        admin::{Admin, AdminCredentials, NewAdmin},
+        auth::AuthToken,
+        election::{Election, ElectionSpec, NewElection},
+        mongodb::Coll,
     },
 };
 
@@ -15,13 +15,13 @@ pub fn routes() -> Vec<Route> {
     routes![create_admin, create_election]
 }
 
-#[post("/admins", data = "<credentials>", format = "json")]
+#[post("/admins", data = "<new_admin>", format = "json")]
 async fn create_admin(
     _token: AuthToken<Admin>,
-    credentials: Json<Credentials<'_>>,
-    admins: Coll<Admin>,
+    new_admin: Json<AdminCredentials>,
+    admins: Coll<NewAdmin>,
 ) -> Result<()> {
-    let admin = credentials.into_admin();
+    let admin: NewAdmin = new_admin.0.into();
     admins.insert_one(admin, None).await?;
     Ok(())
 }
@@ -29,16 +29,20 @@ async fn create_admin(
 #[post("/elections", data = "<spec>", format = "json")]
 async fn create_election(
     spec: Json<ElectionSpec>,
+    new_elections: Coll<NewElection>,
     elections: Coll<Election>,
-) -> Result<Json<DbElection>> {
-    let election = spec.0.into();
-    let id = elections
+) -> Result<Json<Election>> {
+    let election: NewElection = spec.0.into();
+    let new_id = new_elections
         .insert_one(&election, None)
         .await?
         .inserted_id
         .as_object_id()
         .unwrap(); // Valid because the ID comes directly from the DB
-    let db_election = DbElection::new(id.into(), election);
+    let db_election = elections
+        .find_one(doc! { "_id": new_id }, None)
+        .await?
+        .unwrap();
     Ok(Json(db_election))
 }
 
@@ -51,8 +55,7 @@ mod tests {
         serde::json::serde_json::json,
     };
 
-    use crate::model::election::ElectionSpec;
-    use crate::model::election::view::ElectionView;
+    use crate::model::election::ElectionMetadata;
 
     use super::*;
 
@@ -62,7 +65,7 @@ mod tests {
         let response = client
             .post(uri!(create_admin))
             .header(ContentType::JSON)
-            .body(json!(Credentials::example2()).to_string())
+            .body(json!(AdminCredentials::example2()).to_string())
             .dispatch()
             .await;
 
@@ -70,14 +73,14 @@ mod tests {
 
         // Ensure the admin has been inserted
         let admins = Coll::<Admin>::from_db(&db);
-        let with_username = doc! { "username": Admin::example2().username() };
+        let with_username = doc! { "username": NewAdmin::example2().username() };
         let inserted_admin = admins
             .find_one(with_username.clone(), None)
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(Admin::example2().username(), inserted_admin.username());
+        assert_eq!(NewAdmin::example2().username(), inserted_admin.username());
     }
 
     #[backend_test(admin)]
@@ -85,20 +88,23 @@ mod tests {
         let response = client
             .post(uri!(create_election))
             .header(ContentType::JSON)
-            .body(json!(ElectionSpec::example()).to_string())
+            .body(json!(ElectionSpec::finalised_example()).to_string())
             .dispatch()
             .await;
 
         assert_eq!(Status::Ok, response.status());
 
-        let elections = Coll::<ElectionView>::from_db(&db);
-        let with_name = doc! { "name": ElectionSpec::example().name() };
+        let elections = Coll::<ElectionMetadata>::from_db(&db);
+        let with_name = doc! { "name": &ElectionSpec::finalised_example().metadata.name };
         let inserted_election = elections
             .find_one(with_name.clone(), None)
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(ElectionView::from(ElectionSpec::example()), inserted_election);
+        assert_eq!(
+            ElectionMetadata::from(ElectionSpec::finalised_example()),
+            inserted_election
+        );
     }
 }

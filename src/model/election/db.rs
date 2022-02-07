@@ -2,34 +2,29 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{bson::Id, entity::DbEntity};
+use crate::model::mongodb::{DbEntity, Id};
 
-use super::Election;
+use super::election_core::ElectionCore;
 
+/// An election from the database, with its unique ID.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DbElection {
+pub struct Election {
     #[serde(rename = "_id")]
     id: Id,
     #[serde(flatten)]
-    election: Election,
+    election: ElectionCore,
 }
 
-impl DbElection {
-    pub fn new(id: Id, election: Election) -> Self {
-        Self { id, election }
-    }
-}
-
-impl Deref for DbElection {
-    type Target = Election;
+impl Deref for Election {
+    type Target = ElectionCore;
 
     fn deref(&self) -> &Self::Target {
         &self.election
     }
 }
 
-impl DbEntity for DbElection {
+impl DbEntity for Election {
     fn id(&self) -> Id {
         self.id
     }

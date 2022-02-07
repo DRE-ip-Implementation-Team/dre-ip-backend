@@ -2,34 +2,29 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{bson::Id, entity::DbEntity};
+use crate::model::mongodb::{DbEntity, Id};
 
-use super::Voter;
+use super::voter_core::VoterCore;
 
+/// A voter user from the database, with its unique ID.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DbVoter {
+pub struct Voter {
     #[serde(rename = "_id")]
     id: Id,
     #[serde(flatten)]
-    voter: Voter,
+    voter: VoterCore,
 }
 
-impl DbVoter {
-    pub fn new(id: Id, voter: Voter) -> Self {
-        Self { id, voter }
-    }
-}
-
-impl Deref for DbVoter {
-    type Target = Voter;
+impl Deref for Voter {
+    type Target = VoterCore;
 
     fn deref(&self) -> &Self::Target {
         &self.voter
     }
 }
 
-impl DbEntity for DbVoter {
+impl DbEntity for Voter {
     fn id(&self) -> Id {
         self.id
     }

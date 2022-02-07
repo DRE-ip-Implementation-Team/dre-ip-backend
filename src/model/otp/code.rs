@@ -1,22 +1,34 @@
-use rand::distributions::{Distribution, Uniform};
-use rand::thread_rng;
-use rocket::form::Errors;
-use rocket::form::{self, prelude::ErrorKind, FromFormField, ValueField};
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
 use std::borrow::Cow;
 use std::convert::TryInto;
 use std::fmt::Display;
 use std::ops::Deref;
 use std::str::FromStr;
 
+use rand::distributions::{Distribution, Uniform};
+use rocket::form::{self, prelude::ErrorKind, Errors, FromFormField, ValueField};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
 pub const LENGTH: usize = 6;
 
+/// A one-time-password code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Code {
-    #[serde(with = "code")]
+    #[serde(with = "serialize_code")]
     code: [u8; LENGTH],
+}
+
+impl Code {
+    /// Generate a random code.
+    pub fn random() -> Self {
+        let mut code = [0; LENGTH];
+        let digit_dist = Uniform::from(0..=9);
+        let mut rng = rand::thread_rng();
+        for digit in &mut code {
+            *digit = digit_dist.sample(&mut rng);
+        }
+        Self { code }
+    }
 }
 
 impl Deref for Code {
@@ -27,7 +39,8 @@ impl Deref for Code {
     }
 }
 
-mod code {
+/// (De)serialisation for OTP codes.
+mod serialize_code {
     use serde::{
         de::{Error, Unexpected, Visitor},
         Deserializer, Serializer,
@@ -78,18 +91,6 @@ mod code {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(StrVisitor)
-    }
-}
-
-impl Default for Code {
-    fn default() -> Self {
-        let mut inner = [0; LENGTH];
-        let digit_dist = Uniform::from(0..=9);
-        let mut rng = thread_rng();
-        for digit in &mut inner {
-            *digit = digit_dist.sample(&mut rng);
-        }
-        Self { code: inner }
     }
 }
 

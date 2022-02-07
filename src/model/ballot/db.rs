@@ -2,23 +2,30 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::bson::Id;
+use crate::model::mongodb::{DbEntity, Id};
 
-use super::Ballot;
+use super::ballot_core::BallotCore;
 
-#[derive(Serialize, Deserialize)]
+/// A ballot from the database, with its unique ID.
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
-pub struct DbBallot {
+pub struct Ballot {
     #[serde(rename = "_id")]
     id: Id,
     #[serde(flatten)]
-    ballot: Ballot,
+    ballot: BallotCore,
 }
 
-impl Deref for DbBallot {
-    type Target = Ballot;
+impl Deref for Ballot {
+    type Target = BallotCore;
 
     fn deref(&self) -> &Self::Target {
         &self.ballot
+    }
+}
+
+impl DbEntity for Ballot {
+    fn id(&self) -> Id {
+        self.id
     }
 }

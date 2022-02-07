@@ -2,11 +2,11 @@ use crate::{
     error::{Error, Result},
     model::{
         admin::Admin,
-        auth::token::AuthToken,
+        auth::AuthToken,
         ballot::Ballot,
-        election::{db::DbElection, view::ElectionView},
-        mongodb::{bson::Id, collection::Coll},
-        pagination::{Metadata, Pagination},
+        election::{Election, ElectionMetadata},
+        mongodb::{Coll, Id},
+        pagination::{PaginationRequest, PaginationResponse},
     },
 };
 
@@ -31,13 +31,15 @@ pub fn routes() -> Vec<Route> {
 #[get("/elections", rank = 1)]
 async fn elections(
     _token: AuthToken<Admin>,
-    elections: Coll<ElectionView>,
-) -> Result<Json<Vec<ElectionView>>> {
+    elections: Coll<ElectionMetadata>,
+) -> Result<Json<Vec<ElectionMetadata>>> {
     elections_matching(elections, None).await
 }
 
 #[get("/elections", rank = 2)]
-async fn finalised_elections(elections: Coll<ElectionView>) -> Result<Json<Vec<ElectionView>>> {
+async fn finalised_elections(
+    elections: Coll<ElectionMetadata>,
+) -> Result<Json<Vec<ElectionMetadata>>> {
     elections_matching(
         elections,
         doc! {
@@ -51,8 +53,8 @@ async fn finalised_elections(elections: Coll<ElectionView>) -> Result<Json<Vec<E
 async fn election(
     _token: AuthToken<Admin>,
     election_id: Id,
-    elections: Coll<DbElection>,
-) -> Result<Json<DbElection>> {
+    elections: Coll<Election>,
+) -> Result<Json<Election>> {
     let election = elections
         .find_one(
             doc! {
@@ -71,10 +73,7 @@ async fn election(
 }
 
 #[get("/elections/<election_id>", rank = 2)]
-async fn finalised_election(
-    election_id: Id,
-    elections: Coll<DbElection>,
-) -> Result<Json<DbElection>> {
+async fn finalised_election(election_id: Id, elections: Coll<Election>) -> Result<Json<Election>> {
     let finalised_election = doc! {
         "_id": *election_id,
         "finalised": true,
@@ -97,7 +96,7 @@ async fn finalised_election(
 async fn election_question_ballots(
     election_id: Id,
     question_no: u32,
-    pagination: Pagination,
+    pagination: PaginationRequest,
     ballots: Coll<Ballot>,
 ) -> Result<Json<PaginatedBallots>> {
     let confirmed_ballots_for_election_question = doc! {
@@ -117,7 +116,7 @@ async fn election_question_ballots(
         .try_collect::<Vec<_>>()
         .await?;
 
-    let pagination_result = pagination.into_metadata(ballots.len());
+    let pagination_result = pagination.into_response(ballots.len());
 
     Ok(Json(PaginatedBallots {
         ballots,
@@ -155,9 +154,9 @@ async fn election_question_ballot(
 }
 
 async fn elections_matching(
-    elections: Coll<ElectionView>,
+    elections: Coll<ElectionMetadata>,
     filter: impl Into<Option<Document>>,
-) -> Result<Json<Vec<ElectionView>>> {
+) -> Result<Json<Vec<ElectionMetadata>>> {
     let elections = elections.find(filter, None).await?.try_collect().await?;
     Ok(Json(elections))
 }
@@ -166,7 +165,7 @@ async fn elections_matching(
 pub struct PaginatedBallots {
     ballots: Vec<Ballot>,
     #[serde(flatten)]
-    pagination_result: Metadata,
+    pagination_result: PaginationResponse,
 }
 
 #[cfg(test)]
@@ -175,10 +174,9 @@ mod tests {
     use rocket::{local::asynchronous::Client, serde::json::serde_json};
 
     use crate::model::{
-        election::{view::ElectionView, ElectionSpec},
-        mongodb::entity::DbEntity,
+        election::{Election, ElectionMetadata, ElectionSpec, NewElection},
+        mongodb::DbEntity,
     };
-    use crate::model::election::Election;
 
     use super::*;
 
@@ -192,14 +190,15 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let fetched_elections = serde_json::from_str::<Vec<ElectionView>>(&raw_response).unwrap();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionMetadata>>(&raw_response).unwrap();
 
-        let elections = vec![
-            ElectionView::from(ElectionSpec::finalised_example()),
-            ElectionView::from(ElectionSpec::unfinalised_example()),
+        let expected = vec![
+            ElectionMetadata::from(ElectionSpec::finalised_example()),
+            ElectionMetadata::from(ElectionSpec::unfinalised_example()),
         ];
 
-        assert_eq!(elections, fetched_elections);
+        assert_eq!(expected, fetched_elections);
     }
 
     #[backend_test]
@@ -213,11 +212,10 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
 
-        let fetched_elections = serde_json::from_str::<Vec<ElectionView>>(&raw_response).unwrap();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionMetadata>>(&raw_response).unwrap();
 
-        let elections = vec![
-            ElectionView::from(ElectionSpec::finalised_example()),
-        ];
+        let elections = vec![ElectionMetadata::from(ElectionSpec::finalised_example())];
 
         assert_eq!(elections, fetched_elections);
     }
@@ -239,9 +237,9 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
 
-        let fetched_election = serde_json::from_str::<ElectionView>(&raw_response).unwrap();
+        let fetched_election = serde_json::from_str::<ElectionMetadata>(&raw_response).unwrap();
 
-        let expected = ElectionView::from(ElectionSpec::finalised_example());
+        let expected = ElectionMetadata::from(ElectionSpec::finalised_example());
 
         assert_eq!(expected, fetched_election);
     }
@@ -263,9 +261,9 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
 
-        let fetched_election = serde_json::from_str::<ElectionView>(&raw_response).unwrap();
+        let fetched_election = serde_json::from_str::<ElectionMetadata>(&raw_response).unwrap();
 
-        let expected = ElectionView::from(ElectionSpec::unfinalised_example());
+        let expected = ElectionMetadata::from(ElectionSpec::unfinalised_example());
 
         assert_eq!(expected, fetched_election);
     }
@@ -287,9 +285,9 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
 
-        let fetched_election = serde_json::from_str::<ElectionView>(&raw_response).unwrap();
+        let fetched_election = serde_json::from_str::<ElectionMetadata>(&raw_response).unwrap();
 
-        let expected = ElectionView::from(ElectionSpec::finalised_example());
+        let expected = ElectionMetadata::from(ElectionSpec::finalised_example());
 
         assert_eq!(expected, fetched_election);
     }
@@ -360,11 +358,11 @@ mod tests {
     // }
 
     async fn insert_elections(db: &Database) {
-        Coll::<Election>::from_db(&db)
+        Coll::<NewElection>::from_db(&db)
             .insert_many(
                 [
-                    Election::from(ElectionSpec::finalised_example()),
-                    Election::from(ElectionSpec::unfinalised_example()),
+                    NewElection::from(ElectionSpec::finalised_example()),
+                    NewElection::from(ElectionSpec::unfinalised_example()),
                 ],
                 None,
             )
@@ -372,9 +370,9 @@ mod tests {
             .unwrap();
     }
 
-    async fn get_election_for_spec(db: &Database, election: ElectionSpec) -> DbElection {
-        Coll::<DbElection>::from_db(&db)
-            .find_one(doc! { "name": election.name() }, None)
+    async fn get_election_for_spec(db: &Database, election: ElectionSpec) -> Election {
+        Coll::<Election>::from_db(&db)
+            .find_one(doc! { "name": &election.metadata.name }, None)
             .await
             .unwrap()
             .unwrap()
