@@ -1,3 +1,10 @@
+use mongodb::{
+    bson::{doc, Document},
+    options::FindOptions,
+};
+use rocket::{futures::TryStreamExt, http::Status, Route, serde::json::Json};
+use serde::Serialize;
+
 use crate::{
     error::{Error, Result},
     model::{
@@ -9,13 +16,6 @@ use crate::{
         pagination::{PaginationRequest, PaginationResponse},
     },
 };
-
-use mongodb::{
-    bson::{doc, Document},
-    options::FindOptions,
-};
-use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route};
-use serde::Serialize;
 
 pub fn routes() -> Vec<Route> {
     routes![
@@ -92,16 +92,16 @@ async fn finalised_election(election_id: Id, elections: Coll<Election>) -> Resul
     Ok(Json(election))
 }
 
-#[get("/elections/<election_id>/<question_no>/ballots?<pagination..>")]
+#[get("/elections/<election_id>/<question_id>/ballots?<pagination..>")]
 async fn election_question_ballots(
     election_id: Id,
-    question_no: u32,
+    question_id: Id,
     pagination: PaginationRequest,
     ballots: Coll<Ballot>,
 ) -> Result<Json<PaginatedBallots>> {
     let confirmed_ballots_for_election_question = doc! {
         "election_id": *election_id,
-        "question_no": question_no,
+        "question_id": *question_id,
         "state": "confirmed",
     };
 
@@ -124,17 +124,17 @@ async fn election_question_ballots(
     }))
 }
 
-#[get("/elections/<election_id>/<question_no>/ballots/<ballot_id>")]
+#[get("/elections/<election_id>/<question_id>/ballots/<ballot_id>")]
 async fn election_question_ballot(
     election_id: Id,
-    question_no: u32,
+    question_id: Id,
     ballot_id: Id,
     ballots: Coll<Ballot>,
 ) -> Result<Option<Json<Ballot>>> {
     let election_question_ballot = doc! {
         "_id": *ballot_id,
         "election_id": *election_id,
-        "question_no": question_no,
+        "question_id": *question_id,
     };
 
     let ballot = ballots
@@ -144,8 +144,8 @@ async fn election_question_ballot(
             Error::Status(
                 Status::NotFound,
                 format!(
-                    "a ballot with ID `{:?}` for election {:?}, question {} does not exist",
-                    ballot_id, election_id, question_no
+                    "a ballot with ID `{:?}` for election {:?}, question {:?} does not exist",
+                    ballot_id, election_id, question_id
                 ),
             )
         })?;

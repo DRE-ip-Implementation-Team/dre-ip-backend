@@ -8,7 +8,7 @@ use crate::model::{
     voter::Voter,
 };
 
-use super::common::get_voter_from_token;
+use super::common::voter_by_token;
 
 pub fn routes() -> Vec<Route> {
     routes![get_voters_groups]
@@ -20,7 +20,7 @@ async fn get_voters_groups(
     voters: Coll<Voter>,
     election_id: Id,
 ) -> Result<Json<Vec<Id>>> {
-    let voter = get_voter_from_token(&token, &voters).await?;
+    let voter = voter_by_token(&token, &voters).await?;
     let groups = voter
         .election_groups()
         .get(&election_id)
