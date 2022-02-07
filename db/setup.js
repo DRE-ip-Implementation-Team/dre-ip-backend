@@ -19,4 +19,4 @@ elections = db.getCollection("elections");
 // Ballot collection
 db.createCollection("ballots");
 ballots = db.getCollection("ballots");
-ballots.createIndex({election_id: 1, question_no: 1})
+ballots.createIndex({election_id: 1, question_id: 1})

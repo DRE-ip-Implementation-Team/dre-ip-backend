@@ -59,7 +59,6 @@ impl From<QuestionSpec> for Question {
             description: spec.description,
             groups: spec.groups,
             candidates: spec.candidates.into_iter().map(Candidate::new).collect(),
-            ballots: Vec::new(),
         }
     }
 }
