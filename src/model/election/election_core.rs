@@ -50,6 +50,11 @@ impl ElectionCore {
     pub fn questions(&self) -> &Vec<Question> {
         &self.questions
     }
+
+    /// Get a question by ID.
+    pub fn question(&self, question_id: Id) -> Option<&Question> {
+        self.questions().iter().find(|q| q.id == question_id)
+    }
 }
 
 /// A view on just the election's top-level metadata.
@@ -89,6 +94,13 @@ pub struct Question {
     pub groups: Vec<Id>,
     /// Candidates / possible answers for this question.
     pub candidates: Vec<Candidate>,
+}
+
+impl Question {
+    /// Get a candidate by name.
+    pub fn candidate(&self, candidate_name: &str) -> Option<&Candidate> {
+        self.candidates.iter().find(|c| c.name == candidate_name)
+    }
 }
 
 /// A candidate: a possible answer to a specific question.
