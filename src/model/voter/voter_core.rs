@@ -11,6 +11,8 @@ pub struct VoterCore {
     sms: Sms,
     /// Maps election IDs to the IDs of the voter's groups for that election.
     election_groups: HashMap<Id, Vec<Id>>,
+    /// Maps election IDs to the IDs of questions they have confirmed ballots on.
+    election_voted: HashMap<Id, Vec<Id>>,
 }
 
 impl VoterCore {
@@ -19,6 +21,7 @@ impl VoterCore {
         Self {
             sms,
             election_groups: HashMap::new(),
+            election_voted: HashMap::new(),
         }
     }
 
@@ -43,6 +46,7 @@ mod examples {
             Self {
                 sms: Sms::example(),
                 election_groups: HashMap::new(),
+                election_voted: HashMap::new(),
             }
         }
     }

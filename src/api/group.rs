@@ -1,14 +1,14 @@
 use mongodb::bson::doc;
 use rocket::{http::Status, serde::json::Json, Route};
 
-use crate::{
-    error::{Error, Result},
-    model::{
-        auth::AuthToken,
-        mongodb::{Coll, Id},
-        voter::Voter,
-    },
+use crate::error::{Error, Result};
+use crate::model::{
+    auth::AuthToken,
+    mongodb::{Coll, Id},
+    voter::Voter,
 };
+
+use super::common::get_voter_from_token;
 
 pub fn routes() -> Vec<Route> {
     routes![get_voters_groups]
@@ -20,16 +20,7 @@ async fn get_voters_groups(
     voters: Coll<Voter>,
     election_id: Id,
 ) -> Result<Json<Vec<Id>>> {
-    let voter_id = token.id();
-    let voter = voters
-        .find_one(doc! { "_id": *voter_id }, None)
-        .await?
-        .ok_or_else(|| {
-            Error::Status(
-                Status::NotFound,
-                format!("No voter found with ID {:?}", voter_id),
-            )
-        })?;
+    let voter = get_voter_from_token(&token, &voters).await?;
     let groups = voter
         .election_groups()
         .get(&election_id)
