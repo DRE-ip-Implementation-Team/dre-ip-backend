@@ -8,12 +8,12 @@ use rocket::{
 use crate::{
     error::{Error, Result},
     model::{
-        admin::{db::DbAdmin, Admin, Credentials},
-        auth::token::AuthToken,
-        mongodb::{collection::Coll, entity::DbEntity},
-        otp::{challenge::Challenge, code::Code},
+        admin::{Admin, AdminCredentials},
+        auth::{AuthToken, AUTH_TOKEN_COOKIE},
+        mongodb::Coll,
+        otp::{Challenge, Code, CHALLENGE_COOKIE},
         sms::Sms,
-        voter::{db::DbVoter, Voter},
+        voter::{NewVoter, Voter},
     },
     Config,
 };
@@ -25,8 +25,8 @@ pub fn routes() -> Vec<Route> {
 #[post("/admins/authenticate", data = "<credentials>", format = "json")]
 pub async fn authenticate(
     cookies: &CookieJar<'_>,
-    credentials: Json<Credentials<'_>>,
-    admins: Coll<DbAdmin>,
+    credentials: Json<AdminCredentials>,
+    admins: Coll<Admin>,
     config: &State<Config>,
 ) -> Result<()> {
     let with_username = doc! {
@@ -44,7 +44,7 @@ pub async fn authenticate(
             )
         })?;
 
-    let token = AuthToken::<Admin>::for_user(&admin);
+    let token = AuthToken::new(&admin);
     cookies.add(token.into_cookie(config));
 
     Ok(())
@@ -52,7 +52,7 @@ pub async fn authenticate(
 
 #[get("/voter/challenge?<sms>")]
 fn challenge(sms: Sms, cookies: &CookieJar<'_>, config: &State<Config>) {
-    let challenge = Challenge::for_sms(sms);
+    let challenge = Challenge::new(sms);
     cookies.add_private(challenge.into_cookie(config));
 }
 
@@ -62,7 +62,7 @@ async fn verify(
     challenge: Challenge,
     cookies: &CookieJar<'_>,
     voters: Coll<Voter>,
-    db_voters: Coll<DbVoter>,
+    new_voters: Coll<NewVoter>,
     config: &State<Config>,
 ) -> Result<()> {
     if challenge.code() != *code {
@@ -73,7 +73,7 @@ async fn verify(
         ));
     }
 
-    let voter = Voter::new(challenge.sms());
+    let voter = NewVoter::new(challenge.sms());
 
     let with_sms = doc! {
         "sms": voter.sms()
@@ -81,33 +81,36 @@ async fn verify(
 
     // We need an id to associate with the voter's interactions to ensure for instance that they
     // have not already voted for a certain question
-    let id = if let Some(voter) = db_voters.find_one(with_sms, None).await? {
-        // Voter already exists and so already has an id we can use
-        voter.id()
+    let db_voter = if let Some(voter) = voters.find_one(with_sms, None).await? {
+        // Voter already exists.
+        voter
     } else {
-        // Voter does not exist and so must be inserted to retrieve an id
-        voters
+        // Voter doesn't exist yet.
+        let new_id = new_voters
             .insert_one(&voter, None)
             .await?
             .inserted_id
             .as_object_id()
-            .unwrap() // Valid because the ID comes directly from the database
-            .into()
+            .unwrap(); // Safe because the ID comes directly from the database.
+        voters
+            .find_one(doc! { "_id": new_id }, None)
+            .await?
+            .unwrap()
     };
 
     // Ensure the voter is authenticated
-    let claims = AuthToken::<Voter>::for_user(&DbVoter::new(id, voter));
+    let claims = AuthToken::new(&db_voter);
     cookies.add(claims.into_cookie(config));
 
     // We no longer need the OTP challenge
-    cookies.remove(Cookie::named("challenge"));
+    cookies.remove(Cookie::named(CHALLENGE_COOKIE));
 
     Ok(())
 }
 
 #[delete("/auth")]
 pub fn logout(cookies: &CookieJar) -> Status {
-    cookies.remove(Cookie::named("auth_token"));
+    cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
     Status::Ok
 }
 
@@ -117,44 +120,44 @@ mod tests {
     use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
 
     use crate::model::{
-        admin::Admin,
-        otp::{self, challenge, code::LENGTH},
+        admin::NewAdmin,
+        otp::{Challenge, CODE_LENGTH},
     };
 
     use super::*;
 
     #[backend_test]
-    async fn admin_authenticate_valid(client: Client, admins: Coll<Admin>) {
+    async fn admin_authenticate_valid(client: Client, admins: Coll<NewAdmin>) {
         // Ensure there is an admin to login as
-        admins.insert_one(Admin::example(), None).await.unwrap();
+        admins.insert_one(NewAdmin::example(), None).await.unwrap();
 
         // Use valid credentials to attempt admin login
         let response = client
             .post(uri!(authenticate))
             .header(ContentType::JSON)
-            .body(json!(Credentials::example()).to_string())
+            .body(json!(AdminCredentials::example()).to_string())
             .dispatch()
             .await;
 
         assert_eq!(Status::Ok, response.status());
-        assert!(client.cookies().get("auth_token").is_some());
+        assert!(client.cookies().get(AUTH_TOKEN_COOKIE).is_some());
     }
 
     #[backend_test]
-    async fn admin_authenticate_invalid(client: Client, admins: Coll<Admin>) {
+    async fn admin_authenticate_invalid(client: Client, admins: Coll<NewAdmin>) {
         // Ensure there is an admin to fail to login as
-        admins.insert_one(Admin::example(), None).await.unwrap();
+        admins.insert_one(NewAdmin::example(), None).await.unwrap();
 
         // Use invalid username to attempt admin login
         let response = client
             .post(uri!(authenticate))
             .header(ContentType::JSON)
-            .body(json!(Credentials::empty()).to_string())
+            .body(json!(AdminCredentials::empty()).to_string())
             .dispatch()
             .await;
 
         assert_eq!(Status::Unauthorized, response.status());
-        assert_eq!(None, client.cookies().get("auth_token"));
+        assert_eq!(None, client.cookies().get(AUTH_TOKEN_COOKIE));
 
         // Use invalid password to attempt admin login
         let response = client
@@ -162,7 +165,7 @@ mod tests {
             .header(ContentType::JSON)
             .body(
                 json! ({
-                    "username": Admin::example().username(),
+                    "username": NewAdmin::example().username(),
                     "password": "",
                 })
                 .to_string(),
@@ -171,27 +174,19 @@ mod tests {
             .await;
 
         assert_eq!(Status::Unauthorized, response.status());
-        assert_eq!(None, client.cookies().get("auth_token"));
+        assert_eq!(None, client.cookies().get(AUTH_TOKEN_COOKIE));
     }
 
     #[backend_test]
-    async fn voter_authenticate(client: Client, voters: Coll<Voter>) {
+    async fn voter_authenticate(client: Client, voters: Coll<NewVoter>) {
         // Request challenge
         let response = client.get(uri!(challenge(Sms::example()))).dispatch().await;
-
-        let cookies = client.cookies();
-        let possible_cookie = cookies.get_private("challenge");
-
         assert_eq!(Status::Ok, response.status());
-        assert!(cookies.get_private("challenge").is_some());
 
-        let cookie = possible_cookie.unwrap();
-        let raw_claims = cookie.value();
+        let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
 
         // Submit verification
-        let challenge = challenge::Claims::from_str(raw_claims, client.rocket().state().unwrap())
-            .unwrap()
-            .into_challenge();
+        let challenge = Challenge::from_cookie(&cookie, client.rocket().state().unwrap()).unwrap();
         let response = client
             .post(uri!(verify))
             .header(ContentType::JSON)
@@ -200,7 +195,7 @@ mod tests {
             .await;
 
         assert_eq!(Status::Ok, response.status());
-        assert!(client.cookies().get("auth_token").is_some());
+        assert!(client.cookies().get(AUTH_TOKEN_COOKIE).is_some());
 
         // Check voter was inserted
         let voter = voters
@@ -209,19 +204,19 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(Voter::example(), voter);
+        assert_eq!(NewVoter::example(), voter);
     }
 
     #[backend_test]
     async fn unique_challenges(client: Client) {
         // Request challenge
         client.get(uri!(challenge(Sms::example()))).dispatch().await;
-        let cookie = client.cookies().get_private("challenge").unwrap();
+        let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let challenge_value = cookie.value();
 
         // Re-request challenge
         client.get(uri!(challenge(Sms::example()))).dispatch().await;
-        let cookie = client.cookies().get_private("challenge").unwrap();
+        let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let next_challenge_value = cookie.value();
 
         assert_ne!(challenge_value, next_challenge_value);
@@ -237,14 +232,12 @@ mod tests {
     #[backend_test]
     async fn invalid_otp_code(client: Client) {
         client.get(uri!(challenge(Sms::example()))).dispatch().await;
-        let cookie = client.cookies().get_private("challenge").unwrap();
-        let raw_claims = cookie.value();
-        let code = otp::challenge::Claims::from_str(raw_claims, client.rocket().state().unwrap())
+        let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
+        let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())
             .unwrap()
-            .into_challenge()
             .code();
 
-        let mut wrong_code = [0; LENGTH];
+        let mut wrong_code = [0; CODE_LENGTH];
         wrong_code[0] = if code[0] == 0 { 1 } else { code[0] - 1 };
         let wrong_code = wrong_code
             .into_iter()
@@ -266,18 +259,16 @@ mod tests {
         let response = client.delete(uri!(logout)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
-        assert_eq!(None, client.cookies().get("auth_token"));
+        assert_eq!(None, client.cookies().get(AUTH_TOKEN_COOKIE));
     }
 
     #[backend_test]
     async fn logout_voter(client: Client) {
         client.get(uri!(challenge(Sms::example()))).dispatch().await;
 
-        let cookie = client.cookies().get_private("challenge").unwrap();
-        let raw_claims = cookie.value();
-        let code = otp::challenge::Claims::from_str(raw_claims, client.rocket().state().unwrap())
+        let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
+        let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())
             .unwrap()
-            .into_challenge()
             .code();
 
         client
@@ -287,12 +278,12 @@ mod tests {
             .dispatch()
             .await;
 
-        assert!(client.cookies().get("auth_token").is_some());
+        assert!(client.cookies().get(AUTH_TOKEN_COOKIE).is_some());
 
         let response = client.delete(uri!(logout)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
-        assert_eq!(None, client.cookies().get("auth_token"));
+        assert_eq!(None, client.cookies().get(AUTH_TOKEN_COOKIE));
     }
 
     #[backend_test]

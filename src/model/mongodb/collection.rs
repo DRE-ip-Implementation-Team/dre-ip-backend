@@ -7,24 +7,28 @@ use rocket::{
 };
 
 use crate::model::{
-    admin::{db::DbAdmin, Admin},
-    ballot::{db::DbBallot, Ballot},
-    election::{db::DbElection, view::ElectionView, Election},
-    voter::{db::DbVoter, Voter},
+    admin::{Admin, NewAdmin},
+    ballot::{Ballot, NewBallot},
+    election::{Election, ElectionMetadata, NewElection},
+    voter::{NewVoter, Voter},
 };
 
+/// A type that can be directly inserted/read to/from the database.
 pub trait MongoCollection {
-    fn collection_name() -> &'static str;
+    /// The name of the collection.
+    const NAME: &'static str;
 }
 
+/// A database collection of the given type.
 pub struct Coll<T>(Collection<T>);
 
 impl<T> Coll<T>
 where
     T: MongoCollection,
 {
+    /// Get a handle on this collection in the given database.
     pub fn from_db(db: &Database) -> Self {
-        Self(db.collection(T::collection_name()))
+        Self(db.collection(T::NAME))
     }
 }
 
@@ -43,6 +47,7 @@ where
 {
     type Error = ();
 
+    /// Get the database connection from the managed state and wrap it in a collection.
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let db = req.guard::<&State<Database>>().await.unwrap();
         request::Outcome::Success(Coll::from_db(db))
@@ -50,55 +55,37 @@ where
 }
 
 impl MongoCollection for Admin {
-    fn collection_name() -> &'static str {
-        "admins"
-    }
+    const NAME: &'static str = "admins";
 }
 
-impl MongoCollection for DbAdmin {
-    fn collection_name() -> &'static str {
-        "admins"
-    }
+impl MongoCollection for NewAdmin {
+    const NAME: &'static str = "admins";
 }
 
 impl MongoCollection for Voter {
-    fn collection_name() -> &'static str {
-        "voters"
-    }
+    const NAME: &'static str = "voters";
 }
 
-impl MongoCollection for DbVoter {
-    fn collection_name() -> &'static str {
-        "voters"
-    }
+impl MongoCollection for NewVoter {
+    const NAME: &'static str = "voters";
 }
 
 impl MongoCollection for Election {
-    fn collection_name() -> &'static str {
-        "elections"
-    }
+    const NAME: &'static str = "elections";
 }
 
-impl MongoCollection for DbElection {
-    fn collection_name() -> &'static str {
-        "elections"
-    }
+impl MongoCollection for ElectionMetadata {
+    const NAME: &'static str = "elections";
 }
 
-impl MongoCollection for ElectionView {
-    fn collection_name() -> &'static str {
-        "elections"
-    }
+impl MongoCollection for NewElection {
+    const NAME: &'static str = "elections";
 }
 
 impl MongoCollection for Ballot {
-    fn collection_name() -> &'static str {
-        "ballots"
-    }
+    const NAME: &'static str = "ballots";
 }
 
-impl MongoCollection for DbBallot {
-    fn collection_name() -> &'static str {
-        "ballots"
-    }
+impl MongoCollection for NewBallot {
+    const NAME: &'static str = "ballots";
 }

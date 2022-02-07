@@ -5,8 +5,6 @@ extern crate rocket;
 #[macro_use]
 extern crate backend_test;
 
-use std::panic::panic_any;
-
 use chrono::Duration;
 use mongodb::Client;
 use rocket::{fairing::AdHoc, Build, Rocket};
@@ -24,14 +22,14 @@ pub(crate) async fn db_client() -> Client {
     let db_uri = env!("db_uri");
     Client::with_uri_str(db_uri)
         .await
-        .unwrap_or_else(|err| panic_any(err))
+        .unwrap_or_else(|err| panic!("{}", err))
 }
 
 #[cfg(not(test))]
-const DATABASE: &'static str = "dreip";
+const DATABASE: &str = "dreip";
 
 #[cfg(test)]
-const DATABASE: &'static str = "test";
+const DATABASE: &str = "test";
 
 pub(crate) async fn rocket_for_db_client(client: Client) -> Rocket<Build> {
     let db = client.database(DATABASE);
@@ -40,7 +38,7 @@ pub(crate) async fn rocket_for_db_client(client: Client) -> Rocket<Build> {
         .mount("/", api::routes())
         .attach(AdHoc::config::<Config>())
         .manage(client)
-        .manage(db.clone())
+        .manage(db)
 }
 
 #[derive(Deserialize)]

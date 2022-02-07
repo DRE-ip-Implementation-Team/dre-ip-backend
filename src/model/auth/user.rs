@@ -2,18 +2,15 @@ use std::fmt::Display;
 
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::model::{
-    admin::{db::DbAdmin, Admin},
-    mongodb::entity::DbEntity,
-    voter::{db::DbVoter, Voter},
-};
+use crate::model::{admin::Admin, mongodb::DbEntity, voter::Voter};
 
-pub trait User {
-    type DbUser: DbEntity;
-
-    fn rights() -> Rights;
+/// A user of our application, having defined rights.
+pub trait User: DbEntity {
+    /// The rights of this user type.
+    const RIGHTS: Rights;
 }
 
+/// Different privilege levels.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
 pub enum Rights {
@@ -35,17 +32,9 @@ impl Display for Rights {
 }
 
 impl User for Voter {
-    type DbUser = DbVoter;
-
-    fn rights() -> Rights {
-        Rights::Voter
-    }
+    const RIGHTS: Rights = Rights::Voter;
 }
 
 impl User for Admin {
-    type DbUser = DbAdmin;
-
-    fn rights() -> Rights {
-        Rights::Admin
-    }
+    const RIGHTS: Rights = Rights::Admin;
 }

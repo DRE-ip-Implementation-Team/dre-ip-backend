@@ -14,7 +14,7 @@ use syn::{
 /// cleared, and the panic is "rethrown".
 ///
 /// Injectable dependencies so far include [`rocket::local::asynchronous::Client`],
-/// [`mongodb::Database`] and [`crate::model::mongodb::collection::Coll<T>`]
+/// [`mongodb::Database`] and [`crate::model::mongodb::Coll<T>`]
 pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut item_fn = parse_macro_input!(input as ItemFn);
     let sig = &mut item_fn.sig;
@@ -37,15 +37,15 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         .and_then(|args| {
             if args == "admin" {
                 Some(quote! {
-                    crate::model::mongodb::collection::Coll::<crate::model::admin::Admin>::from_db(&db)
-                        .insert_one(crate::model::admin::Admin::example(), None)
+                    crate::model::mongodb::Coll::<crate::model::admin::NewAdmin>::from_db(&db)
+                        .insert_one(crate::model::admin::NewAdmin::example(), None)
                         .await
                         .unwrap();
 
                     client
                         .post(uri!(crate::api::auth::authenticate))
                         .header(rocket::http::ContentType::JSON)
-                        .body(rocket::serde::json::json!(crate::model::admin::Credentials::example()).to_string())
+                        .body(rocket::serde::json::json!(crate::model::admin::AdminCredentials::example()).to_string())
                         .dispatch()
                         .await;
                 })
@@ -81,7 +81,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                 let db = db_mutex.into_inner().unwrap();
 
                 #(
-                    let #collection_idents = crate::model::mongodb::collection::Coll::<#collection_types>::from_db(&db);
+                    let #collection_idents = crate::model::mongodb::Coll::<#collection_types>::from_db(&db);
                 )*
 
                 // Manually run future inside

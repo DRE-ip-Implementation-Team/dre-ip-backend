@@ -1,3 +1,5 @@
+use std::{ops::Deref, str::FromStr};
+
 use mongodb::bson::{to_bson, Bson};
 use phonenumber::PhoneNumber;
 use rocket::{
@@ -9,9 +11,9 @@ use rocket::{
     request::FromParam,
 };
 use serde::{Deserialize, Serialize};
-use std::{ops::Deref, str::FromStr};
 use thiserror::Error;
 
+/// A user's SMS number.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Sms {
@@ -27,6 +29,7 @@ impl Deref for Sms {
     }
 }
 
+/// (De)serialization for phone numbers.
 mod phone_number {
     use phonenumber::PhoneNumber;
     use serde::{de::Visitor, Deserializer, Serializer};
@@ -125,6 +128,7 @@ impl From<Sms> for Bson {
     }
 }
 
+/// Example data for tests.
 #[cfg(test)]
 mod examples {
     use super::*;

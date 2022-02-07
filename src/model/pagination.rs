@@ -1,13 +1,17 @@
 use rocket::form::{self, DataField, Errors, FromForm, FromFormField, ValueField};
 use serde::Serialize;
 
+/// Pagination request from a client - which page do they want, and how big?
 #[derive(UriDisplayQuery)]
-pub struct Pagination {
+pub struct PaginationRequest {
+    /// Which page is this?
     page_num: u32,
+    /// How big is each page?
     page_size: u32,
 }
 
-impl Pagination {
+impl PaginationRequest {
+    /// Create a new pagination request.
     pub fn new(page_num: u32, page_size: u32) -> Self {
         Self {
             page_num,
@@ -15,16 +19,19 @@ impl Pagination {
         }
     }
 
+    /// Calculate how many elements to skip before the start of this page.
     pub fn skip(&self) -> u32 {
         (self.page_num - 1) * self.page_size
     }
 
+    /// Get the page size.
     pub fn page_size(&self) -> u32 {
         self.page_size
     }
 
-    pub fn into_metadata(self, total: usize) -> Metadata {
-        Metadata {
+    /// Convert into a response with the given total.
+    pub fn into_response(self, total: usize) -> PaginationResponse {
+        PaginationResponse {
             page_num: self.page_num,
             page_size: self.page_size,
             total,
@@ -32,6 +39,7 @@ impl Pagination {
     }
 }
 
+/// Context struct for parsing from requests.
 pub struct Context<'f> {
     page_num: u32,
     page_size: u32,
@@ -39,7 +47,7 @@ pub struct Context<'f> {
 }
 
 #[rocket::async_trait]
-impl<'r> FromForm<'r> for Pagination {
+impl<'r> FromForm<'r> for PaginationRequest {
     type Context = Context<'r>;
 
     fn init(_opts: form::Options) -> Self::Context {
@@ -90,9 +98,14 @@ impl<'r> FromForm<'r> for Pagination {
     }
 }
 
+/// Pagination response to a client - which page did you actually get, how big
+/// is it actually, and how many items are there in total?
 #[derive(Serialize)]
-pub struct Metadata {
+pub struct PaginationResponse {
+    /// Which page is this?
     page_num: u32,
+    /// How big is each page?
     page_size: u32,
+    /// How many items are there in total?
     total: usize,
 }

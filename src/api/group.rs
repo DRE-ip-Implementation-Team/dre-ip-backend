@@ -4,10 +4,9 @@ use rocket::{http::Status, serde::json::Json, Route};
 use crate::{
     error::{Error, Result},
     model::{
-        auth::token::AuthToken,
-        election::group::Group,
-        mongodb::{bson::Id, collection::Coll},
-        voter::{db::DbVoter, Voter},
+        auth::AuthToken,
+        mongodb::{Coll, Id},
+        voter::Voter,
     },
 };
 
@@ -18,9 +17,9 @@ pub fn routes() -> Vec<Route> {
 #[get("/voter/elections/<election_id>/groups")]
 async fn get_voters_groups(
     token: AuthToken<Voter>,
-    voters: Coll<DbVoter>,
+    voters: Coll<Voter>,
     election_id: Id,
-) -> Result<Json<Vec<Group>>> {
+) -> Result<Json<Vec<Id>>> {
     let voter_id = token.id();
     let voter = voters
         .find_one(doc! { "_id": *voter_id }, None)
