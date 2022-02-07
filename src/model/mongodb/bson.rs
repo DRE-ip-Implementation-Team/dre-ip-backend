@@ -21,6 +21,13 @@ pub trait DbEntity {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(ObjectId);
 
+impl Id {
+    /// Generate a random ID.
+    pub fn new() -> Self {
+        Id(ObjectId::new())
+    }
+}
+
 impl Deref for Id {
     type Target = ObjectId;
 

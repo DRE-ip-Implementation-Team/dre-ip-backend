@@ -81,6 +81,8 @@ pub struct ElectionCrypto {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Question {
+    /// Question unique ID.
+    pub id: Id,
     /// Question text.
     pub description: String,
     /// A voter must be in at least one of these groups to vote on this question.
@@ -95,7 +97,7 @@ pub struct Question {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Candidate {
-    /// User-facing name.
+    /// User-facing name, also acts as a unique identifier.
     pub name: String,
     /// Cryptographic totals.
     #[serde(flatten)]

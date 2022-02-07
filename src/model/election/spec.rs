@@ -55,6 +55,7 @@ pub struct QuestionSpec {
 impl From<QuestionSpec> for Question {
     fn from(spec: QuestionSpec) -> Self {
         Self {
+            id: Id::new(),
             description: spec.description,
             groups: spec.groups,
             candidates: spec.candidates.into_iter().map(Candidate::new).collect(),
