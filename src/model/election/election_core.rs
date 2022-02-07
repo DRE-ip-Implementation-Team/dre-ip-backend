@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{ballot::Ballot, mongodb::Id};
+use crate::model::{mongodb::Id};
 
 use super::groups::Electorate;
 
@@ -89,8 +89,6 @@ pub struct Question {
     pub groups: Vec<Id>,
     /// Candidates / possible answers for this question.
     pub candidates: Vec<Candidate>,
-    /// Ballots cast on this question.
-    pub ballots: Vec<Ballot>,
 }
 
 /// A candidate: a possible answer to a specific question.
