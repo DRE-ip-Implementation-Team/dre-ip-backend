@@ -8,7 +8,7 @@ use rocket::{
 
 use crate::model::{
     admin::{Admin, NewAdmin},
-    ballot::DbBallot,
+    ballot::{Ballot, BallotState, FinishedBallot, NewBallot},
     election::{Election, ElectionMetadata, NewElection},
     voter::{NewVoter, Voter},
 };
@@ -54,34 +54,44 @@ where
     }
 }
 
+// Admin collections
+const ADMINS: &str = "admins";
 impl MongoCollection for Admin {
-    const NAME: &'static str = "admins";
+    const NAME: &'static str = ADMINS;
 }
-
 impl MongoCollection for NewAdmin {
-    const NAME: &'static str = "admins";
+    const NAME: &'static str = ADMINS;
 }
 
+// Voter collections
+const VOTERS: &str = "voters";
 impl MongoCollection for Voter {
-    const NAME: &'static str = "voters";
+    const NAME: &'static str = VOTERS;
 }
-
 impl MongoCollection for NewVoter {
-    const NAME: &'static str = "voters";
+    const NAME: &'static str = VOTERS;
 }
 
+// Election collections
+const ELECTIONS: &str = "elections";
 impl MongoCollection for Election {
-    const NAME: &'static str = "elections";
+    const NAME: &'static str = ELECTIONS;
 }
-
 impl MongoCollection for ElectionMetadata {
-    const NAME: &'static str = "elections";
+    const NAME: &'static str = ELECTIONS;
 }
-
 impl MongoCollection for NewElection {
-    const NAME: &'static str = "elections";
+    const NAME: &'static str = ELECTIONS;
 }
 
-impl<T: DbBallot> MongoCollection for T {
-    const NAME: &'static str = "ballots";
+// Ballot collections
+const BALLOTS: &str = "ballots";
+impl<S: BallotState> MongoCollection for Ballot<S> {
+    const NAME: &'static str = BALLOTS;
+}
+impl<S: BallotState> MongoCollection for NewBallot<S> {
+    const NAME: &'static str = BALLOTS;
+}
+impl MongoCollection for FinishedBallot {
+    const NAME: &'static str = BALLOTS;
 }
