@@ -26,6 +26,11 @@ impl Id {
     pub fn new() -> Self {
         Id(ObjectId::new())
     }
+
+    /// Get the raw bytes of the ID.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.bytes().to_vec()
+    }
 }
 
 impl Deref for Id {
