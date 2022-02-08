@@ -1,5 +1,5 @@
 pub use db::Election;
-pub use election_core::{Candidate, CandidateTotals, ElectionCrypto, ElectionMetadata, Question};
+pub use election_core::{Candidate, ElectionMetadata, Question};
 pub use groups::{Electorate, Group};
 pub use spec::{ElectionSpec, QuestionSpec};
 
@@ -10,3 +10,10 @@ mod spec;
 
 /// A new election ready for DB insertion is just an Election without an ID, i.e. an ElectionCore.
 pub type NewElection = election_core::ElectionCore;
+
+/// We implement our DRE-ip over the P-256 elliptic curve.
+pub type DreipGroup = dre_ip::group::p256::NistP256;
+/// Our question IDs are mongodb ObjectIDs.
+pub type QuestionID = crate::model::mongodb::Id;
+/// Our candidate IDs are strings.
+pub type CandidateID = String;

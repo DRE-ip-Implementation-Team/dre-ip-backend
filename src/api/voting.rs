@@ -8,16 +8,13 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::model::{
     auth::AuthToken,
-    ballot::Receipt,
+    ballot::{Audited, Confirmed, Receipt, Unconfirmed},
     election::Election,
     mongodb::{Coll, Id},
     voter::Voter,
 };
 
 use super::common::{active_election_by_id, voter_by_token};
-
-/// We implement our DRE-ip over the P-256 elliptic curve.
-type Group = dre_ip::group::p256::NistP256;
 
 pub fn routes() -> Vec<Route> {
     routes![
@@ -36,7 +33,7 @@ async fn get_confirmed(token: AuthToken<Voter>, election_id: Id) -> Result<Json<
 #[post("/voter/elections/<election_id>/votes/cast", data = "<ballot_specs>", format = "json")]
 async fn cast_ballots(token: AuthToken<Voter>, election_id: Id,
                       ballot_specs: Json<Vec<BallotSpec>>, voters: Coll<Voter>,
-                      elections: Coll<Election>) -> Result<Json<Vec<Receipt>>> {
+                      elections: Coll<Election>) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
     // Get the voter and election.
     let voter = voter_by_token(&token, &voters).await?;
     let election = active_election_by_id(election_id, &elections).await?;
@@ -85,7 +82,7 @@ async fn cast_ballots(token: AuthToken<Voter>, election_id: Id,
 
 #[post("/voter/elections/<election_id>/votes/audit", data = "<ballots>", format = "json")]
 async fn audit_ballots(token: AuthToken<Voter>, election_id: Id,
-                       ballots: Json<Vec<Id>>) -> Result<Json<Vec<Receipt>>> {
+                       ballots: Json<Vec<Id>>) -> Result<Json<Vec<Receipt<Audited>>>> {
     // TODO Get the voter, election, and ballots.
 
     // TODO Mark the ballots as audited.
@@ -97,7 +94,7 @@ async fn audit_ballots(token: AuthToken<Voter>, election_id: Id,
 
 #[post("/voter/elections/<election_id>/votes/confirm", data = "<ballots>", format = "json")]
 async fn confirm_ballots(token: AuthToken<Voter>, election_id: Id,
-                         ballots: Json<Vec<Id>>) -> Result<Json<Vec<Receipt>>> {
+                         ballots: Json<Vec<Id>>) -> Result<Json<Vec<Receipt<Confirmed>>>> {
     // TODO Get the voter, election, and ballots.
 
     // TODO Check that the user has not already voted on these questions.

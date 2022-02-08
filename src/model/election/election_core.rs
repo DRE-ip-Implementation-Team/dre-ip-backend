@@ -1,24 +1,26 @@
 use chrono::{DateTime, Utc};
+use dre_ip::{CandidateTotals, Election as DreipElection};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{mongodb::Id};
 
+use super::DreipGroup;
 use super::groups::Electorate;
 
 /// Core election data, as stored in the database.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct ElectionCore {
     /// Top-level metadata.
     #[serde(flatten)]
-    metadata: ElectionMetadata,
+    pub metadata: ElectionMetadata,
     /// Election electorates.
-    electorates: Vec<Electorate>,
+    pub electorates: Vec<Electorate>,
     /// Election questions.
-    questions: Vec<Question>,
+    pub questions: Vec<Question>,
     /// Election cryptographic configuration.
-    crypto: ElectionCrypto,
+    pub crypto: DreipElection<DreipGroup>,
 }
 
 impl ElectionCore {
@@ -28,32 +30,26 @@ impl ElectionCore {
         electorates: Vec<Electorate>,
         questions: Vec<Question>,
     ) -> Self {
+        let crypto = DreipElection::new(
+            &[
+                metadata.name.as_bytes(),
+                &metadata.start_time.timestamp().to_le_bytes(),
+                &metadata.end_time.timestamp().to_le_bytes(),
+            ],
+            rand::thread_rng(),
+        );
+
         Self {
             metadata,
             electorates,
             questions,
-            crypto: ElectionCrypto::default(),
+            crypto,
         }
-    }
-
-    /// Get the metadata.
-    pub fn metadata(&self) -> &ElectionMetadata {
-        &self.metadata
-    }
-
-    /// Get the electorates.
-    pub fn electorates(&self) -> &Vec<Electorate> {
-        &self.electorates
-    }
-
-    /// Get the questions.
-    pub fn questions(&self) -> &Vec<Question> {
-        &self.questions
     }
 
     /// Get a question by ID.
     pub fn question(&self, question_id: Id) -> Option<&Question> {
-        self.questions().iter().find(|q| q.id == question_id)
+        self.questions.iter().find(|q| q.id == question_id)
     }
 }
 
@@ -73,17 +69,8 @@ pub struct ElectionMetadata {
     pub end_time: DateTime<Utc>,
 }
 
-/// Election cryptographic configuration as per the DRE-ip protocol.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct ElectionCrypto {
-    private_key: Vec<u8>,
-    public_key: Vec<u8>,
-    g1: Vec<u8>,
-    g2: Vec<u8>,
-}
-
 /// A single question.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Question {
     /// Question unique ID.
@@ -104,14 +91,14 @@ impl Question {
 }
 
 /// A candidate: a possible answer to a specific question.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Candidate {
     /// User-facing name, also acts as a unique identifier.
     pub name: String,
     /// Cryptographic totals.
     #[serde(flatten)]
-    pub totals: CandidateTotals,
+    pub totals: CandidateTotals<DreipGroup>,
 }
 
 impl Candidate {
@@ -120,24 +107,6 @@ impl Candidate {
         Self {
             name,
             totals: CandidateTotals::default(),
-        }
-    }
-}
-
-/// Cryptographic totals for a candidate as per the DRE-ip protocol.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CandidateTotals {
-    /// Total tally of yes votes.
-    pub tally: Vec<u8>,
-    /// Sum of secret random values.
-    pub r_sum: Vec<u8>,
-}
-
-impl Default for CandidateTotals {
-    fn default() -> Self {
-        Self {
-            tally: vec![0],
-            r_sum: vec![0],
         }
     }
 }

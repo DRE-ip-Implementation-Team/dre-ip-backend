@@ -10,7 +10,7 @@ use crate::{
     model::{
         admin::Admin,
         auth::AuthToken,
-        ballot::Ballot,
+        ballot::{DbBallot, FinishedBallot, AUDITED, CONFIRMED},
         election::{Election, ElectionMetadata},
         mongodb::{Coll, Id},
         pagination::{PaginationRequest, PaginationResponse},
@@ -97,12 +97,12 @@ async fn election_question_ballots(
     election_id: Id,
     question_id: Id,
     pagination: PaginationRequest,
-    ballots: Coll<Ballot>,
-) -> Result<Json<PaginatedBallots>> {
+    ballots: Coll<FinishedBallot>,
+) -> Result<Json<PaginatedBallots<FinishedBallot>>> {
     let confirmed_ballots_for_election_question = doc! {
         "election_id": *election_id,
         "question_id": *question_id,
-        "state": "confirmed",
+        "$or": [{"state": AUDITED}, {"state": CONFIRMED}],
     };
 
     let pagination_options = FindOptions::builder()
@@ -129,12 +129,13 @@ async fn election_question_ballot(
     election_id: Id,
     question_id: Id,
     ballot_id: Id,
-    ballots: Coll<Ballot>,
-) -> Result<Option<Json<Ballot>>> {
+    ballots: Coll<FinishedBallot>,
+) -> Result<Option<Json<FinishedBallot>>> {
     let election_question_ballot = doc! {
         "_id": *ballot_id,
         "election_id": *election_id,
         "question_id": *question_id,
+        "$or": [{"state": AUDITED}, {"state": CONFIRMED}],
     };
 
     let ballot = ballots
@@ -162,8 +163,8 @@ async fn elections_matching(
 }
 
 #[derive(Serialize)]
-pub struct PaginatedBallots {
-    ballots: Vec<Ballot>,
+pub struct PaginatedBallots<B: DbBallot> {
+    ballots: Vec<B>,
     #[serde(flatten)]
     pagination_result: PaginationResponse,
 }

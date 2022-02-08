@@ -7,7 +7,7 @@ use super::election_core::{ElectionCore, ElectionMetadata, Question};
 use super::groups::Electorate;
 
 /// An election specification.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ElectionSpec {
     /// Top-level metadata.
@@ -41,7 +41,7 @@ impl From<ElectionSpec> for ElectionMetadata {
 }
 
 /// A question specification.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct QuestionSpec {
     /// Question text.

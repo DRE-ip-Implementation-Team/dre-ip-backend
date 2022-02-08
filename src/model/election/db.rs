@@ -7,7 +7,7 @@ use crate::model::mongodb::{DbEntity, Id};
 use super::election_core::ElectionCore;
 
 /// An election from the database, with its unique ID.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Election {
     #[serde(rename = "_id")]
