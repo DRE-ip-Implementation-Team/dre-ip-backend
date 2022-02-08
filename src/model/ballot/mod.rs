@@ -1,7 +1,5 @@
-pub use ballot_core::{BallotProof, BallotState, Vote, VoteProof, VoteSecrets};
-pub use db::{Ballot, NewBallot};
-pub use receipt::Receipt;
+pub use ballot_core::{Audited, AUDITED, BallotState, Confirmed, CONFIRMED, FinishedBallot, Receipt, Unconfirmed, UNCONFIRMED};
+pub use db::{Ballot, DbBallot, NewBallot};
 
 mod ballot_core;
 mod db;
-mod receipt;

@@ -8,7 +8,7 @@ use rocket::{
 
 use crate::model::{
     admin::{Admin, NewAdmin},
-    ballot::{Ballot, NewBallot},
+    ballot::DbBallot,
     election::{Election, ElectionMetadata, NewElection},
     voter::{NewVoter, Voter},
 };
@@ -82,10 +82,6 @@ impl MongoCollection for NewElection {
     const NAME: &'static str = "elections";
 }
 
-impl MongoCollection for Ballot {
-    const NAME: &'static str = "ballots";
-}
-
-impl MongoCollection for NewBallot {
+impl<T: DbBallot> MongoCollection for T {
     const NAME: &'static str = "ballots";
 }

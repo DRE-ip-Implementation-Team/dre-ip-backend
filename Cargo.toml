@@ -18,6 +18,10 @@ rust-argon2 = "0.8"
 [dependencies.dre-ip]
 path = "protocol"
 
+[dependencies.serde_unit_struct]
+# TODO replace git dependency with a proper one once stable
+git = "https://github.com/cjriches/serde_unit_struct"
+
 [dependencies.rocket]
 version = "=0.5.0-rc.1"
 features = ["secrets", "json"]
