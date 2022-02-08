@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::model::{
     auth::AuthToken,
-    ballot::{Audited, Confirmed, Receipt, Unconfirmed},
+    ballot::{Audited, Ballot, Confirmed, NewBallot, Receipt, Unconfirmed},
     election::Election,
     mongodb::{Coll, Id},
     voter::Voter,
@@ -33,7 +33,8 @@ async fn get_confirmed(token: AuthToken<Voter>, election_id: Id) -> Result<Json<
 #[post("/voter/elections/<election_id>/votes/cast", data = "<ballot_specs>", format = "json")]
 async fn cast_ballots(token: AuthToken<Voter>, election_id: Id,
                       ballot_specs: Json<Vec<BallotSpec>>, voters: Coll<Voter>,
-                      elections: Coll<Election>) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
+                      elections: Coll<Election>, ballots: Coll<Ballot<Unconfirmed>>)
+                      -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
     // Get the voter and election.
     let voter = voter_by_token(&token, &voters).await?;
     let election = active_election_by_id(election_id, &elections).await?;
@@ -57,23 +58,42 @@ async fn cast_ballots(token: AuthToken<Voter>, election_id: Id,
     }
 
     // Generate cryptographic ballots.
-    // let mut ballots = Vec::new();
-    for ballot_spec in ballot_specs.0 {
-        // Get the yes and no candidates for this ballot.
-        let question = election.question(ballot_spec.question).unwrap(); // Already checked.
-        let yes_candidate = ballot_spec.candidate; // Already checked that it exists.
-        let no_candidates = question.candidates
-            .iter()
-            .map(|c| &c.name)
-            .filter(|name| name != &&yes_candidate)
-            .collect::<Vec<_>>();
-        // Sanity check.
-        assert_eq!(question.candidates.len() - 1, no_candidates.len());
+    // Frustratingly, the scoped block is needed to force `rng` to
+    // be dropped before the next `await`.
+    let mut new_ballots = Vec::new();
+    {
+        let mut rng = rand::thread_rng();
+        for ballot_spec in ballot_specs.0 {
+            // Get the yes and no candidates for this ballot.
+            let question = election.question(ballot_spec.question).unwrap(); // Already checked.
+            let yes_candidate = ballot_spec.candidate; // Already checked that it exists.
+            let no_candidates = question.candidates
+                .iter()
+                .map(|c| c.name.clone())
+                .filter(|name| name != &yes_candidate)
+                .collect::<Vec<_>>();
+            // Sanity check.
+            assert_eq!(question.candidates.len() - 1, no_candidates.len());
 
-        // TODO Create the ballot.
+            // Create the ballot.
+            let ballot = Ballot::new(
+                election_id,
+                question.id,
+                yes_candidate,
+                no_candidates,
+                &election,
+                &mut rng,
+            ).ok_or_else(|| Error::Status(
+                Status::InternalServerError,
+                format!("Duplicate candidates for question {:?}", question.id),
+            ))?;
+            new_ballots.push(ballot);
+        }
     }
 
-    // TODO Insert ballots into DB. Ensure they expire if not audited or confirmed.
+    // Insert ballots into DB.
+    // TODO Ensure they expire if not audited or confirmed.
+    ballots.insert_many(new_ballots.iter(), None).await?;
 
     // TODO Return receipt and encrypted ballot IDs.
 
@@ -114,4 +134,13 @@ async fn confirm_ballots(token: AuthToken<Voter>, election_id: Id,
 struct BallotSpec {
     pub question: Id,
     pub candidate: String,
+}
+
+/// The response to casting new ballots.
+/// The ballots vector is in the same order as the original input.
+/// The recall string is an encrypted value that allows the user to recall
+/// these ballots in order to audit or confirm them.
+struct BallotResponse {
+    pub ballots: Vec<NewBallot>,
+    pub recall_string: String,
 }

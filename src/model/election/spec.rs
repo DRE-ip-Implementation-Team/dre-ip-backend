@@ -25,6 +25,7 @@ impl From<ElectionSpec> for ElectionCore {
             spec.metadata,
             spec.electorates,
             spec.questions.into_iter().map(QuestionSpec::into).collect(),
+            rand::thread_rng(),
         )
     }
 }

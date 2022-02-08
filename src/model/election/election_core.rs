@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use dre_ip::{CandidateTotals, Election as DreipElection};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
+use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{mongodb::Id};
@@ -29,6 +30,7 @@ impl ElectionCore {
         metadata: ElectionMetadata,
         electorates: Vec<Electorate>,
         questions: Vec<Question>,
+        rng: impl RngCore + CryptoRng,
     ) -> Self {
         let crypto = DreipElection::new(
             &[
@@ -36,7 +38,7 @@ impl ElectionCore {
                 &metadata.start_time.timestamp().to_le_bytes(),
                 &metadata.end_time.timestamp().to_le_bytes(),
             ],
-            rand::thread_rng(),
+            rng
         );
 
         Self {
