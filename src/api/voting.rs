@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::model::{
     auth::AuthToken,
-    ballot::{Audited, Ballot, Confirmed, NewBallot, Receipt, Unconfirmed},
+    ballot::{Audited, Ballot, Confirmed, Receipt, Unconfirmed},
     election::Election,
     mongodb::{Coll, Id},
     voter::Voter,
@@ -26,17 +26,26 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[get("/voter/elections/<election_id>/questions/confirmed")]
-async fn get_confirmed(token: AuthToken<Voter>, election_id: Id) -> Result<Json<Vec<Id>>> {
-    todo!()
+async fn get_confirmed(token: AuthToken<Voter>, election_id: Id,
+                       voters: Coll<Voter>) -> Result<Json<Vec<Id>>> {
+    // Get the voter.
+    let voter = voter_by_token(&token, &voters).await?;
+
+    // Find what they've voted for.
+    let confirmed = voter.election_voted
+        .get(&election_id)
+        .cloned()
+        .unwrap_or_else(|| Vec::new());
+
+    Ok(Json(confirmed))
 }
 
 #[post("/voter/elections/<election_id>/votes/cast", data = "<ballot_specs>", format = "json")]
-async fn cast_ballots(token: AuthToken<Voter>, election_id: Id,
-                      ballot_specs: Json<Vec<BallotSpec>>, voters: Coll<Voter>,
+async fn cast_ballots(_token: AuthToken<Voter>, election_id: Id,
+                      ballot_specs: Json<Vec<BallotSpec>>,
                       elections: Coll<Election>, ballots: Coll<Ballot<Unconfirmed>>)
                       -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
-    // Get the voter and election.
-    let voter = voter_by_token(&token, &voters).await?;
+    // Get the election.
     let election = active_election_by_id(election_id, &elections).await?;
 
     // Ensure that the questions and candidates exist.
@@ -58,8 +67,7 @@ async fn cast_ballots(token: AuthToken<Voter>, election_id: Id,
     }
 
     // Generate cryptographic ballots.
-    // Frustratingly, the scoped block is needed to force `rng` to
-    // be dropped before the next `await`.
+    // The scoped block is needed to force `rng` to be dropped before the next `await`.
     let mut new_ballots = Vec::new();
     {
         let mut rng = rand::thread_rng();
@@ -95,9 +103,13 @@ async fn cast_ballots(token: AuthToken<Voter>, election_id: Id,
     // TODO Ensure they expire if not audited or confirmed.
     ballots.insert_many(new_ballots.iter(), None).await?;
 
-    // TODO Return receipt and encrypted ballot IDs.
+    // Return receipts.
+    let receipts = new_ballots
+        .into_iter()
+        .map(|ballot| Receipt::from_ballot(ballot, &election))
+        .collect();
 
-    todo!()
+    Ok(Json(receipts))
 }
 
 #[post("/voter/elections/<election_id>/votes/audit", data = "<ballots>", format = "json")]
@@ -134,13 +146,4 @@ async fn confirm_ballots(token: AuthToken<Voter>, election_id: Id,
 struct BallotSpec {
     pub question: Id,
     pub candidate: String,
-}
-
-/// The response to casting new ballots.
-/// The ballots vector is in the same order as the original input.
-/// The recall string is an encrypted value that allows the user to recall
-/// these ballots in order to audit or confirm them.
-struct BallotResponse {
-    pub ballots: Vec<NewBallot>,
-    pub recall_string: String,
 }

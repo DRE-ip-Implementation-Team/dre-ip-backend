@@ -76,7 +76,7 @@ async fn verify(
     let voter = NewVoter::new(challenge.sms());
 
     let with_sms = doc! {
-        "sms": voter.sms()
+        "sms": &voter.sms
     };
 
     // We need an id to associate with the voter's interactions to ensure for instance that they

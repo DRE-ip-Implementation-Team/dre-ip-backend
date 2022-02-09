@@ -22,7 +22,7 @@ async fn get_voters_groups(
 ) -> Result<Json<Vec<Id>>> {
     let voter = voter_by_token(&token, &voters).await?;
     let groups = voter
-        .election_groups()
+        .election_groups
         .get(&election_id)
         .ok_or_else(|| {
             Error::Status(
