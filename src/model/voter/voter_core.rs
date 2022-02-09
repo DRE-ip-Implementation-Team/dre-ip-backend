@@ -8,11 +8,11 @@ use crate::model::{mongodb::Id, sms::Sms};
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VoterCore {
     /// Voter unique ID: their SMS number.
-    sms: Sms,
+    pub sms: Sms,
     /// Maps election IDs to the IDs of the voter's groups for that election.
-    election_groups: HashMap<Id, Vec<Id>>,
+    pub election_groups: HashMap<Id, Vec<Id>>,
     /// Maps election IDs to the IDs of questions they have confirmed ballots on.
-    election_voted: HashMap<Id, Vec<Id>>,
+    pub election_voted: HashMap<Id, Vec<Id>>,
 }
 
 impl VoterCore {
@@ -23,16 +23,6 @@ impl VoterCore {
             election_groups: HashMap::new(),
             election_voted: HashMap::new(),
         }
-    }
-
-    /// Get the SMS number.
-    pub fn sms(&self) -> &Sms {
-        &self.sms
-    }
-
-    /// Get the election-groups map.
-    pub fn election_groups(&self) -> &HashMap<Id, Vec<Id>> {
-        &self.election_groups
     }
 }
 

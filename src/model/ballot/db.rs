@@ -8,7 +8,7 @@ use crate::model::{
     mongodb::{DbEntity, Id},
 };
 
-use super::ballot_core::{BallotCore, BallotState, FinishedBallot, Unconfirmed};
+use super::ballot_core::{Audited, BallotCore, BallotState, Confirmed, Unconfirmed};
 
 /// A ballot from the database, with its unique ID.
 /// Also contains an election and question ID foreign key.
@@ -59,6 +59,16 @@ impl<S: BallotState> DbEntity for Ballot<S> {
     fn id(&self) -> Id {
         self.id
     }
+}
+
+/// A ballot that is either Confirmed or Audited.
+/// With the untagged representation, `Ballot<Audited>` and
+/// `Ballot<Confirmed>` can both directly deserialize to this type.
+#[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum FinishedBallot {
+    Audited(Ballot<Audited>),
+    Confirmed(Ballot<Confirmed>),
 }
 
 /// Marker trait for types that can be considered a database ballot.
