@@ -3,17 +3,16 @@ use mongodb::{
     options::FindOptions,
 };
 use rocket::{futures::TryStreamExt, http::Status, Route, serde::json::Json};
-use serde::Serialize;
 
 use crate::{
     error::{Error, Result},
     model::{
         admin::Admin,
         auth::AuthToken,
-        ballot::{DbBallot, FinishedBallot, AUDITED, CONFIRMED},
+        ballot::{FinishedBallot, AUDITED, CONFIRMED},
         election::{Election, ElectionMetadata},
         mongodb::{Coll, Id},
-        pagination::{PaginationRequest, PaginationResponse},
+        pagination::{Paginated, PaginationRequest},
     },
 };
 
@@ -98,8 +97,8 @@ async fn election_question_ballots(
     question_id: Id,
     pagination: PaginationRequest,
     ballots: Coll<FinishedBallot>,
-) -> Result<Json<PaginatedBallots<FinishedBallot>>> {
-    let confirmed_ballots_for_election_question = doc! {
+) -> Result<Json<Paginated<FinishedBallot>>> {
+    let filter = doc! {
         "election_id": *election_id,
         "question_id": *question_id,
         "$or": [{"state": AUDITED}, {"state": CONFIRMED}],
@@ -110,18 +109,16 @@ async fn election_question_ballots(
         .limit(i64::from(pagination.page_size()))
         .build();
 
-    let ballots = ballots
-        .find(confirmed_ballots_for_election_question, pagination_options)
+    let ballots_page = ballots
+        .find(filter.clone(), pagination_options)
         .await?
         .try_collect::<Vec<_>>()
         .await?;
 
-    let pagination_result = pagination.into_response(ballots.len());
+    let total_ballots = ballots.count_documents(filter, None).await?;
 
-    Ok(Json(PaginatedBallots {
-        ballots,
-        pagination_result,
-    }))
+    let paginated = pagination.to_paginated(total_ballots, ballots_page);
+    Ok(Json(paginated))
 }
 
 #[get("/elections/<election_id>/<question_id>/ballots/<ballot_id>")]
@@ -160,13 +157,6 @@ async fn elections_matching(
 ) -> Result<Json<Vec<ElectionMetadata>>> {
     let elections = elections.find(filter, None).await?.try_collect().await?;
     Ok(Json(elections))
-}
-
-#[derive(Serialize)]
-pub struct PaginatedBallots<B: DbBallot> {
-    ballots: Vec<B>,
-    #[serde(flatten)]
-    pagination_result: PaginationResponse,
 }
 
 #[cfg(test)]

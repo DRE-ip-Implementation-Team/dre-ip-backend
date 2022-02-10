@@ -90,8 +90,3 @@ pub enum FinishedBallot {
     Audited(Ballot<Audited>),
     Confirmed(Ballot<Confirmed>),
 }
-
-/// Marker trait for types that can be considered a database ballot.
-pub trait DbBallot {}
-impl<S: BallotState> DbBallot for Ballot<S> {}
-impl DbBallot for FinishedBallot {}
