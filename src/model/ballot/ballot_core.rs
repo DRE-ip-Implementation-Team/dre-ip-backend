@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use dre_ip::{Ballot as DreipBallot, CandidateTotals, Vote as DreipVote};
-use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
 
 use crate::model::election::{CandidateID, DreipGroup};
@@ -30,7 +30,10 @@ impl BallotCore<Unconfirmed> {
     }
 
     /// Confirm this ballot, incrementing the `CandidateTotals` if given.
-    pub fn confirm<'a>(self, totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>) -> BallotCore<Confirmed> {
+    pub fn confirm<'a>(
+        self,
+        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>,
+    ) -> BallotCore<Confirmed> {
         BallotCore {
             crypto: self.crypto.confirm(totals.into()),
             state: Confirmed,
@@ -47,7 +50,9 @@ pub trait BallotState: Copy + AsRef<[u8]> {
     /// secrets in the receipt)?
     type ReceiptVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone;
     /// Convert internal representation into receipt representation.
-    fn internal_to_receipt(internal: BallotCrypto<Self::InternalVote>) -> BallotCrypto<Self::ReceiptVote>;
+    fn internal_to_receipt(
+        internal: BallotCrypto<Self::InternalVote>,
+    ) -> BallotCrypto<Self::ReceiptVote>;
 }
 
 /// Marker type for unconfirmed ballots.
@@ -67,7 +72,9 @@ impl BallotState for Unconfirmed {
     type InternalVote = dre_ip::election::UnconfirmedVote<DreipGroup>;
     type ReceiptVote = dre_ip::election::ConfirmedVote<DreipGroup>;
 
-    fn internal_to_receipt(internal: BallotCrypto<Self::InternalVote>) -> BallotCrypto<Self::ReceiptVote> {
+    fn internal_to_receipt(
+        internal: BallotCrypto<Self::InternalVote>,
+    ) -> BallotCrypto<Self::ReceiptVote> {
         internal.confirm(None)
     }
 }
@@ -89,7 +96,9 @@ impl BallotState for Audited {
     type InternalVote = dre_ip::election::UnconfirmedVote<DreipGroup>;
     type ReceiptVote = dre_ip::election::UnconfirmedVote<DreipGroup>;
 
-    fn internal_to_receipt(internal: BallotCrypto<Self::InternalVote>) -> BallotCrypto<Self::ReceiptVote> {
+    fn internal_to_receipt(
+        internal: BallotCrypto<Self::InternalVote>,
+    ) -> BallotCrypto<Self::ReceiptVote> {
         internal
     }
 }
@@ -111,7 +120,9 @@ impl BallotState for Confirmed {
     type InternalVote = dre_ip::election::ConfirmedVote<DreipGroup>;
     type ReceiptVote = dre_ip::election::ConfirmedVote<DreipGroup>;
 
-    fn internal_to_receipt(internal: BallotCrypto<Self::InternalVote>) -> BallotCrypto<Self::ReceiptVote> {
+    fn internal_to_receipt(
+        internal: BallotCrypto<Self::InternalVote>,
+    ) -> BallotCrypto<Self::ReceiptVote> {
         internal
     }
 }

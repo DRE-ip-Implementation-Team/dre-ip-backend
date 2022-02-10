@@ -30,11 +30,19 @@ pub struct Ballot<S: BallotState> {
 
 impl Ballot<Unconfirmed> {
     /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
-    pub fn new(election_id: Id, question_id: Id, yes_candidate: CandidateID,
-               no_candidates: impl IntoIterator<Item = CandidateID>,
-               election: &Election, rng: impl RngCore + CryptoRng) -> Option<Self> {
+    pub fn new(
+        election_id: Id,
+        question_id: Id,
+        yes_candidate: CandidateID,
+        no_candidates: impl IntoIterator<Item = CandidateID>,
+        election: &Election,
+        rng: impl RngCore + CryptoRng,
+    ) -> Option<Self> {
         let id = Id::new();
-        let crypto = election.crypto.create_ballot(rng, id.to_bytes(), yes_candidate, no_candidates)?;
+        let crypto =
+            election
+                .crypto
+                .create_ballot(rng, id.to_bytes(), yes_candidate, no_candidates)?;
         let ballot = BallotCore {
             crypto,
             state: Unconfirmed,
@@ -57,7 +65,10 @@ impl Ballot<Unconfirmed> {
         }
     }
 
-    pub fn confirm<'a>(self, totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>) -> Ballot<Confirmed> {
+    pub fn confirm<'a>(
+        self,
+        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>,
+    ) -> Ballot<Confirmed> {
         Ballot {
             id: self.id,
             election_id: self.election_id,

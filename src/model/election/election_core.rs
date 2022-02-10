@@ -6,10 +6,10 @@ use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{Id, serde_string_map};
+use crate::model::mongodb::{serde_string_map, Id};
 
-use super::{CandidateID, DreipGroup, QuestionID};
 use super::groups::Electorate;
+use super::{CandidateID, DreipGroup, QuestionID};
 
 /// Core election data, as stored in the database.
 #[derive(Serialize, Deserialize)]
@@ -41,7 +41,7 @@ impl ElectionCore {
                 &metadata.start_time.timestamp().to_le_bytes(),
                 &metadata.end_time.timestamp().to_le_bytes(),
             ],
-            rng
+            rng,
         );
 
         Self {
@@ -53,18 +53,19 @@ impl ElectionCore {
     }
 
     /// Get a question by ID.
-    pub fn question_totals(&mut self, question_id: Id) -> Option<HashMap<CandidateID, &mut CandidateTotals<DreipGroup>>> {
-        self.questions
-            .get_mut(&question_id)
-            .map(|question| {
-                let mut map = HashMap::with_capacity(question.candidates.len());
+    pub fn question_totals(
+        &mut self,
+        question_id: Id,
+    ) -> Option<HashMap<CandidateID, &mut CandidateTotals<DreipGroup>>> {
+        self.questions.get_mut(&question_id).map(|question| {
+            let mut map = HashMap::with_capacity(question.candidates.len());
 
-                for candidate in question.candidates.iter_mut() {
-                    map.insert(candidate.name.clone(), &mut candidate.totals);
-                }
+            for candidate in question.candidates.iter_mut() {
+                map.insert(candidate.name.clone(), &mut candidate.totals);
+            }
 
-                map
-            })
+            map
+        })
     }
 }
 

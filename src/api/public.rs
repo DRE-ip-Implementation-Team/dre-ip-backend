@@ -2,7 +2,7 @@ use mongodb::{
     bson::{doc, Document},
     options::FindOptions,
 };
-use rocket::{futures::TryStreamExt, http::Status, Route, serde::json::Json};
+use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route};
 
 use crate::{
     error::{Error, Result},

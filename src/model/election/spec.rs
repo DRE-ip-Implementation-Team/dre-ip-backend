@@ -21,7 +21,8 @@ pub struct ElectionSpec {
 
 impl From<ElectionSpec> for ElectionCore {
     fn from(spec: ElectionSpec) -> Self {
-        let electorates = spec.electorates
+        let electorates = spec
+            .electorates
             .into_iter()
             .map(|electorate| (electorate.name.clone(), electorate))
             .collect();

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    mongodb::{Id, serde_string_map},
+    mongodb::{serde_string_map, Id},
     sms::Sms,
 };
 
