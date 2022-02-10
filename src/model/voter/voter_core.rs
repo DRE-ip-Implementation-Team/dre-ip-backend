@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{mongodb::Id, sms::Sms};
+use crate::model::{
+    mongodb::{Id, serde_string_map},
+    sms::Sms,
+};
 
 /// Core voter user data, as stored in the database.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -10,8 +13,10 @@ pub struct VoterCore {
     /// Voter unique ID: their SMS number.
     pub sms: Sms,
     /// Maps election IDs to the IDs of the voter's groups for that election.
+    #[serde(with = "serde_string_map")]
     pub election_groups: HashMap<Id, Vec<Id>>,
     /// Maps election IDs to the IDs of questions they have confirmed ballots on.
+    #[serde(with = "serde_string_map")]
     pub election_voted: HashMap<Id, Vec<Id>>,
 }
 

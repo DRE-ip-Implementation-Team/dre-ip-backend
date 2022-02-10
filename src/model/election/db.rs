@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
@@ -11,9 +11,9 @@ use super::election_core::ElectionCore;
 #[serde(rename_all = "camelCase")]
 pub struct Election {
     #[serde(rename = "_id")]
-    id: Id,
+    pub id: Id,
     #[serde(flatten)]
-    election: ElectionCore,
+    pub election: ElectionCore,
 }
 
 impl Deref for Election {
@@ -21,6 +21,12 @@ impl Deref for Election {
 
     fn deref(&self) -> &Self::Target {
         &self.election
+    }
+}
+
+impl DerefMut for Election {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.election
     }
 }
 

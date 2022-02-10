@@ -1,16 +1,18 @@
-use dre_ip::group::{DreipPrivateKey, Serializable};
+use dre_ip::group::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    election::Election,
+    election::{DreipGroup, Election},
     mongodb::Id,
 };
 
 use super::ballot_core::{BallotCrypto, BallotState};
 use super::db::Ballot;
 
+pub type Signature = <DreipGroup as DreipGroupTrait>::Signature;
+
 /// A receipt. Audited receipts will contain the secret values; any other type will not.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Receipt<S: BallotState> {
     /// The cryptographic data.
     #[serde(flatten)]
@@ -20,7 +22,8 @@ pub struct Receipt<S: BallotState> {
     /// The current state of the ballot.
     pub state: S,
     /// The signature.
-    pub signature: Vec<u8>,
+    #[serde(with = "dre_ip::group::serde_bytestring")]
+    pub signature: Signature,
 }
 
 impl<S: BallotState> Receipt<S> {
@@ -34,7 +37,7 @@ impl<S: BallotState> Receipt<S> {
         let mut msg = crypto.to_bytes();
         msg.extend(ballot.id.to_bytes());
         msg.extend(ballot.ballot.state.as_ref());
-        let signature = election.crypto.private_key.sign(&msg).to_bytes();
+        let signature = election.crypto.private_key.sign(&msg);
 
         // Construct the result.
         Self {

@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 
+use dre_ip::CandidateTotals;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    election::{CandidateID, Election},
+    election::{CandidateID, DreipGroup, Election},
     mongodb::{DbEntity, Id},
 };
 
@@ -12,7 +14,7 @@ use super::ballot_core::{Audited, BallotCore, BallotState, Confirmed, Unconfirme
 
 /// A ballot from the database, with its unique ID.
 /// Also contains an election and question ID foreign key.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Ballot<S: BallotState> {
     #[serde(rename = "_id")]
@@ -45,6 +47,24 @@ impl Ballot<Unconfirmed> {
             ballot,
         })
     }
+
+    pub fn audit(self) -> Ballot<Audited> {
+        Ballot {
+            id: self.id,
+            election_id: self.election_id,
+            question_id: self.question_id,
+            ballot: self.ballot.audit(),
+        }
+    }
+
+    pub fn confirm<'a>(self, totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>) -> Ballot<Confirmed> {
+        Ballot {
+            id: self.id,
+            election_id: self.election_id,
+            question_id: self.question_id,
+            ballot: self.ballot.confirm(totals),
+        }
+    }
 }
 
 impl<S: BallotState> Deref for Ballot<S> {
@@ -64,7 +84,7 @@ impl<S: BallotState> DbEntity for Ballot<S> {
 /// A ballot that is either Confirmed or Audited.
 /// With the untagged representation, `Ballot<Audited>` and
 /// `Ballot<Confirmed>` can both directly deserialize to this type.
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum FinishedBallot {
     Audited(Ballot<Audited>),

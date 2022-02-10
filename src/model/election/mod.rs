@@ -1,6 +1,6 @@
 pub use db::Election;
 pub use election_core::{Candidate, ElectionMetadata, Question};
-pub use groups::{Electorate, Group};
+pub use groups::Electorate;
 pub use spec::{ElectionSpec, QuestionSpec};
 
 mod db;
