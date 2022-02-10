@@ -1,4 +1,6 @@
-use std::{ops::Deref, str::FromStr};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::Deref;
+use std::str::FromStr;
 
 use mongodb::bson::oid::ObjectId;
 use rocket::{
@@ -18,7 +20,7 @@ pub trait DbEntity {
 }
 
 /// A unique ID for an object in the database.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(ObjectId);
 
 impl Id {
@@ -38,6 +40,24 @@ impl Deref for Id {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Debug for Id {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+impl Display for Id {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<Id> for String {
+    fn from(id: Id) -> Self {
+        id.to_string()
     }
 }
 
@@ -95,3 +115,45 @@ impl UriDisplay<Path> for Id {
 }
 
 impl_from_uri_param_identity!([Path] Id);
+
+/// Serde (de)serialization for HashMap<K, V> as HashMap<String, V> where K implements
+/// both ToString and FromStr. Use via the attribute `#[serde(with = ...)]`.
+/// This is useful for BSON, since document keys must be strings but we may want
+/// to use different key types internally.
+/// In other words, any `HashMap<K, V>` we want to store in mongodb must either
+/// have `K = String` or be annotated with this module.
+pub mod serde_string_map {
+    use std::collections::HashMap;
+    use std::hash::Hash;
+
+    use super::*;
+
+    pub fn serialize<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            K: ToString,
+            V: Serialize,
+            S: serde::Serializer,
+    {
+        let string_map = map
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect::<HashMap<_, _>>();
+
+        serde::Serialize::serialize(&string_map, serializer)
+    }
+
+    pub fn deserialize<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
+        where
+            K: FromStr + Eq + Hash,
+            V: Deserialize<'de>,
+            D: serde::Deserializer<'de>,
+    {
+        HashMap::<String, V>::deserialize(deserializer)
+            .and_then(|string_map| string_map
+                .into_iter()
+                .map(|(s, v)| s.parse().map(|k| (k, v)))
+                .collect::<Result<_, _>>()
+                .map_err(|_| serde::de::Error::custom("failed to parse key"))
+            )
+    }
+}

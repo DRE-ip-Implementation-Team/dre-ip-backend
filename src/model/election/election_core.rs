@@ -1,12 +1,14 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use dre_ip::{CandidateTotals, Election as DreipElection};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{mongodb::Id};
+use crate::model::mongodb::{Id, serde_string_map};
 
-use super::DreipGroup;
+use super::{CandidateID, DreipGroup, QuestionID};
 use super::groups::Electorate;
 
 /// Core election data, as stored in the database.
@@ -17,9 +19,10 @@ pub struct ElectionCore {
     #[serde(flatten)]
     pub metadata: ElectionMetadata,
     /// Election electorates.
-    pub electorates: Vec<Electorate>,
+    pub electorates: HashMap<String, Electorate>,
     /// Election questions.
-    pub questions: Vec<Question>,
+    #[serde(with = "serde_string_map")]
+    pub questions: HashMap<QuestionID, Question>,
     /// Election cryptographic configuration.
     pub crypto: DreipElection<DreipGroup>,
 }
@@ -28,8 +31,8 @@ impl ElectionCore {
     /// Create a new election.
     pub fn new(
         metadata: ElectionMetadata,
-        electorates: Vec<Electorate>,
-        questions: Vec<Question>,
+        electorates: HashMap<String, Electorate>,
+        questions: HashMap<QuestionID, Question>,
         rng: impl RngCore + CryptoRng,
     ) -> Self {
         let crypto = DreipElection::new(
@@ -50,8 +53,18 @@ impl ElectionCore {
     }
 
     /// Get a question by ID.
-    pub fn question(&self, question_id: Id) -> Option<&Question> {
-        self.questions.iter().find(|q| q.id == question_id)
+    pub fn question_totals(&mut self, question_id: Id) -> Option<HashMap<CandidateID, &mut CandidateTotals<DreipGroup>>> {
+        self.questions
+            .get_mut(&question_id)
+            .map(|question| {
+                let mut map = HashMap::with_capacity(question.candidates.len());
+
+                for candidate in question.candidates.iter_mut() {
+                    map.insert(candidate.name.clone(), &mut candidate.totals);
+                }
+
+                map
+            })
     }
 }
 

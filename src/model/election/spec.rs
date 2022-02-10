@@ -21,9 +21,13 @@ pub struct ElectionSpec {
 
 impl From<ElectionSpec> for ElectionCore {
     fn from(spec: ElectionSpec) -> Self {
+        let electorates = spec.electorates
+            .into_iter()
+            .map(|electorate| (electorate.name.clone(), electorate))
+            .collect();
         Self::new(
             spec.metadata,
-            spec.electorates,
+            electorates,
             spec.questions.into_iter().map(QuestionSpec::into).collect(),
             rand::thread_rng(),
         )
@@ -53,14 +57,17 @@ pub struct QuestionSpec {
     pub candidates: Vec<String>,
 }
 
-impl From<QuestionSpec> for Question {
+impl From<QuestionSpec> for (Id, Question) {
     fn from(spec: QuestionSpec) -> Self {
-        Self {
-            id: Id::new(),
+        let id = Id::new();
+        let question = Question {
+            id,
             description: spec.description,
             groups: spec.groups,
             candidates: spec.candidates.into_iter().map(Candidate::new).collect(),
-        }
+        };
+
+        (id, question)
     }
 }
 

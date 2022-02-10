@@ -10,7 +10,7 @@ use crate::model::election::{CandidateID, DreipGroup};
 pub type BallotCrypto<V> = DreipBallot<CandidateID, DreipGroup, V>;
 
 /// Core ballot data, as stored in the database.
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename = "camelCase")]
 pub struct BallotCore<S: BallotState> {
     /// The cryptographic data.
@@ -30,9 +30,9 @@ impl BallotCore<Unconfirmed> {
     }
 
     /// Confirm this ballot, incrementing the `CandidateTotals` if given.
-    pub fn confirm(self, totals: Option<&mut HashMap<CandidateID, CandidateTotals<DreipGroup>>>) -> BallotCore<Confirmed> {
+    pub fn confirm<'a>(self, totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>) -> BallotCore<Confirmed> {
         BallotCore {
-            crypto: self.crypto.confirm(totals),
+            crypto: self.crypto.confirm(totals.into()),
             state: Confirmed,
         }
     }
@@ -42,10 +42,10 @@ impl BallotCore<Unconfirmed> {
 /// if and only if the ballot is unconfirmed or audited.
 pub trait BallotState: Copy + AsRef<[u8]> {
     /// Is this state represented internally by a ConfirmedVote or an UnconfirmedVote?
-    type InternalVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned;
+    type InternalVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone;
     /// Do we show the user a ConfirmedVote or an UnconfirmedVote (do we reveal the
     /// secrets in the receipt)?
-    type ReceiptVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned;
+    type ReceiptVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone;
     /// Convert internal representation into receipt representation.
     fn internal_to_receipt(internal: BallotCrypto<Self::InternalVote>) -> BallotCrypto<Self::ReceiptVote>;
 }
