@@ -5,9 +5,9 @@ use serde::Serialize;
 #[derive(UriDisplayQuery)]
 pub struct PaginationRequest {
     /// Which page is this?
-    page_num: u32,
+    pub page_num: u32,
     /// How big is each page?
-    page_size: u32,
+    pub page_size: u32,
 }
 
 impl PaginationRequest {
@@ -30,11 +30,19 @@ impl PaginationRequest {
     }
 
     /// Convert into a response with the given total.
-    pub fn into_response(self, total: usize) -> PaginationResponse {
+    pub fn to_response(&self, total: u64) -> PaginationResponse {
         PaginationResponse {
             page_num: self.page_num,
             page_size: self.page_size,
             total,
+        }
+    }
+
+    /// Convert into a response with the given total and items.
+    pub fn to_paginated<T>(&self, total: u64, items: Vec<T>) -> Paginated<T> {
+        Paginated {
+            items,
+            pagination: self.to_response(total),
         }
     }
 }
@@ -103,9 +111,16 @@ impl<'r> FromForm<'r> for PaginationRequest {
 #[derive(Serialize)]
 pub struct PaginationResponse {
     /// Which page is this?
-    page_num: u32,
+    pub page_num: u32,
     /// How big is each page?
-    page_size: u32,
+    pub page_size: u32,
     /// How many items are there in total?
-    total: usize,
+    pub total: u64,
+}
+
+/// A paginated vector of T, with pagination metadata.
+#[derive(Serialize)]
+pub struct Paginated<T> {
+    items: Vec<T>,
+    pagination: PaginationResponse,
 }
