@@ -28,8 +28,7 @@ pub struct Receipt<S: BallotState> {
 
 impl<S: BallotState> Receipt<S> {
     /// Construct a receipt from the given ballot.
-    pub fn from_ballot(ballot: Ballot<S>,
-                       election: &Election) -> Self {
+    pub fn from_ballot(ballot: Ballot<S>, election: &Election) -> Self {
         // Convert the ballot from internal to receipt representation.
         let crypto = S::internal_to_receipt(ballot.ballot.crypto);
 

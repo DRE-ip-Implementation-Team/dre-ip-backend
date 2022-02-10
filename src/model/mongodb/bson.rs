@@ -129,10 +129,10 @@ pub mod serde_string_map {
     use super::*;
 
     pub fn serialize<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            K: ToString,
-            V: Serialize,
-            S: serde::Serializer,
+    where
+        K: ToString,
+        V: Serialize,
+        S: serde::Serializer,
     {
         let string_map = map
             .into_iter()
@@ -143,17 +143,17 @@ pub mod serde_string_map {
     }
 
     pub fn deserialize<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
-        where
-            K: FromStr + Eq + Hash,
-            V: Deserialize<'de>,
-            D: serde::Deserializer<'de>,
+    where
+        K: FromStr + Eq + Hash,
+        V: Deserialize<'de>,
+        D: serde::Deserializer<'de>,
     {
-        HashMap::<String, V>::deserialize(deserializer)
-            .and_then(|string_map| string_map
+        HashMap::<String, V>::deserialize(deserializer).and_then(|string_map| {
+            string_map
                 .into_iter()
                 .map(|(s, v)| s.parse().map(|k| (k, v)))
                 .collect::<Result<_, _>>()
                 .map_err(|_| serde::de::Error::custom("failed to parse key"))
-            )
+        })
     }
 }
