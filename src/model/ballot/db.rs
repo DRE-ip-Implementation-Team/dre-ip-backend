@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
+use chrono::{DateTime, Utc};
 use dre_ip::CandidateTotals;
+use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +25,9 @@ pub struct Ballot<S: BallotState> {
     pub election_id: Id,
     /// Foreign Key question ID.
     pub question_id: Id,
+    /// Ballot creation time, used to automatically expire unconfirmed votes.
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub creation_time: DateTime<Utc>,
     /// Ballot contents.
     #[serde(flatten)]
     pub ballot: BallotCore<S>,
@@ -39,6 +44,7 @@ impl Ballot<Unconfirmed> {
         rng: impl RngCore + CryptoRng,
     ) -> Option<Self> {
         let id = Id::new();
+        let creation_time = Utc::now();
         let crypto =
             election
                 .crypto
@@ -52,6 +58,7 @@ impl Ballot<Unconfirmed> {
             id,
             election_id,
             question_id,
+            creation_time,
             ballot,
         })
     }
@@ -61,6 +68,7 @@ impl Ballot<Unconfirmed> {
             id: self.id,
             election_id: self.election_id,
             question_id: self.question_id,
+            creation_time: self.creation_time,
             ballot: self.ballot.audit(),
         }
     }
@@ -73,6 +81,7 @@ impl Ballot<Unconfirmed> {
             id: self.id,
             election_id: self.election_id,
             question_id: self.question_id,
+            creation_time: self.creation_time,
             ballot: self.ballot.confirm(totals),
         }
     }
