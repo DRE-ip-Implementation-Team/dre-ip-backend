@@ -25,6 +25,7 @@ pub struct Id(ObjectId);
 
 impl Id {
     /// Generate a random ID.
+    #[allow(clippy::new_without_default)] // A non-deterministic default would be odd.
     pub fn new() -> Self {
         Id(ObjectId::new())
     }
@@ -135,7 +136,7 @@ pub mod serde_string_map {
         S: serde::Serializer,
     {
         let string_map = map
-            .into_iter()
+            .iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect::<HashMap<_, _>>();
 

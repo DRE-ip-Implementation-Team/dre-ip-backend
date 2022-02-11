@@ -36,7 +36,7 @@ async fn get_confirmed(
         .election_voted
         .get(&election_id)
         .cloned()
-        .unwrap_or_else(|| Vec::new());
+        .unwrap_or_else(Vec::new);
 
     Ok(Json(confirmed))
 }
@@ -175,6 +175,7 @@ async fn audit_ballots(
     data = "<ballot_recalls>",
     format = "json"
 )]
+#[allow(clippy::too_many_arguments)]
 async fn confirm_ballots(
     token: AuthToken<Voter>,
     election_id: Id,
@@ -296,7 +297,7 @@ async fn recall_ballots(
                 // Verify ownership of the ballot. If this fails, we return
                 // an error indistinguishable from the ballot ID not existing,
                 // so an attacker cannot learn anything about valid ballot IDs.
-                let true_signature = Receipt::from_ballot(ballot.clone(), &election).signature;
+                let true_signature = Receipt::from_ballot(ballot.clone(), election).signature;
                 if true_signature == recall.signature {
                     Some(ballot)
                 } else {
