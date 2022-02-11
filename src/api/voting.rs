@@ -17,13 +17,13 @@ use crate::model::{
 use super::common::{active_election_by_id, voter_by_token};
 
 pub fn routes() -> Vec<Route> {
-    routes![get_confirmed, cast_ballots, audit_ballots, confirm_ballots]
+    routes![get_allowed, cast_ballots, audit_ballots, confirm_ballots]
 }
 
 // TODO: ensure everything is concurrency-safe with transactions.
 
-#[get("/voter/elections/<election_id>/questions/confirmed")]
-async fn get_confirmed(
+#[get("/voter/elections/<election_id>/questions/allowed")]
+async fn get_allowed(
     token: AuthToken<Voter>,
     election_id: Id,
     voters: Coll<Voter>,
@@ -31,14 +31,14 @@ async fn get_confirmed(
     // Get the voter.
     let voter = voter_by_token(&token, &voters).await?;
 
-    // Find what they've voted for.
-    let confirmed = voter
-        .election_voted
+    // Find what questions they can still vote for.
+    let allowed = voter
+        .allowed_questions
         .get(&election_id)
         .cloned()
         .unwrap_or_else(Vec::new);
 
-    Ok(Json(confirmed))
+    Ok(Json(allowed))
 }
 
 #[post(
@@ -194,20 +194,21 @@ async fn confirm_ballots(
     // Update DB.
     let mut new_ballots = Vec::with_capacity(recalled_ballots.len());
     for ballot in recalled_ballots {
-        // Check that the user has not already voted on these questions.
-        // TODO check group membership as well
+        // Check that the user is eligible to vote on this question.
         let filter = doc! {
             "_id": *token.id(),
-            "election_voted": {
+            "allowed_questions": {
                 election_id: {
-                    "$nin": [*ballot.question_id],
+                    "$in": [*ballot.question_id],
                 },
             },
         };
         let update = doc! {
-            "$push": {
+            "$pull": {
                 "election_voted": {
-                    election_id: [*ballot.question_id],
+                    election_id: {
+                        "$eq": *ballot.question_id,
+                    },
                 },
             },
         };
@@ -216,7 +217,7 @@ async fn confirm_ballots(
             return Err(Error::Status(
                 Status::BadRequest,
                 format!(
-                    "Voter {:?} does not exist or has already voted on {:?}",
+                    "Voter {:?} does not exist or cannot vote on {:?}",
                     token.id(),
                     ballot.question_id
                 ),
