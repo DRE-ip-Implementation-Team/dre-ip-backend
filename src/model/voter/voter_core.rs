@@ -12,13 +12,11 @@ use crate::model::{
 pub struct VoterCore {
     /// Voter unique ID: their SMS number.
     pub sms: Sms,
-    /// Maps election IDs to the IDs of the voter's groups for that election.
-    // TODO combine with `election_voted` by precomputing allowed questions.
+    /// Maps election IDs to the IDs of questions the voter can answer for that election.
+    /// This is populated according to their group constraints when they join groups,
+    /// and depleted as they vote.
     #[serde(with = "serde_string_map")]
-    pub election_groups: HashMap<Id, Vec<Id>>,
-    /// Maps election IDs to the IDs of questions they have confirmed ballots on.
-    #[serde(with = "serde_string_map")]
-    pub election_voted: HashMap<Id, Vec<Id>>,
+    pub allowed_questions: HashMap<Id, Vec<Id>>,
 }
 
 impl VoterCore {
@@ -26,8 +24,7 @@ impl VoterCore {
     pub fn new(sms: Sms) -> Self {
         Self {
             sms,
-            election_groups: HashMap::new(),
-            election_voted: HashMap::new(),
+            allowed_questions: HashMap::new(),
         }
     }
 }
@@ -41,8 +38,7 @@ mod examples {
         pub fn example() -> Self {
             Self {
                 sms: Sms::example(),
-                election_groups: HashMap::new(),
-                election_voted: HashMap::new(),
+                allowed_questions: HashMap::new(),
             }
         }
     }
