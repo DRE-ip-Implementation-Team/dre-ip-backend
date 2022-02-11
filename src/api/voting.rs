@@ -113,7 +113,6 @@ async fn cast_ballots(
     }
 
     // Insert ballots into DB within a transaction, so this entire endpoint is atomic.
-    // TODO Ensure they expire if not audited or confirmed.
     {
         let mut session = db_client.start_session(None).await?;
         session.start_transaction(None).await?;
