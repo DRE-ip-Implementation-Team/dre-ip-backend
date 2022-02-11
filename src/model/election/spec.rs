@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::model::election::election_core::Candidate;
 use crate::model::mongodb::Id;
 
 use super::election_core::{ElectionCore, ElectionMetadata, Question};
@@ -65,7 +64,7 @@ impl From<QuestionSpec> for (Id, Question) {
             id,
             description: spec.description,
             groups: spec.groups,
-            candidates: spec.candidates.into_iter().map(Candidate::new).collect(),
+            candidates: spec.candidates,
         };
 
         (id, question)

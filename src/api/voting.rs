@@ -1,11 +1,14 @@
+use std::collections::HashMap;
+
 use mongodb::bson::doc;
-use rocket::{http::Status, serde::json::Json, Route};
+use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::model::{
     auth::AuthToken,
     ballot::{Audited, Ballot, Confirmed, Receipt, Signature, Unconfirmed, UNCONFIRMED},
+    candidate_totals::CandidateTotals,
     election::Election,
     mongodb::{Coll, Id},
     voter::Voter,
@@ -14,7 +17,7 @@ use crate::model::{
 use super::common::{active_election_by_id, voter_by_token};
 
 pub fn routes() -> Vec<Route> {
-    routes![get_confirmed, cast_ballots, audit_ballots, confirm_ballots,]
+    routes![get_confirmed, cast_ballots, audit_ballots, confirm_ballots]
 }
 
 // TODO: ensure everything is concurrency-safe with transactions.
@@ -56,7 +59,7 @@ async fn cast_ballots(
     // Ensure that the questions and candidates exist.
     for ballot_spec in ballot_specs.0.iter() {
         if let Some(question) = election.questions.get(&ballot_spec.question) {
-            if question.candidate(&ballot_spec.candidate).is_none() {
+            if !question.candidates.contains(&ballot_spec.candidate) {
                 return Err(Error::Status(
                     Status::NotFound,
                     format!(
@@ -85,8 +88,8 @@ async fn cast_ballots(
             let no_candidates = question
                 .candidates
                 .iter()
-                .map(|c| c.name.clone())
-                .filter(|name| name != &yes_candidate)
+                .filter(|name| name != &&yes_candidate)
+                .cloned()
                 .collect::<Vec<_>>();
             // Sanity check.
             assert_eq!(question.candidates.len() - 1, no_candidates.len());
@@ -180,9 +183,10 @@ async fn confirm_ballots(
     elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     confirmed_ballots: Coll<Ballot<Confirmed>>,
+    candidate_totals: Coll<CandidateTotals>,
 ) -> Result<Json<Vec<Receipt<Confirmed>>>> {
     // Get the election and ballots.
-    let mut election = active_election_by_id(election_id, &elections).await?;
+    let election = active_election_by_id(election_id, &elections).await?;
     let recalled_ballots =
         recall_ballots(ballot_recalls.0, &unconfirmed_ballots, &election).await?;
 
@@ -190,6 +194,7 @@ async fn confirm_ballots(
     let mut new_ballots = Vec::with_capacity(recalled_ballots.len());
     for ballot in recalled_ballots {
         // Check that the user has not already voted on these questions.
+        // TODO check group membership as well
         let filter = doc! {
             "_id": *token.id(),
             "election_voted": {
@@ -217,12 +222,25 @@ async fn confirm_ballots(
             ));
         }
 
-        // TODO refresh election and initiate transaction.
-        // TODO is there a better way to store candidate totals? This feels dodgy even if we add transactions.
+        // Get candidate totals.
+        let filter = doc! {
+            "election_id": *election_id,
+            "question_id": *ballot.question_id,
+        };
+        let mut totals = candidate_totals
+            .find(filter, None)
+            .await?
+            .try_collect::<Vec<_>>()
+            .await?;
+        assert_eq!(totals.len(), ballot.crypto.votes.len());
+        // Convert to hashmap.
+        let mut totals_map = totals
+            .iter_mut()
+            .map(|t| (t.candidate_name.clone(), &mut t.totals.totals))
+            .collect::<HashMap<_, _>>();
 
         // Confirm ballot.
-        let mut totals = election.question_totals(ballot.question_id).unwrap(); // A question must exist to cast a ballot on it in the first place.
-        let confirmed = ballot.confirm(&mut totals);
+        let confirmed = ballot.confirm(&mut totals_map);
         let filter = doc! {
             "_id": *confirmed.id,
             "election_id": *election_id,
@@ -232,14 +250,18 @@ async fn confirm_ballots(
         let result = confirmed_ballots
             .replace_one(filter, &confirmed, None)
             .await?;
-        // Sanity check.
-        assert_eq!(result.matched_count, 1);
         assert_eq!(result.modified_count, 1);
 
         // Write updated candidate totals.
-        elections
-            .replace_one(doc! {"_id": *election_id}, &election, None)
-            .await?;
+        for t in totals {
+            let filter = doc! {
+                "election_id": *election_id,
+                "question_id": *confirmed.question_id,
+                "candidate_name": t.candidate_name.clone(),
+            };
+            let result = candidate_totals.replace_one(filter, t, None).await?;
+            assert_eq!(result.modified_count, 1);
+        }
 
         new_ballots.push(confirmed);
     }

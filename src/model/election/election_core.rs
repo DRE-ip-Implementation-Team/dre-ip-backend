@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use dre_ip::{CandidateTotals, Election as DreipElection};
+use dre_ip::Election as DreipElection;
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -51,22 +51,6 @@ impl ElectionCore {
             crypto,
         }
     }
-
-    /// Get a question by ID.
-    pub fn question_totals(
-        &mut self,
-        question_id: Id,
-    ) -> Option<HashMap<CandidateID, &mut CandidateTotals<DreipGroup>>> {
-        self.questions.get_mut(&question_id).map(|question| {
-            let mut map = HashMap::with_capacity(question.candidates.len());
-
-            for candidate in question.candidates.iter_mut() {
-                map.insert(candidate.name.clone(), &mut candidate.totals);
-            }
-
-            map
-        })
-    }
 }
 
 /// A view on just the election's top-level metadata.
@@ -96,48 +80,5 @@ pub struct Question {
     /// A voter must be in at least one of these groups to vote on this question.
     pub groups: Vec<Id>,
     /// Candidates / possible answers for this question.
-    pub candidates: Vec<Candidate>,
-}
-
-impl Question {
-    /// Get a candidate by name.
-    pub fn candidate(&self, candidate_name: &str) -> Option<&Candidate> {
-        self.candidates.iter().find(|c| c.name == candidate_name)
-    }
-}
-
-/// A candidate: a possible answer to a specific question.
-#[derive(Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
-pub struct Candidate {
-    /// User-facing name, also acts as a unique identifier.
-    pub name: String,
-    /// Cryptographic totals.
-    #[serde(flatten)]
-    pub totals: CandidateTotals<DreipGroup>,
-}
-
-impl Candidate {
-    /// Create a new candidate from their name.
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            totals: CandidateTotals::default(),
-        }
-    }
-}
-
-/// Example data for tests.
-#[cfg(test)]
-mod examples {
-    use super::*;
-
-    impl Candidate {
-        pub fn example() -> Self {
-            Self {
-                name: "Chris Riches".to_string(),
-                totals: CandidateTotals::default(),
-            }
-        }
-    }
+    pub candidates: Vec<CandidateID>,
 }
