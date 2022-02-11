@@ -55,7 +55,6 @@ impl ElectionCore {
 
 /// A view on just the election's top-level metadata.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ElectionMetadata {
     /// Election name.
     pub name: String,

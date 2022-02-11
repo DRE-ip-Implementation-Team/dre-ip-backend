@@ -8,7 +8,6 @@ use super::admin_core::AdminCore;
 
 /// An admin user from the database, with its unique ID.
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Admin {
     #[serde(rename = "_id")]
     id: Id,

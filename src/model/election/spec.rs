@@ -7,7 +7,6 @@ use super::groups::Electorate;
 
 /// An election specification.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ElectionSpec {
     /// Top-level metadata.
     #[serde(flatten)]
