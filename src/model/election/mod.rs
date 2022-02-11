@@ -1,5 +1,5 @@
 pub use db::Election;
-pub use election_core::{Candidate, ElectionMetadata, Question};
+pub use election_core::{ElectionMetadata, Question};
 pub use groups::Electorate;
 pub use spec::{ElectionSpec, QuestionSpec};
 
@@ -15,5 +15,5 @@ pub type NewElection = election_core::ElectionCore;
 pub type DreipGroup = dre_ip::group::p256::NistP256;
 /// Our question IDs are mongodb ObjectIDs.
 pub type QuestionID = crate::model::mongodb::Id;
-/// Our candidate IDs are strings.
+/// Our candidate IDs (names) are strings.
 pub type CandidateID = String;

@@ -13,6 +13,7 @@ pub struct VoterCore {
     /// Voter unique ID: their SMS number.
     pub sms: Sms,
     /// Maps election IDs to the IDs of the voter's groups for that election.
+    // TODO combine with `election_voted` by precomputing allowed questions.
     #[serde(with = "serde_string_map")]
     pub election_groups: HashMap<Id, Vec<Id>>,
     /// Maps election IDs to the IDs of questions they have confirmed ballots on.

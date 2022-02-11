@@ -9,6 +9,7 @@ use rocket::{
 use crate::model::{
     admin::{Admin, NewAdmin},
     ballot::{Ballot, BallotState, FinishedBallot},
+    candidate_totals::{CandidateTotals, NewCandidateTotals},
     election::{Election, ElectionMetadata, NewElection},
     voter::{NewVoter, Voter},
 };
@@ -91,4 +92,13 @@ impl<S: BallotState> MongoCollection for Ballot<S> {
 }
 impl MongoCollection for FinishedBallot {
     const NAME: &'static str = BALLOTS;
+}
+
+// Candidate totals collections
+const CANDIDATE_TOTALS: &str = "candidate_totals";
+impl MongoCollection for CandidateTotals {
+    const NAME: &'static str = CANDIDATE_TOTALS;
+}
+impl MongoCollection for NewCandidateTotals {
+    const NAME: &'static str = CANDIDATE_TOTALS;
 }

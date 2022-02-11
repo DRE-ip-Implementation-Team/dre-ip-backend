@@ -20,3 +20,8 @@ elections = db.getCollection("elections");
 db.createCollection("ballots");
 ballots = db.getCollection("ballots");
 ballots.createIndex({election_id: 1, question_id: 1})
+
+// Candidate totals collection
+db.createCollection("candidate_totals");
+candidate_totals = db.getCollection("candidate_totals");
+candidate_totals.createIndex({election_id: 1, question_id: 1, candidate_name: 1})
