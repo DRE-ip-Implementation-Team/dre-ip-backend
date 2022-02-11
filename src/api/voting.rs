@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use mongodb::bson::doc;
-use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route};
+use mongodb::{bson::doc, Client};
+use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
@@ -19,8 +19,6 @@ use super::common::{active_election_by_id, voter_by_token};
 pub fn routes() -> Vec<Route> {
     routes![get_allowed, cast_ballots, audit_ballots, confirm_ballots]
 }
-
-// TODO: ensure everything is concurrency-safe with transactions.
 
 #[get("/voter/elections/<election_id>/questions/allowed")]
 async fn get_allowed(
@@ -52,6 +50,7 @@ async fn cast_ballots(
     ballot_specs: Json<Vec<BallotSpec>>,
     elections: Coll<Election>,
     ballots: Coll<Ballot<Unconfirmed>>,
+    db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
     // Get the election.
     let election = active_election_by_id(election_id, &elections).await?;
@@ -113,9 +112,16 @@ async fn cast_ballots(
         }
     }
 
-    // Insert ballots into DB.
+    // Insert ballots into DB within a transaction, so this entire endpoint is atomic.
     // TODO Ensure they expire if not audited or confirmed.
-    ballots.insert_many(new_ballots.iter(), None).await?;
+    {
+        let mut session = db_client.start_session(None).await?;
+        session.start_transaction(None).await?;
+        ballots
+            .insert_many_with_session(new_ballots.iter(), None, &mut session)
+            .await?;
+        session.commit_transaction().await?;
+    }
 
     // Return receipts.
     let receipts = new_ballots
@@ -138,27 +144,35 @@ async fn audit_ballots(
     elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     audited_ballots: Coll<Ballot<Audited>>,
+    db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Audited>>>> {
     // Get the election and ballots.
     let election = active_election_by_id(election_id, &elections).await?;
     let recalled_ballots =
         recall_ballots(ballot_recalls.0, &unconfirmed_ballots, &election).await?;
 
-    // Update ballots in DB.
+    // Update ballots in DB using a transaction so the whole endpoint is atomic.
     let mut new_ballots = Vec::with_capacity(recalled_ballots.len());
-    for ballot in recalled_ballots {
-        let audited = ballot.audit();
-        let filter = doc! {
-            "_id": *audited.id,
-            "election_id": *election_id,
-            "question_id": *audited.question_id,
-            "state": UNCONFIRMED,
-        };
-        let result = audited_ballots.replace_one(filter, &audited, None).await?;
-        // Sanity check.
-        assert_eq!(result.matched_count, 1);
-        assert_eq!(result.modified_count, 1);
-        new_ballots.push(audited);
+    {
+        let mut session = db_client.start_session(None).await?;
+        session.start_transaction(None).await?;
+
+        for ballot in recalled_ballots {
+            let audited = ballot.audit();
+            let filter = doc! {
+                "_id": *audited.id,
+                "election_id": *election_id,
+                "question_id": *audited.question_id,
+                "state": UNCONFIRMED,
+            };
+            let result = audited_ballots
+                .replace_one_with_session(filter, &audited, None, &mut session)
+                .await?;
+            assert_eq!(result.modified_count, 1);
+            new_ballots.push(audited);
+        }
+
+        session.commit_transaction().await?;
     }
 
     // Return receipts.
@@ -185,87 +199,99 @@ async fn confirm_ballots(
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     confirmed_ballots: Coll<Ballot<Confirmed>>,
     candidate_totals: Coll<CandidateTotals>,
+    db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Confirmed>>>> {
     // Get the election and ballots.
     let election = active_election_by_id(election_id, &elections).await?;
     let recalled_ballots =
         recall_ballots(ballot_recalls.0, &unconfirmed_ballots, &election).await?;
 
-    // Update DB.
+    // Update DB in a transaction so the whole endpoint is atomic.
     let mut new_ballots = Vec::with_capacity(recalled_ballots.len());
-    for ballot in recalled_ballots {
-        // Check that the user is eligible to vote on this question.
-        let filter = doc! {
-            "_id": *token.id(),
-            "allowed_questions": {
-                election_id: {
-                    "$in": [*ballot.question_id],
-                },
-            },
-        };
-        let update = doc! {
-            "$pull": {
-                "election_voted": {
+    {
+        let mut session = db_client.start_session(None).await?;
+        session.start_transaction(None).await?;
+
+        for ballot in recalled_ballots {
+            // Check that the user is eligible to vote on this question.
+            let filter = doc! {
+                "_id": *token.id(),
+                "allowed_questions": {
                     election_id: {
-                        "$eq": *ballot.question_id,
+                        "$in": [*ballot.question_id],
                     },
                 },
-            },
-        };
-        let result = voters.update_one(filter, update, None).await?;
-        if result.modified_count != 1 {
-            return Err(Error::Status(
-                Status::BadRequest,
-                format!(
-                    "Voter {:?} does not exist or cannot vote on {:?}",
-                    token.id(),
-                    ballot.question_id
-                ),
-            ));
-        }
+            };
+            let update = doc! {
+                "$pull": {
+                    "election_voted": {
+                        election_id: {
+                            "$eq": *ballot.question_id,
+                        },
+                    },
+                },
+            };
+            let result = voters
+                .update_one_with_session(filter, update, None, &mut session)
+                .await?;
+            if result.modified_count != 1 {
+                return Err(Error::Status(
+                    Status::BadRequest,
+                    format!(
+                        "Voter {:?} does not exist or cannot vote on {:?}",
+                        token.id(),
+                        ballot.question_id
+                    ),
+                ));
+            }
 
-        // Get candidate totals.
-        let filter = doc! {
-            "election_id": *election_id,
-            "question_id": *ballot.question_id,
-        };
-        let mut totals = candidate_totals
-            .find(filter, None)
-            .await?
-            .try_collect::<Vec<_>>()
-            .await?;
-        assert_eq!(totals.len(), ballot.crypto.votes.len());
-        // Convert to hashmap.
-        let mut totals_map = totals
-            .iter_mut()
-            .map(|t| (t.candidate_name.clone(), &mut t.totals.totals))
-            .collect::<HashMap<_, _>>();
-
-        // Confirm ballot.
-        let confirmed = ballot.confirm(&mut totals_map);
-        let filter = doc! {
-            "_id": *confirmed.id,
-            "election_id": *election_id,
-            "question_id": *confirmed.question_id,
-            "state": UNCONFIRMED,
-        };
-        let result = confirmed_ballots
-            .replace_one(filter, &confirmed, None)
-            .await?;
-        assert_eq!(result.modified_count, 1);
-
-        // Write updated candidate totals.
-        for t in totals {
+            // Get candidate totals.
             let filter = doc! {
                 "election_id": *election_id,
-                "question_id": *confirmed.question_id,
-                "candidate_name": t.candidate_name.clone(),
+                "question_id": *ballot.question_id,
             };
-            let result = candidate_totals.replace_one(filter, t, None).await?;
+            let mut totals = candidate_totals
+                .find(filter, None)
+                .await?
+                .try_collect::<Vec<_>>()
+                .await?;
+            assert_eq!(totals.len(), ballot.crypto.votes.len());
+            // Convert to hashmap.
+            let mut totals_map = totals
+                .iter_mut()
+                .map(|t| (t.candidate_name.clone(), &mut t.totals.totals))
+                .collect::<HashMap<_, _>>();
+
+            // Confirm ballot.
+            let confirmed = ballot.confirm(&mut totals_map);
+            let filter = doc! {
+                "_id": *confirmed.id,
+                "election_id": *election_id,
+                "question_id": *confirmed.question_id,
+                "state": UNCONFIRMED,
+            };
+            let result = confirmed_ballots
+                .replace_one_with_session(filter, &confirmed, None, &mut session)
+                .await?;
             assert_eq!(result.modified_count, 1);
+
+            // Write updated candidate totals.
+            for t in totals {
+                let filter = doc! {
+                    "election_id": *election_id,
+                    "question_id": *confirmed.question_id,
+                    "candidate_name": t.candidate_name.clone(),
+                };
+                let result = candidate_totals
+                    .replace_one_with_session(filter, t, None, &mut session)
+                    .await?;
+                assert_eq!(result.modified_count, 1);
+            }
+
+            new_ballots.push(confirmed);
         }
 
-        new_ballots.push(confirmed);
+        session.commit_transaction().await?;
     }
 
     // Return receipts.
