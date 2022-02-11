@@ -8,7 +8,6 @@ use super::voter_core::VoterCore;
 
 /// A voter user from the database, with its unique ID.
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Voter {
     #[serde(rename = "_id")]
     id: Id,

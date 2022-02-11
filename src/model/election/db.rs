@@ -8,7 +8,6 @@ use super::election_core::ElectionCore;
 
 /// An election from the database, with its unique ID.
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Election {
     #[serde(rename = "_id")]
     pub id: Id,
