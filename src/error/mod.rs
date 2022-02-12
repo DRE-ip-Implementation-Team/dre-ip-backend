@@ -18,19 +18,25 @@ pub enum Error {
     Status(Status, String),
 }
 
-impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
-    fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
-        println!("{:?}", self);
-        Err(match self {
-            Self::Argon2(_) => Status::BadRequest,
-            Self::Db(_) => Status::InternalServerError,
-            Self::Jwt(err) => match err.into_kind() {
+impl From<Error> for Status {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::Argon2(_) => Status::BadRequest,
+            Error::Db(_) => Status::InternalServerError,
+            Error::Jwt(err) => match err.into_kind() {
                 JwtErrorKind::ExpiredSignature | JwtErrorKind::ImmatureSignature => {
                     Status::Unauthorized
                 }
                 _ => Status::BadRequest,
             },
-            Self::Status(status, _) => status,
-        })
+            Error::Status(status, _) => status,
+        }
+    }
+}
+
+impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
+    fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
+        println!("{:?}", self);
+        Err(self.into())
     }
 }
