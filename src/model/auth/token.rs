@@ -51,7 +51,7 @@ impl<U> AuthToken<U>
 where
     U: User,
 {
-    /// Create a new AuthToken for the given user, with the correct rights for
+    /// Create a new [`AuthToken`] for the given user, with the correct rights for
     /// that user type.
     pub fn new(user: &U) -> Self {
         Self {

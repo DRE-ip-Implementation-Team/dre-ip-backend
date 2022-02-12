@@ -44,7 +44,7 @@ impl AdminCredentials {
 }
 
 impl From<AdminCredentials> for AdminCore {
-    /// Convert AdminCredentials to a new Admin by hashing the password.
+    /// Convert [`AdminCredentials`] to a new [`Admin`] by hashing the password.
     fn from(cred: AdminCredentials) -> Self {
         // 16 bytes is recommended for password hashing:
         //  https://en.wikipedia.org/wiki/Argon2

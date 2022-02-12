@@ -171,6 +171,7 @@ mod tests {
 
     use super::*;
 
+    /// XXX: This test passes/fails non-deterministically, will need diagnosis
     #[backend_test(admin)]
     async fn get_all_elections_as_admin(client: Client, db: Database) {
         insert_elections(&db).await;
