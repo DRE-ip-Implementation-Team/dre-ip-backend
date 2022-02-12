@@ -118,7 +118,7 @@ impl UriDisplay<Path> for Id {
 impl_from_uri_param_identity!([Path] Id);
 
 /// Serde (de)serialization for HashMap<K, V> as HashMap<String, V> where K implements
-/// both ToString and FromStr. Use via the attribute `#[serde(with = ...)]`.
+/// both [`ToString`] and [`FromStr`]. Use via the attribute `#[serde(with = ...)]`.
 /// This is useful for BSON, since document keys must be strings but we may want
 /// to use different key types internally.
 /// In other words, any `HashMap<K, V>` we want to store in mongodb must either

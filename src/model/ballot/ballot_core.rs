@@ -44,9 +44,9 @@ impl BallotCore<Unconfirmed> {
 /// Trait for the ballot state, enforcing on the type level that secrets are present
 /// if and only if the ballot is unconfirmed or audited.
 pub trait BallotState: Copy + AsRef<[u8]> {
-    /// Is this state represented internally by a ConfirmedVote or an UnconfirmedVote?
+    /// Is this state represented internally by a [`ConfirmedVote`] or an [`UnconfirmedVote`]?
     type InternalVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone;
-    /// Do we show the user a ConfirmedVote or an UnconfirmedVote (do we reveal the
+    /// Do we show the user a [`ConfirmedVote`] or an [`UnconfirmedVote`] (do we reveal the
     /// secrets in the receipt)?
     type ReceiptVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone;
     /// Convert internal representation into receipt representation.
