@@ -109,13 +109,15 @@ where
 {
     type Error = JwtError;
 
-    /// Get an AuthToken from the cookie and verify that it has the correct rights for this user
+    /// Get an [`AuthToken`] from the cookie and verify that it has the correct rights for this user
     /// type.
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Unwrap is valid as `Config` is always managed
         let config = req.guard::<&State<Config>>().await.unwrap();
 
+        // Forward to any routes that do not require an authentication token
         let cookie = try_outcome!(req.cookies().get(AUTH_TOKEN_COOKIE).or_forward(()));
+
         let token: Self =
             try_outcome!(Self::from_cookie(cookie, config).into_outcome(Status::Unauthorized));
 

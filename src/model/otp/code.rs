@@ -77,6 +77,8 @@ mod serialize_code {
 
             v.chars()
                 .map(|c| {
+                    #[allow(clippy::cast_possible_truncation)]
+                    // A single digit base 10 u32 fits in a u8
                     c.to_digit(10)
                         .map(|digit| digit as u8)
                         .ok_or_else(|| E::invalid_value(Unexpected::Char(c), &"a digit character"))
@@ -101,7 +103,7 @@ impl Display for Code {
             "{}",
             self.code
                 .iter()
-                .map(|digit| char::from_digit(*digit as u32, 10).unwrap())
+                .map(|digit| char::from_digit(u32::from(*digit), 10).unwrap())
                 .collect::<String>()
         )
     }
