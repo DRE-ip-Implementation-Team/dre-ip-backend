@@ -44,6 +44,8 @@ impl Challenge {
         Self { sms, code }
     }
 
+    // Challenge serialization never fails.
+    #[allow(clippy::missing_panics_doc)]
     /// Convert into a cookie.
     pub fn into_cookie(self, config: &Config) -> Cookie<'static> {
         let claims = Claims {
@@ -57,7 +59,7 @@ impl Challenge {
                 &claims,
                 &EncodingKey::from_secret(config.jwt_secret()),
             )
-            .unwrap(), // Safe because Challenge serialization never fails.
+            .unwrap(),
         )
         .max_age(time::Duration::seconds(config.otp_ttl().num_seconds()))
         .same_site(SameSite::Strict)

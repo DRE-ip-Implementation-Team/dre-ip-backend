@@ -51,8 +51,7 @@ impl<U> AuthToken<U>
 where
     U: User,
 {
-    /// Create a new [`AuthToken`] for the given user, with the correct rights for
-    /// that user type.
+    /// Create a new [`AuthToken`] for the given user, with the correct rights for that user type.
     pub fn new(user: &U) -> Self {
         Self {
             id: user.id(),
@@ -61,6 +60,8 @@ where
         }
     }
 
+    // JWT encoding is infallible with default settings
+    #[allow(clippy::missing_panics_doc)]
     /// Serialize this cookie into a token.
     pub fn into_cookie(self, config: &Config) -> Cookie<'static> {
         let claims = Claims {
@@ -73,7 +74,7 @@ where
             &claims,
             &EncodingKey::from_secret(config.jwt_secret()),
         )
-        .unwrap(); // Infallible.
+        .unwrap();
 
         Cookie::build(AUTH_TOKEN_COOKIE, token)
             .max_age(time::Duration::seconds(config.auth_ttl().num_seconds()))
@@ -108,10 +109,11 @@ where
 {
     type Error = JwtError;
 
-    /// Get an AuthToken from the cookie and verify that it has the correct rights
-    /// for this user type.
+    /// Get an AuthToken from the cookie and verify that it has the correct rights for this user
+    /// type.
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let config = req.guard::<&State<Config>>().await.unwrap(); // Valid as `Config` is always managed
+        // Unwrap is valid as `Config` is always managed
+        let config = req.guard::<&State<Config>>().await.unwrap();
 
         let cookie = try_outcome!(req.cookies().get(AUTH_TOKEN_COOKIE).or_forward(()));
         let token: Self =
