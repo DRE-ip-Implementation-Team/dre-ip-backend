@@ -15,7 +15,7 @@ pub mod error;
 pub mod model;
 
 pub async fn build() -> Rocket<Build> {
-    rocket_for_db_client(db_client().await).await
+    rocket_for_db_client(db_client().await)
 }
 
 pub(crate) async fn db_client() -> Client {
@@ -31,7 +31,7 @@ const DATABASE: &str = "dreip";
 #[cfg(test)]
 const DATABASE: &str = "test";
 
-pub(crate) async fn rocket_for_db_client(client: Client) -> Rocket<Build> {
+pub(crate) fn rocket_for_db_client(client: Client) -> Rocket<Build> {
     let db = client.database(DATABASE);
 
     rocket::build()
