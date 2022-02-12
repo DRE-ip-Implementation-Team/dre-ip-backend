@@ -6,7 +6,6 @@ use syn::{
     Signature, Type,
 };
 
-#[proc_macro_attribute]
 /// Instruments a test as a [`rocket::async_test`], injects necessary dependencies and ensures that the [`mongodb::Database`] is
 /// cleared WHETHER OR NOT the test completes by passing, failing or otherwise panicking.
 ///
@@ -15,6 +14,7 @@ use syn::{
 ///
 /// Injectable dependencies so far include [`rocket::local::asynchronous::Client`],
 /// [`mongodb::Database`] and [`crate::model::mongodb::Coll<T>`]
+#[proc_macro_attribute]
 pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut item_fn = parse_macro_input!(input as ItemFn);
     let sig = &mut item_fn.sig;
@@ -32,20 +32,42 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
     let new_name = format_ident!("{}_fut", name);
     sig.ident = new_name.clone();
 
-    // Log in the client as admin if needed
-    let maybe_login_as_admin = parse_macro_input!(args as Option<Ident>)
-        .and_then(|args| {
-            if args == "admin" {
+    // Log in the client as admin/voter if needed
+    let maybe_login_as_user = parse_macro_input!(args as Option<Ident>)
+        .and_then(|arg| {
+            if arg == "admin" {
                 Some(quote! {
                     crate::model::mongodb::Coll::<crate::model::admin::NewAdmin>::from_db(&db)
                         .insert_one(crate::model::admin::NewAdmin::example(), None)
                         .await
                         .unwrap();
 
-                    client
+                    rocket_client
                         .post(uri!(crate::api::auth::authenticate))
                         .header(rocket::http::ContentType::JSON)
                         .body(rocket::serde::json::json!(crate::model::admin::AdminCredentials::example()).to_string())
+                        .dispatch()
+                        .await;
+                })
+            } else if arg == "voter" {
+                Some(quote! {
+                    use crate::model::sms::Sms;
+
+                    rocket_client
+                        .get(uri!(crate::api::auth::challenge(Sms::example())))
+                        .dispatch()
+                        .await;
+
+                    let cookies = rocket_client.cookies();
+                    let cookie = cookies.get_private(crate::model::otp::challenge::CHALLENGE_COOKIE).unwrap();
+                    let config = rocket_client.rocket().state::<crate::Config>().unwrap();
+                    let challenge = crate::model::otp::challenge::Challenge::from_cookie(&cookie, config).unwrap();
+                    let code = challenge.code();
+
+                    rocket_client
+                        .post(uri!(crate::api::auth::verify))
+                        .header(rocket::http::ContentType::JSON)
+                        .body(rocket::serde::json::json!(code).to_string())
                         .dispatch()
                         .await;
                 })
@@ -53,7 +75,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                 None
             }
         })
-        .unwrap_or_else(|| quote! {});
+        .unwrap_or_default();
 
     let stmts = item_fn.block.stmts;
 
@@ -61,11 +83,14 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         #[rocket::async_test]
         async fn #name() {
             let db_client = crate::db_client().await;
-            let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_client(db_client.clone())).await.unwrap();
+            let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_client(db_client.clone()))
+                .await
+                .unwrap();
             let db = db_client.database(crate::DATABASE);
 
+            #maybe_login_as_user
+
             #sig {
-                #maybe_login_as_admin
                 #(#stmts)*
             }
 
@@ -76,7 +101,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
 
             let result = std::panic::catch_unwind(|| {
                 // Transfer mutexes across the unwind boundary
-                // Unwraps are valid as no poisoning occurs: mutexes are not given no other threads
+                // Unwraps are valid as no poisoning occurs: mutexes are not given to other threads
                 let rocket_client = client_mutex.into_inner().unwrap();
                 let db = db_mutex.into_inner().unwrap();
 
@@ -84,10 +109,10 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                     let #collection_idents = crate::model::mongodb::Coll::<#collection_types>::from_db(&db);
                 )*
 
-                // Manually run future inside
+                // Manually run future inside the current runtime
                 let handle = rocket::tokio::runtime::Handle::current();
                 let _ = handle.enter();
-                rocket::futures::executor::block_on(#new_name(#(#test_args),* #(, #collection_idents)*));
+                rocket::futures::executor::block_on(#new_name(#(#test_args),* #(,#collection_idents)*));
             });
 
             db.drop(None).await.unwrap();
@@ -109,7 +134,7 @@ fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident
 
     let mut has_client = false;
     let mut has_db = false;
-    let mut args_used = vec![];
+    let mut args = vec![];
     let mut collection_idents = vec![];
     let mut collection_types = vec![];
 
@@ -123,7 +148,7 @@ fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident
                                 return Err(syn::Error::new(input.span(), "Test cannot accept more than one `rocket::local::asynchronous::Client`"));
                             }
                             has_client = true;
-                            args_used.push(quote! { rocket_client });
+                            args.push(quote! { rocket_client });
                             continue;
                         } else if type_ident == "Database" {
                             if has_db {
@@ -133,7 +158,7 @@ fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident
                                 ));
                             }
                             has_db = true;
-                            args_used.push(quote! { db });
+                            args.push(quote! { db });
                             continue;
                         }
                     } else {
@@ -167,5 +192,5 @@ fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident
         ));
     }
 
-    Ok((args_used, collection_idents, collection_types))
+    Ok((args, collection_idents, collection_types))
 }
