@@ -51,13 +51,13 @@ pub async fn authenticate(
 }
 
 #[get("/voter/challenge?<sms>")]
-fn challenge(sms: Sms, cookies: &CookieJar<'_>, config: &State<Config>) {
+pub fn challenge(sms: Sms, cookies: &CookieJar<'_>, config: &State<Config>) {
     let challenge = Challenge::new(sms);
     cookies.add_private(challenge.into_cookie(config));
 }
 
 #[post("/voter/verify", data = "<code>", format = "json")]
-async fn verify(
+pub async fn verify(
     code: Json<Code>,
     challenge: Challenge,
     cookies: &CookieJar<'_>,
@@ -116,7 +116,6 @@ pub fn logout(cookies: &CookieJar) -> Status {
 
 #[cfg(test)]
 mod tests {
-    use mongodb::Database;
     use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
 
     use crate::model::{
@@ -255,7 +254,7 @@ mod tests {
     }
 
     #[backend_test(admin)]
-    async fn logout_admin(client: Client, db: Database) {
+    async fn logout_admin(client: Client) {
         let response = client.delete(uri!(logout)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
