@@ -56,7 +56,7 @@ async fn cast_ballots(
     let election = active_election_by_id(election_id, &elections).await?;
 
     // Ensure that the questions and candidates exist.
-    for ballot_spec in ballot_specs.0.iter() {
+    for ballot_spec in &*ballot_specs {
         if let Some(question) = election.questions.get(&ballot_spec.question) {
             if !question.candidates.contains(&ballot_spec.candidate) {
                 return Err(Error::Status(

@@ -32,14 +32,14 @@ pub async fn active_election_by_id(
 ) -> Result<Election> {
     let now = Utc::now();
 
-    let filter = doc! {
+    let is_active = doc! {
         "_id": *election_id,
         "finalised": true,
         "startTime": { "$lte": now },
         "endTime": { "$gt": now },
     };
 
-    elections.find_one(filter, None).await?.ok_or_else(|| {
+    elections.find_one(is_active, None).await?.ok_or_else(|| {
         Error::Status(
             Status::NotFound,
             format!("No active election found with ID {:?}", election_id),
