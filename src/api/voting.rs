@@ -358,3 +358,109 @@ struct BallotRecall {
     #[serde(with = "dre_ip::group::serde_bytestring")]
     pub signature: Signature,
 }
+
+#[cfg(test)]
+mod tests {
+    use backend_test::backend_test;
+    use mongodb::Database;
+    use rocket::{local::asynchronous::Client, serde::json::serde_json};
+
+    use crate::model::{
+        election::{Election, ElectionSpec, NewElection, QuestionSpec},
+        sms::Sms,
+    };
+
+    use super::*;
+
+    /// Insert test data, returning the election ID and the ID of the allowed question,
+    /// which may differ between runs.
+    async fn insert_test_data(db: &Database) -> (Id, Id) {
+        // Create an election.
+        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election = Election {
+            id: Id::new(),
+            election,
+        };
+        let elections = Coll::<Election>::from_db(db);
+        elections.insert_one(&election, None).await.unwrap();
+
+        // Allow the voter to vote on one of the two questions.
+        let voters = Coll::<Voter>::from_db(db);
+        let mut voter = voters
+            .find_one(
+                doc! {
+                    "sms": Sms::example(),
+                },
+                None,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let allowed_question = *election
+            .questions
+            .iter()
+            .find_map(|(id, question)| {
+                if question.description == QuestionSpec::example1().description {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        voter
+            .allowed_questions
+            .insert(election.id, vec![allowed_question]);
+        voters
+            .replace_one(
+                doc! {
+                    "_id": *voter.id,
+                },
+                &voter,
+                None,
+            )
+            .await
+            .unwrap();
+        (election.id, allowed_question)
+    }
+
+    #[backend_test(voter)]
+    async fn get_allowed(client: Client, db: Database) {
+        let (election_id, question_id) = insert_test_data(&db).await;
+
+        // Get the allowed questions.
+        let response = client.get(uri!(get_allowed(election_id))).dispatch().await;
+        assert_eq!(Status::Ok, response.status());
+        assert!(response.body().is_some());
+
+        // Ensure they are correct.
+        let raw_response = response.into_string().await.unwrap();
+        let allowed: Vec<Id> = serde_json::from_str(&raw_response).unwrap();
+        let expected = vec![question_id];
+        assert_eq!(allowed, expected);
+    }
+
+    #[backend_test(voter)]
+    async fn cast_ballots() {
+        // TODO
+    }
+
+    #[backend_test(voter)]
+    async fn audit() {
+        // TODO
+    }
+
+    #[backend_test(voter)]
+    async fn confirm() {
+        // TODO
+    }
+
+    #[backend_test(voter)]
+    async fn bad_casts() {
+        // TODO
+    }
+
+    #[backend_test(voter)]
+    async fn bad_audit_confirms() {
+        // TODO
+    }
+}
