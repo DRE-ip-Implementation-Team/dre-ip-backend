@@ -2,12 +2,14 @@ use std::fmt::Display;
 
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::model::{admin::Admin, mongodb::DbEntity, voter::Voter};
+use crate::model::{admin::Admin, mongodb::Id, voter::Voter};
 
 /// A user of our application, having defined rights.
-pub trait User: DbEntity {
+pub trait User {
     /// The rights of this user type.
     const RIGHTS: Rights;
+    /// Get the user's ID.
+    fn id(&self) -> Id;
 }
 
 /// Different privilege levels.
@@ -33,8 +35,16 @@ impl Display for Rights {
 
 impl User for Voter {
     const RIGHTS: Rights = Rights::Voter;
+
+    fn id(&self) -> Id {
+        self.id
+    }
 }
 
 impl User for Admin {
     const RIGHTS: Rights = Rights::Admin;
+
+    fn id(&self) -> Id {
+        self.id
+    }
 }

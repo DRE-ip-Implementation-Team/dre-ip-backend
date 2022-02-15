@@ -214,7 +214,7 @@ async fn confirm_ballots(
         for ballot in recalled_ballots {
             // Check that the user is eligible to vote on this question.
             let filter = doc! {
-                "_id": *token.id(),
+                "_id": *token.id,
                 "allowed_questions": {
                     election_id: {
                         "$in": [*ballot.question_id],
@@ -238,8 +238,7 @@ async fn confirm_ballots(
                     Status::BadRequest,
                     format!(
                         "Voter {:?} does not exist or cannot vote on {:?}",
-                        token.id(),
-                        ballot.question_id
+                        token.id, ballot.question_id
                     ),
                 ));
             }

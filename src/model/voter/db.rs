@@ -1,8 +1,8 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{DbEntity, Id};
+use crate::model::mongodb::Id;
 
 use super::voter_core::VoterCore;
 
@@ -10,9 +10,9 @@ use super::voter_core::VoterCore;
 #[derive(Serialize, Deserialize)]
 pub struct Voter {
     #[serde(rename = "_id")]
-    id: Id,
+    pub id: Id,
     #[serde(flatten)]
-    voter: VoterCore,
+    pub voter: VoterCore,
 }
 
 impl Deref for Voter {
@@ -23,8 +23,8 @@ impl Deref for Voter {
     }
 }
 
-impl DbEntity for Voter {
-    fn id(&self) -> Id {
-        self.id
+impl DerefMut for Voter {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.voter
     }
 }

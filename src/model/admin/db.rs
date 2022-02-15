@@ -1,8 +1,8 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{DbEntity, Id};
+use crate::model::mongodb::Id;
 
 use super::admin_core::AdminCore;
 
@@ -10,9 +10,9 @@ use super::admin_core::AdminCore;
 #[derive(Serialize, Deserialize)]
 pub struct Admin {
     #[serde(rename = "_id")]
-    id: Id,
+    pub id: Id,
     #[serde(flatten)]
-    admin: AdminCore,
+    pub admin: AdminCore,
 }
 
 impl Deref for Admin {
@@ -23,8 +23,8 @@ impl Deref for Admin {
     }
 }
 
-impl DbEntity for Admin {
-    fn id(&self) -> Id {
-        self.id
+impl DerefMut for Admin {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.admin
     }
 }

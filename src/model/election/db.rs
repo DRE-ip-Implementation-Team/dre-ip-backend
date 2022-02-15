@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{DbEntity, Id};
+use crate::model::mongodb::Id;
 
 use super::election_core::ElectionCore;
 
@@ -26,11 +26,5 @@ impl Deref for Election {
 impl DerefMut for Election {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.election
-    }
-}
-
-impl DbEntity for Election {
-    fn id(&self) -> Id {
-        self.id
     }
 }

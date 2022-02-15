@@ -23,24 +23,14 @@ pub const AUTH_TOKEN_COOKIE: &str = "auth_token";
 /// An authentication token representing a specific user with specific rights.
 #[derive(Serialize, Deserialize)]
 pub struct AuthToken<U> {
-    id: Id,
+    pub id: Id,
     #[serde(rename = "rgt")]
-    rights: Rights,
+    pub rights: Rights,
     #[serde(skip)]
     phantom: PhantomData<U>,
 }
 
 impl<U> AuthToken<U> {
-    /// Get the user ID.
-    pub fn id(&self) -> Id {
-        self.id
-    }
-
-    /// Get the user's rights.
-    pub fn rights(&self) -> Rights {
-        self.rights
-    }
-
     /// Does this token permit the given rights?
     pub fn permits(&self, target: Rights) -> bool {
         self.rights == target

@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{DbEntity, Id};
+use crate::model::mongodb::Id;
 
 use super::candidate_totals_core::CandidateTotalsCore;
 
@@ -26,11 +26,5 @@ impl Deref for CandidateTotals {
 impl DerefMut for CandidateTotals {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.totals
-    }
-}
-
-impl DbEntity for CandidateTotals {
-    fn id(&self) -> Id {
-        self.id
     }
 }
