@@ -59,9 +59,9 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                         .await;
 
                     let cookies = rocket_client.cookies();
-                    let cookie = cookies.get_private(crate::model::otp::challenge::CHALLENGE_COOKIE).unwrap();
+                    let cookie = cookies.get_private(crate::model::otp::CHALLENGE_COOKIE).unwrap();
                     let config = rocket_client.rocket().state::<crate::Config>().unwrap();
-                    let challenge = crate::model::otp::challenge::Challenge::from_cookie(&cookie, config).unwrap();
+                    let challenge = crate::model::otp::Challenge::from_cookie(&cookie, config).unwrap();
                     let code = challenge.code();
 
                     rocket_client
