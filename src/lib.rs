@@ -15,7 +15,7 @@ pub mod error;
 pub mod model;
 
 pub async fn build() -> Rocket<Build> {
-    rocket_for_db_client(db_client().await)
+    rocket_for_db(db_client().await, &database())
 }
 
 pub(crate) async fn db_client() -> Client {
@@ -25,14 +25,21 @@ pub(crate) async fn db_client() -> Client {
         .unwrap_or_else(|err| panic!("{}", err))
 }
 
-#[cfg(not(test))]
-const DATABASE: &str = "dreip";
+/// Get the name of the database to use.
+/// This is randomised for tests so different tests do not collide.
+fn database() -> String {
+    #[cfg(not(test))]
+    return "dreip".to_string();
 
-#[cfg(test)]
-const DATABASE: &str = "test";
+    #[cfg(test)]
+    {
+        let random: u32 = rand::random();
+        format!("test{}", random)
+    }
+}
 
-pub(crate) fn rocket_for_db_client(client: Client) -> Rocket<Build> {
-    let db = client.database(DATABASE);
+pub(crate) fn rocket_for_db(client: Client, db: &str) -> Rocket<Build> {
+    let db = client.database(db);
 
     rocket::build()
         .mount("/", api::routes())

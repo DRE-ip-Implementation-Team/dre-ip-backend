@@ -83,10 +83,11 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         #[rocket::async_test]
         async fn #name() {
             let db_client = crate::db_client().await;
-            let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_client(db_client.clone()))
+            let db_name = crate::database();
+            let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db(db_client.clone(), &db_name))
                 .await
                 .unwrap();
-            let db = db_client.database(crate::DATABASE);
+            let db = db_client.database(&db_name);
 
             #maybe_login_as_user
 
