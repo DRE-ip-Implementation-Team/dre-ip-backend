@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use chrono::{DateTime, Utc};
 use dre_ip::CandidateTotals;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     election::{CandidateID, DreipGroup, Election},
-    mongodb::{DbEntity, Id},
+    mongodb::Id,
 };
 
 use super::ballot_core::{Audited, BallotCore, BallotState, Confirmed, Unconfirmed};
@@ -95,9 +95,9 @@ impl<S: BallotState> Deref for Ballot<S> {
     }
 }
 
-impl<S: BallotState> DbEntity for Ballot<S> {
-    fn id(&self) -> Id {
-        self.id
+impl<S: BallotState> DerefMut for Ballot<S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ballot
     }
 }
 

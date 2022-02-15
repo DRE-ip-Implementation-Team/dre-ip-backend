@@ -12,7 +12,7 @@ use crate::model::{
 
 /// Return a Voter from the database via looking up their token ID.
 pub async fn voter_by_token(token: &AuthToken<Voter>, voters: &Coll<Voter>) -> Result<Voter> {
-    let voter_id = token.id();
+    let voter_id = token.id;
     voters
         .find_one(doc! { "_id": *voter_id }, None)
         .await?

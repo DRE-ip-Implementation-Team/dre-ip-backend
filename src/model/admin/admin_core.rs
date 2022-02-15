@@ -5,20 +5,15 @@ use serde::{Deserialize, Serialize};
 /// Core admin user data, as stored in the database.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdminCore {
-    username: String,
-    password_hash: String,
+    pub username: String,
+    pub password_hash: String,
 }
 
 impl AdminCore {
-    /// Get the username.
-    pub fn username(&self) -> &String {
-        &self.username
-    }
-
     /// Check whether the given password is correct.
     pub fn verify_password<T: AsRef<[u8]>>(&self, password: T) -> bool {
-        // Unwrap safe because the only way to create an Admin is via From<AdminCredentials>,
-        // so the hash is always well-formed.
+        // Unwrap safe because the only way to create an AdminCore is via
+        // From<AdminCredentials>, so the hash is always well-formed.
         argon2::verify_encoded(&self.password_hash, password.as_ref()).unwrap()
     }
 }
@@ -27,20 +22,8 @@ impl AdminCore {
 /// since the password is in plaintext.
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AdminCredentials {
-    username: String,
-    password: String,
-}
-
-impl AdminCredentials {
-    /// Get the username.
-    pub fn username(&self) -> &str {
-        &self.username
-    }
-
-    /// Get the (PLAINTEXT!) password.
-    pub fn password(&self) -> &str {
-        &self.password
-    }
+    pub username: String,
+    pub password: String,
 }
 
 impl From<AdminCredentials> for AdminCore {

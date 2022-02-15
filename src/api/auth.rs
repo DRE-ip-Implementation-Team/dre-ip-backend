@@ -30,13 +30,13 @@ pub async fn authenticate(
     config: &State<Config>,
 ) -> Result<()> {
     let with_username = doc! {
-        "username": credentials.username()
+        "username": &credentials.username
     };
 
     let admin = admins
         .find_one(with_username, None)
         .await?
-        .filter(|admin| admin.verify_password(credentials.password()))
+        .filter(|admin| admin.verify_password(&credentials.password))
         .ok_or_else(|| {
             Error::Status(
                 Status::Unauthorized,
@@ -164,7 +164,7 @@ mod tests {
             .header(ContentType::JSON)
             .body(
                 json! ({
-                    "username": NewAdmin::example().username(),
+                    "username": &NewAdmin::example().username,
                     "password": "",
                 })
                 .to_string(),

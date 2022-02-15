@@ -164,10 +164,7 @@ mod tests {
     use mongodb::Database;
     use rocket::{local::asynchronous::Client, serde::json::serde_json};
 
-    use crate::model::{
-        election::{Election, ElectionMetadata, ElectionSpec, NewElection},
-        mongodb::DbEntity,
-    };
+    use crate::model::election::{Election, ElectionMetadata, ElectionSpec, NewElection};
 
     use super::*;
 
@@ -220,7 +217,7 @@ mod tests {
             get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
 
         let response = client
-            .get(uri!(election(finalised_election.id())))
+            .get(uri!(election(finalised_election.id)))
             .dispatch()
             .await;
 
@@ -244,7 +241,7 @@ mod tests {
             get_election_for_spec(&db, ElectionSpec::unfinalised_example()).await;
 
         let response = client
-            .get(uri!(election(unfinalised_election.id())))
+            .get(uri!(election(unfinalised_election.id)))
             .dispatch()
             .await;
 
@@ -268,7 +265,7 @@ mod tests {
             get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
 
         let response = client
-            .get(uri!(finalised_election(finalised_election.id())))
+            .get(uri!(finalised_election(finalised_election.id)))
             .dispatch()
             .await;
 
@@ -292,7 +289,7 @@ mod tests {
             get_election_for_spec(&db, ElectionSpec::unfinalised_example()).await;
 
         let response = client
-            .get(uri!(finalised_election(unfinalised_election.id())))
+            .get(uri!(finalised_election(unfinalised_election.id)))
             .dispatch()
             .await;
 

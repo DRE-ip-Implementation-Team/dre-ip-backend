@@ -73,14 +73,14 @@ mod tests {
 
         // Ensure the admin has been inserted
         let admins = Coll::<Admin>::from_db(&db);
-        let with_username = doc! { "username": NewAdmin::example2().username() };
+        let with_username = doc! { "username": &NewAdmin::example2().username };
         let inserted_admin = admins
             .find_one(with_username.clone(), None)
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(NewAdmin::example2().username(), inserted_admin.username());
+        assert_eq!(NewAdmin::example2().username, inserted_admin.username);
     }
 
     #[backend_test(admin)]
