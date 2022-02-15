@@ -362,8 +362,10 @@ struct BallotRecall {
 #[cfg(test)]
 mod tests {
     use backend_test::backend_test;
+    use chrono::{Duration, Utc};
+    use dre_ip::group::{DreipScalar, DreipPublicKey};
     use mongodb::Database;
-    use rocket::{local::asynchronous::Client, serde::json::serde_json};
+    use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json};
 
     use crate::model::{
         election::{Election, ElectionSpec, NewElection, QuestionSpec},
@@ -429,7 +431,7 @@ mod tests {
 
         // Get the allowed questions.
         let response = client.get(uri!(get_allowed(election_id))).dispatch().await;
-        assert_eq!(Status::Ok, response.status());
+        assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
 
         // Ensure they are correct.
@@ -440,8 +442,74 @@ mod tests {
     }
 
     #[backend_test(voter)]
-    async fn cast_ballots() {
-        // TODO
+    async fn cast_ballots(client: Client, db: Database) {
+        let (election_id, question_id) = insert_test_data(&db).await;
+
+        // Vote on the question we are allowed to.
+        let candidate_id = "Chris Riches".to_string();
+        let ballot_specs = vec![BallotSpec {
+            question: question_id,
+            candidate: candidate_id.clone(),
+        }];
+
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        // Ensure the response is a valid receipt.
+        let raw_response = response.into_string().await.unwrap();
+        let receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+
+        // Ensure the receipt does not contain secrets.
+        let err = serde_json::from_str::<Vec<Receipt<Audited>>>(&raw_response);
+        assert!(err.is_err());
+
+        // Ensure the receipt passes validation.
+        let election = Coll::<Election>::from_db(&db)
+            .find_one(doc!{"_id": *election_id}, None).await.unwrap().unwrap();
+        // Validate PWFs.
+        assert!(receipt.crypto.verify(&election.crypto, receipt.id.to_bytes()).is_ok());
+        // Validate signature.
+        let mut msg = receipt.crypto.to_bytes();
+        msg.extend(receipt.id.to_bytes());
+        msg.extend(receipt.state.as_ref());
+        assert!(election.crypto.public_key.verify(&msg, &receipt.signature));
+
+        // Ensure the ballot in the database is correct.
+        let ballot = Coll::<Ballot<Unconfirmed>>::from_db(&db)
+            .find_one(doc!{"_id": *receipt.id}, None).await.unwrap().unwrap();
+        // Check metadata.
+        assert_eq!(ballot.election_id, election_id);
+        assert_eq!(ballot.question_id, question_id);
+        assert!(ballot.creation_time < Utc::now() && ballot.creation_time + Duration::minutes(1) > Utc::now());
+        let mut yes_votes = 0;
+        for (candidate, vote) in ballot.crypto.votes.iter() {
+            // Check the vote value is correct.
+            if candidate == &candidate_id {
+                assert_eq!(vote.v, DreipScalar::one());
+                yes_votes += 1;
+            } else {
+                assert_eq!(vote.v, DreipScalar::zero());
+            }
+            // Check the receipt matches the internal vote.
+            let receipt_vote = receipt.crypto.votes.get(candidate).unwrap();
+            assert_eq!(vote.R, receipt_vote.R);
+            assert_eq!(vote.Z, receipt_vote.Z);
+            assert_eq!(vote.pwf.c1, receipt_vote.pwf.c1);
+            assert_eq!(vote.pwf.c2, receipt_vote.pwf.c2);
+            assert_eq!(vote.pwf.r1, receipt_vote.pwf.r1);
+            assert_eq!(vote.pwf.r2, receipt_vote.pwf.r2);
+            // Check the public values were correctly calculated from the secrets.
+            assert_eq!(vote.R, election.crypto.g2 * vote.r);
+            assert_eq!(vote.Z, election.crypto.g1 * (vote.r + vote.v));
+        }
+        // Check there was exactly one yes vote (already guaranteed by the PWF, but sanity checks are good).
+        assert_eq!(yes_votes, 1);
     }
 
     #[backend_test(voter)]
