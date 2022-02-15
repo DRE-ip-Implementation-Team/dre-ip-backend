@@ -51,7 +51,7 @@ pub struct QuestionSpec {
     /// Question text.
     pub description: String,
     /// A voter must be in at least one of these groups to vote on this question.
-    pub groups: Vec<Id>,
+    pub groups: Vec<String>,
     /// Candidates / possible answers for this question.
     pub candidates: Vec<String>,
 }
@@ -75,42 +75,54 @@ impl From<QuestionSpec> for (Id, Question) {
 mod examples {
     use super::*;
 
-    use chrono::{Duration, MIN_DATETIME};
+    use chrono::{Duration, Utc};
 
     impl ElectionSpec {
         pub fn finalised_example() -> Self {
+            let start_time = Utc::today().and_hms(0, 0, 0);
+            let end_time = start_time + Duration::days(30);
             Self {
                 metadata: ElectionMetadata {
                     name: "Sports Clubs Elections".to_string(),
                     finalised: true,
-                    start_time: MIN_DATETIME,
-                    end_time: MIN_DATETIME + Duration::days(30),
+                    start_time,
+                    end_time,
                 },
-                electorates: vec![Electorate::example1(), Electorate::example2()],
-                questions: vec![QuestionSpec::example()],
+                electorates: vec![Electorate::example1()],
+                questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
             }
         }
 
         pub fn unfinalised_example() -> Self {
+            let start_time = Utc::today().and_hms(0, 0, 0) + Duration::days(30);
+            let end_time = start_time + Duration::days(30);
             Self {
                 metadata: ElectionMetadata {
                     name: "Sports Clubs Elections 2".to_string(),
                     finalised: false,
-                    start_time: MIN_DATETIME,
-                    end_time: MIN_DATETIME + Duration::days(30),
+                    start_time,
+                    end_time,
                 },
-                electorates: vec![Electorate::example1(), Electorate::example2()],
-                questions: vec![QuestionSpec::example()],
+                electorates: vec![Electorate::example1()],
+                questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
             }
         }
     }
 
     impl QuestionSpec {
-        pub fn example() -> Self {
+        pub fn example1() -> Self {
             Self {
                 description: "Who should be captain of the Quidditch team?".to_string(),
                 groups: vec![],
-                candidates: vec!["Chris Riches".to_string()],
+                candidates: vec!["Chris Riches".to_string(), "Parry Hotter".to_string()],
+            }
+        }
+
+        pub fn example2() -> Self {
+            Self {
+                description: "Who should be president of Warwick Extreme Moongolf?".to_string(),
+                groups: vec![],
+                candidates: vec!["John Smith".to_string(), "Jane Doe".to_string()],
             }
         }
     }

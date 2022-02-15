@@ -77,7 +77,7 @@ pub struct Question {
     /// Question text.
     pub description: String,
     /// A voter must be in at least one of these groups to vote on this question.
-    pub groups: Vec<Id>,
+    pub groups: Vec<String>,
     /// Candidates / possible answers for this question.
     pub candidates: Vec<CandidateID>,
 }
