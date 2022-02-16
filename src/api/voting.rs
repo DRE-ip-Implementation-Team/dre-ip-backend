@@ -363,9 +363,10 @@ struct BallotRecall {
 mod tests {
     use backend_test::backend_test;
     use chrono::{Duration, Utc};
+    use dre_ip::ElectionResults;
     use dre_ip::group::{DreipScalar, DreipPublicKey};
     use mongodb::Database;
-    use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json};
+    use rocket::{futures::TryStreamExt, http::ContentType, local::asynchronous::Client, serde::json::serde_json};
 
     use crate::model::{
         election::{Election, ElectionSpec, NewElection, QuestionSpec},
@@ -377,14 +378,19 @@ mod tests {
     /// Insert test data, returning the election ID and the ID of the allowed question,
     /// which may differ between runs.
     async fn insert_test_data(db: &Database) -> (Id, Id) {
-        // Create an election.
+        // Create some elections, only one of which is active.
         let election: NewElection = ElectionSpec::finalised_example().into();
-        let election = Election {
+        let election1 = Election {
+            id: Id::new(),
+            election,
+        };
+        let election: NewElection = ElectionSpec::unfinalised_example().into();
+        let election2 = Election {
             id: Id::new(),
             election,
         };
         let elections = Coll::<Election>::from_db(db);
-        elections.insert_one(&election, None).await.unwrap();
+        elections.insert_many(vec![&election1, &election2], None).await.unwrap();
 
         // Allow the voter to vote on one of the two questions.
         let voters = Coll::<Voter>::from_db(db);
@@ -398,7 +404,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        let allowed_question = *election
+        let allowed_question = *election1
             .questions
             .iter()
             .find_map(|(id, question)| {
@@ -411,7 +417,7 @@ mod tests {
             .unwrap();
         voter
             .allowed_questions
-            .insert(election.id, vec![allowed_question]);
+            .insert(election1.id, vec![allowed_question]);
         voters
             .replace_one(
                 doc! {
@@ -422,7 +428,7 @@ mod tests {
             )
             .await
             .unwrap();
-        (election.id, allowed_question)
+        (election1.id, allowed_question)
     }
 
     #[backend_test(voter)]
@@ -465,10 +471,6 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
         let receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
 
-        // Ensure the receipt does not contain secrets.
-        let err = serde_json::from_str::<Vec<Receipt<Audited>>>(&raw_response);
-        assert!(err.is_err());
-
         // Ensure the receipt passes validation.
         let election = Coll::<Election>::from_db(&db)
             .find_one(doc!{"_id": *election_id}, None).await.unwrap().unwrap();
@@ -500,10 +502,7 @@ mod tests {
             let receipt_vote = receipt.crypto.votes.get(candidate).unwrap();
             assert_eq!(vote.R, receipt_vote.R);
             assert_eq!(vote.Z, receipt_vote.Z);
-            assert_eq!(vote.pwf.c1, receipt_vote.pwf.c1);
-            assert_eq!(vote.pwf.c2, receipt_vote.pwf.c2);
-            assert_eq!(vote.pwf.r1, receipt_vote.pwf.r1);
-            assert_eq!(vote.pwf.r2, receipt_vote.pwf.r2);
+            assert_eq!(vote.pwf, receipt_vote.pwf);
             // Check the public values were correctly calculated from the secrets.
             assert_eq!(vote.R, election.crypto.g2 * vote.r);
             assert_eq!(vote.Z, election.crypto.g1 * (vote.r + vote.v));
@@ -513,18 +512,205 @@ mod tests {
     }
 
     #[backend_test(voter)]
-    async fn audit() {
-        // TODO
+    async fn audit(client: Client, db: Database) {
+        let (election_id, question_id) = insert_test_data(&db).await;
+
+        // Vote on the question we are allowed to.
+        let candidate_id = "Chris Riches".to_string();
+        let ballot_specs = vec![BallotSpec {
+            question: question_id,
+            candidate: candidate_id.clone(),
+        }];
+
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+        let raw_response = response.into_string().await.unwrap();
+        let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+
+        // Audit the ballot.
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: first_receipt.id,
+            question_id,
+            signature: first_receipt.signature,
+        }];
+        let response = client
+            .post(uri!(audit_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        // Ensure the response is a valid receipt.
+        let raw_response = response.into_string().await.unwrap();
+        let second_receipt: Receipt<Audited> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+
+        // Ensure the receipts match.
+        let election = Coll::<Election>::from_db(&db)
+            .find_one(doc!{"_id": *election_id}, None).await.unwrap().unwrap();
+        assert_eq!(first_receipt.id, second_receipt.id);
+        assert_eq!(first_receipt.crypto.pwf, second_receipt.crypto.pwf);
+        for (candidate, vote1) in first_receipt.crypto.votes.iter() {
+            let vote2 = second_receipt.crypto.votes.get(candidate).unwrap();
+            assert_eq!(vote1.pwf, vote2.pwf);
+            assert_eq!(vote1.R, vote2.R);
+            assert_eq!(vote1.Z, vote2.Z);
+            assert_eq!(vote1.R, election.crypto.g2 * vote2.r);
+            assert_eq!(vote1.Z, election.crypto.g1 * (vote2.r + vote2.v));
+        }
+
+        // Validate PWFs.
+        assert!(second_receipt.crypto.verify(&election.crypto, second_receipt.id.to_bytes()).is_ok());
+        // Validate signature.
+        let mut msg = second_receipt.crypto.to_bytes();
+        msg.extend(second_receipt.id.to_bytes());
+        msg.extend(second_receipt.state.as_ref());
+        assert!(election.crypto.public_key.verify(&msg, &second_receipt.signature));
+
+        // Check the candidate totals weren't affected.
+        let totals: Vec<CandidateTotals> = Coll::<CandidateTotals>::from_db(&db)
+            .find(None, None).await.unwrap().try_collect().await.unwrap();
+        for total in totals.iter() {
+            assert_eq!(total.totals.totals.r_sum, DreipScalar::zero());
+            assert_eq!(total.totals.totals.tally, DreipScalar::zero());
+        }
     }
 
     #[backend_test(voter)]
-    async fn confirm() {
-        // TODO
+    async fn confirm(client: Client, db: Database) {
+        let (election_id, question_id) = insert_test_data(&db).await;
+
+        // Vote on the question we are allowed to.
+        let candidate_id = "Chris Riches".to_string();
+        let ballot_specs = vec![BallotSpec {
+            question: question_id,
+            candidate: candidate_id.clone(),
+        }];
+
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+        let raw_response = response.into_string().await.unwrap();
+        let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+
+        // Confirm the ballot.
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: first_receipt.id,
+            question_id,
+            signature: first_receipt.signature,
+        }];
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        // Ensure the response is a valid receipt.
+        let raw_response = response.into_string().await.unwrap();
+        let second_receipt: Receipt<Confirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+
+        // Ensure the receipts match.
+        let election = Coll::<Election>::from_db(&db)
+            .find_one(doc!{"_id": *election_id}, None).await.unwrap().unwrap();
+        assert_eq!(first_receipt.id, second_receipt.id);
+        assert_eq!(first_receipt.crypto, second_receipt.crypto);
+
+        // Validate PWFs.
+        assert!(second_receipt.crypto.verify(&election.crypto, second_receipt.id.to_bytes()).is_ok());
+        // Validate signature.
+        let mut msg = second_receipt.crypto.to_bytes();
+        msg.extend(second_receipt.id.to_bytes());
+        msg.extend(second_receipt.state.as_ref());
+        assert!(election.crypto.public_key.verify(&msg, &second_receipt.signature));
+
+        // Check the candidate totals are correct.
+        let candidate_totals: Vec<CandidateTotals> = Coll::<CandidateTotals>::from_db(&db)
+            .find(None, None).await.unwrap().try_collect().await.unwrap();
+        for total in candidate_totals.iter() {
+            if total.question_id == question_id && total.candidate_name == candidate_id {
+                assert_eq!(total.totals.totals.tally, DreipScalar::one());
+            } else {
+                assert_eq!(total.totals.totals.tally, DreipScalar::zero());
+            }
+        }
+        let mut ballots = HashMap::new();
+        ballots.insert(second_receipt.id.to_bytes(), second_receipt.crypto);
+        let mut totals = HashMap::new();
+        for total in candidate_totals {
+            totals.insert(total.candidate_name.clone(), total.totals.totals);
+        }
+        let results = ElectionResults {
+            election: election.election.crypto,
+            ballots,
+            totals,
+        };
+        assert!(results.verify().is_ok());
     }
 
     #[backend_test(voter)]
-    async fn bad_casts() {
-        // TODO
+    async fn bad_casts(client: Client, db: Database) {
+        let (election_id, question_id) = insert_test_data(&db).await;
+
+        // Try voting on a non-existent question.
+        let ballot_specs = vec![BallotSpec {
+            question: Id::new(),
+            candidate: "John Smith".to_string(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try voting on an allowed question but for a non-existent candidate.
+        let ballot_specs = vec![BallotSpec {
+            question: question_id,
+            candidate: "Nobody".to_string(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try voting on an inactive election.
+        let inactive_election = Coll::<Election>::from_db(&db)
+            .find_one(doc!{"finalised": false}, None).await.unwrap().unwrap();
+        let ballot_specs = vec![BallotSpec {
+            question: question_id,
+            candidate: "Chris Riches".to_string(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(inactive_election.id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Ensure nothing we did had any effect.
+        let ballots = Coll::<Ballot<Unconfirmed>>::from_db(&db)
+            .find(None, None).await.unwrap();
+        assert_eq!(ballots.try_collect::<Vec<_>>().await.unwrap().len(), 0);
     }
 
     #[backend_test(voter)]
