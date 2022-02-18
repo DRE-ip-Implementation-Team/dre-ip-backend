@@ -366,7 +366,7 @@ mod tests {
     use dre_ip::ElectionResults;
     use dre_ip::group::{DreipScalar, DreipPublicKey};
     use mongodb::Database;
-    use rocket::{futures::TryStreamExt, http::ContentType, local::asynchronous::Client, serde::json::serde_json};
+    use rocket::{futures::{StreamExt, TryStreamExt}, http::ContentType, local::asynchronous::Client, serde::json::serde_json};
 
     use crate::model::{
         election::{Election, ElectionSpec, NewElection, QuestionSpec},
@@ -429,6 +429,44 @@ mod tests {
             .await
             .unwrap();
         (election1.id, allowed_question)
+    }
+
+    /// Dump the current state of the database to stdout; useful for debugging.
+    async fn dump_db_state(db: &Database) {
+        println!("\nVoters:");
+        let mut voters = Coll::<Voter>::from_db(db).find(None, None).await.unwrap();
+        while let Some(Ok(voter)) = voters.next().await {
+            println!("{:?}", voter);
+        }
+
+        println!("\nElections:");
+        let mut elections = Coll::<Election>::from_db(db).find(None, None).await.unwrap();
+        while let Some(Ok(election)) = elections.next().await {
+            println!("{:?}", election);
+        }
+
+        println!("\nUnconfirmed Ballots:");
+        let mut ballots = Coll::<Ballot<Unconfirmed>>::from_db(db).find(doc!{"state": "Unconfirmed"}, None).await.unwrap();
+        while let Some(Ok(ballot)) = ballots.next().await {
+            println!("{:?}", ballot);
+        }
+        println!("\nAudited Ballots:");
+        let mut ballots = Coll::<Ballot<Audited>>::from_db(db).find(doc!{"state": "Audited"}, None).await.unwrap();
+        while let Some(Ok(ballot)) = ballots.next().await {
+            println!("{:?}", ballot);
+        }
+        println!("\nConfirmed Ballots:");
+        let mut ballots = Coll::<Ballot<Confirmed>>::from_db(db).find(doc!{"state": "Confirmed"}, None).await.unwrap();
+        while let Some(Ok(ballot)) = ballots.next().await {
+            println!("{:?}", ballot);
+        }
+
+        println!("\nCandidate Totals:");
+        let mut totals = Coll::<CandidateTotals>::from_db(db).find(None, None).await.unwrap();
+        println!("yeet");
+        while let Some(Ok(total)) = totals.next().await {
+            println!("{:?}", total);
+        }
     }
 
     #[backend_test(voter)]
@@ -604,6 +642,8 @@ mod tests {
         assert!(response.body().is_some());
         let raw_response = response.into_string().await.unwrap();
         let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+
+        dump_db_state(&db).await;
 
         // Confirm the ballot.
         let ballot_recalls = vec![BallotRecall {
