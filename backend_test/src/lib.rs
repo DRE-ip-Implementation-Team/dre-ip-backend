@@ -6,34 +6,30 @@ use syn::{
     Signature, Type,
 };
 
-/// Instruments a test as a [`rocket::async_test`], injects necessary dependencies and ensures that the [`mongodb::Database`] is
-/// cleared WHETHER OR NOT the test completes by passing, failing or otherwise panicking.
+/// Transform an asynchronous test into a synchronous one, inject dependencies,
+/// and ensure that the database is cleared regardless of how the test terminates.
 ///
-/// If a panic occurs via a failed assertion or other unwinding panic, the [`mongodb::Database`] is
-/// cleared, and the panic is "rethrown".
-///
-/// Injectable dependencies so far include [`rocket::local::asynchronous::Client`],
-/// [`mongodb::Database`] and [`crate::model::mongodb::Coll<T>`]
+/// Injectable dependencies are [`rocket::local::asynchronous::Client`],
+/// [`mongodb::Database`], and [`crate::model::mongodb::Coll<T>`].
 #[proc_macro_attribute]
 pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut item_fn = parse_macro_input!(input as ItemFn);
-    let sig = &mut item_fn.sig;
 
-    // Extract type information and reject invalid function signatures
-    let (test_args, collection_idents, collection_types) = match check_sig(sig.clone()) {
+    // Extract type information and reject invalid function signatures.
+    let (test_args, collection_idents, collection_types) = match check_sig(item_fn.sig.clone()) {
         Ok(args) => args,
         Err(err) => {
             return err.into_compile_error().into();
         }
     };
 
-    // Rename the future so the test can have its original name
-    let name = sig.ident.clone();
+    // Rename the future so the test can have its original name.
+    let name = item_fn.sig.ident.clone();
     let new_name = format_ident!("{}_fut", name);
-    sig.ident = new_name.clone();
+    item_fn.sig.ident = new_name.clone();
 
-    // Log in the client as admin/voter if needed
-    let maybe_login_as_user = parse_macro_input!(args as Option<Ident>)
+    // Log in the client as admin/voter if needed.
+    let maybe_login = parse_macro_input!(args as Option<Ident>)
         .and_then(|arg| {
             if arg == "admin" {
                 Some(quote! {
@@ -77,48 +73,71 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         })
         .unwrap_or_default();
 
-    let stmts = item_fn.block.stmts;
-
+    // Rewrite the test function.
     quote! {
-        #[rocket::async_test]
-        async fn #name() {
-            let db_client = crate::db_client().await;
-            let db_name = crate::database();
-            let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db(db_client.clone(), &db_name))
-                .await
-                .unwrap();
-            let db = db_client.database(&db_name);
+        #[test]
+        fn #name() {
+            /// Test setup.
+            async fn setup() -> (rocket::local::asynchronous::Client, mongodb::Database) {
+                let db_client = crate::db_client().await;
+                let db_name = crate::database();
+                let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db(db_client.clone(), &db_name))
+                    .await
+                    .unwrap();
+                let db = db_client.database(&db_name);
 
-            #maybe_login_as_user
+                #maybe_login
 
-            #sig {
-                #(#stmts)*
+                (rocket_client, db)
             }
 
-            // `Mutex<T>: UnwindSafe` circumvents `T: !UnwindSafe`:
-            // - See https://stackoverflow.com/a/66529014/13112498
+            /// The test itself.
+            #item_fn
+
+            /// Test cleanup.
+            async fn cleanup(db: mongodb::Database) {
+                db.drop(None).await.unwrap();
+            }
+
+            // Create an async runtime. We need a separate one for inside and
+            // outside the `catch_unwind`.
+            let outer_runtime = rocket::tokio::runtime::Builder::new_multi_thread()
+                .thread_name("test-setup-cleanup")
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .unwrap();
+            let inner_runtime = rocket::tokio::runtime::Builder::new_multi_thread()
+                .thread_name("rocket-worker-test-thread")
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .unwrap();
+
+            // Run the setup.
+            let (rocket_client, db) = outer_runtime.block_on(setup());
+
+            // Run the test, catching any panics.
+            // Use mutexes to safely transfer `!UnwindSafe` data.
             let client_mutex = std::sync::Mutex::new(rocket_client);
             let db_mutex = std::sync::Mutex::new(db.clone());
-
+            let runtime_mutex = std::sync::Mutex::new(inner_runtime);
             let result = std::panic::catch_unwind(|| {
-                // Transfer mutexes across the unwind boundary
-                // Unwraps are valid as no poisoning occurs: mutexes are not given to other threads
                 let rocket_client = client_mutex.into_inner().unwrap();
                 let db = db_mutex.into_inner().unwrap();
+                let runtime = runtime_mutex.into_inner().unwrap();
 
                 #(
                     let #collection_idents = crate::model::mongodb::Coll::<#collection_types>::from_db(&db);
                 )*
 
-                // Manually run future inside the current runtime
-                let handle = rocket::tokio::runtime::Handle::current();
-                let _ = handle.enter();
-                rocket::futures::executor::block_on(#new_name(#(#test_args),* #(,#collection_idents)*));
+                runtime.block_on(#new_name(#(#test_args),* #(,#collection_idents)*));
             });
 
-            db.drop(None).await.unwrap();
+            // Run the cleanup.
+            outer_runtime.block_on(cleanup(db));
 
-            // Panic with the original error
+            // If the test panicked, re-raise the panic.
             if let Err(cause) = result {
                 std::panic::panic_any(cause);
             }
@@ -127,7 +146,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
     .into()
 }
 
-/// Ensure signature conforms to `async fn test_ident(client_ident: Client, db_ident: Database)`.
+/// Ensure the wrapped test is async, extract parameters to inject, and reject unknown parameters.
 fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident>), syn::Error> {
     if sig.asyncness.is_none() {
         return Err(syn::Error::new(sig.span(), "Test must be marked `async`"));
