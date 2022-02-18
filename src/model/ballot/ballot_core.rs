@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use dre_ip::{Ballot as DreipBallot, CandidateTotals, Vote as DreipVote};
 use serde::de::DeserializeOwned;
@@ -10,7 +11,7 @@ use crate::model::election::{CandidateID, DreipGroup};
 pub type BallotCrypto<V> = DreipBallot<CandidateID, DreipGroup, V>;
 
 /// Core ballot data, as stored in the database.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename = "camelCase")]
 pub struct BallotCore<S: BallotState> {
     /// The cryptographic data.
@@ -45,10 +46,10 @@ impl BallotCore<Unconfirmed> {
 /// if and only if the ballot is unconfirmed or audited.
 pub trait BallotState: Copy + AsRef<[u8]> {
     /// Is this state represented internally by a `ConfirmedVote` or an `UnconfirmedVote`?
-    type InternalVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone;
+    type InternalVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone + Debug;
     /// Do we show the user a `ConfirmedVote` or an `UnconfirmedVote` (do we reveal the
     /// secrets in the receipt)?
-    type ReceiptVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone;
+    type ReceiptVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone + Debug;
     /// Convert internal representation into receipt representation.
     fn internal_to_receipt(
         internal: BallotCrypto<Self::InternalVote>,

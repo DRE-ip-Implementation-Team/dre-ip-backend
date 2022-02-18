@@ -12,7 +12,7 @@ use super::groups::Electorate;
 use super::{CandidateID, DreipGroup, QuestionID};
 
 /// Core election data, as stored in the database.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct ElectionCore {
     /// Top-level metadata.
@@ -69,7 +69,7 @@ pub struct ElectionMetadata {
 }
 
 /// A single question.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Question {
     /// Question unique ID.
