@@ -18,8 +18,8 @@ pub async fn active_election_by_id(
     let is_active = doc! {
         "_id": *election_id,
         "finalised": true,
-        "startTime": { "$lte": now },
-        "endTime": { "$gt": now },
+        "start_time": { "$lte": now },
+        "end_time": { "$gt": now },
     };
 
     elections

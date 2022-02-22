@@ -1,8 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use mongodb::bson::oid::ObjectId;
-use mongodb::{bson::doc, Client};
-
+use mongodb::{bson::doc, options::ReplaceOptions, Client};
 use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +8,7 @@ use crate::error::{Error, Result};
 use crate::model::{
     auth::AuthToken,
     ballot::{Audited, Ballot, Confirmed, Receipt, Signature, Unconfirmed, UNCONFIRMED},
-    candidate_totals::CandidateTotals,
+    candidate_totals::{CandidateTotals, NewCandidateTotals},
     election::Election,
     mongodb::{Coll, Id},
     voter::Voter,
@@ -82,7 +80,6 @@ async fn join_election(
 
     // Find questions restricted to those groups
     let allowed_questions = election
-        .election
         .questions
         .iter()
         .filter_map(|(question_id, question)| {
@@ -92,7 +89,7 @@ async fn join_election(
                 .constraints
                 .iter()
                 .any(|(electorate_name, groups)| !groups.is_disjoint(&joins[electorate_name]))
-                .then(|| -> ObjectId { (*question_id).into() })
+                .then(|| **question_id)
         })
         .collect::<Vec<_>>();
 
@@ -295,21 +292,18 @@ async fn confirm_ballots(
         session.start_transaction(None).await?;
 
         for ballot in recalled_ballots {
-            // Check that the voter is eligible to vote on this question.
+            // Check that the user is eligible to vote on this question.
+            let allowed_questions_election_id = format!("allowed_questions.{}", election_id);
             let filter = doc! {
                 "_id": *token.id,
-                "allowed_questions": {
-                    election_id: {
-                        "$in": [*ballot.question_id],
-                    },
+                &allowed_questions_election_id: {
+                    "$in": [*ballot.question_id],
                 },
             };
             let update = doc! {
                 "$pull": {
-                    "election_voted": {
-                        election_id: {
-                            "$eq": *ballot.question_id,
-                        },
+                    &allowed_questions_election_id: {
+                        "$eq": *ballot.question_id,
                     },
                 },
             };
@@ -336,11 +330,26 @@ async fn confirm_ballots(
                 .await?
                 .try_collect::<Vec<_>>()
                 .await?;
+            // If the totals don't exist yet, we need to create them.
+            if totals.len() != ballot.crypto.votes.len() {
+                assert_eq!(totals.len(), 0);
+                let question = election.questions.get(&ballot.question_id).unwrap();
+                for candidate in question.candidates.iter() {
+                    totals.push(CandidateTotals {
+                        id: Id::new(),
+                        totals: NewCandidateTotals::new(
+                            election_id,
+                            ballot.question_id,
+                            candidate.clone(),
+                        ),
+                    });
+                }
+            }
             assert_eq!(totals.len(), ballot.crypto.votes.len());
             // Convert to hashmap.
             let mut totals_map = totals
                 .iter_mut()
-                .map(|t| (t.candidate_name.clone(), &mut t.totals.totals))
+                .map(|t| (t.candidate_name.clone(), &mut t.crypto))
                 .collect::<HashMap<_, _>>();
 
             // Confirm ballot.
@@ -363,10 +372,11 @@ async fn confirm_ballots(
                     "question_id": *confirmed.question_id,
                     "candidate_name": t.candidate_name.clone(),
                 };
+                let options = ReplaceOptions::builder().upsert(true).build();
                 let result = candidate_totals
-                    .replace_one_with_session(filter, t, None, &mut session)
+                    .replace_one_with_session(filter, t, options, &mut session)
                     .await?;
-                assert_eq!(result.modified_count, 1);
+                assert!(result.modified_count == 1 || result.upserted_id.is_some());
             }
 
             new_ballots.push(confirmed);
@@ -586,6 +596,7 @@ mod tests {
     }
 
     /// Dump the current state of the database to stdout; useful for debugging.
+    #[allow(dead_code)]
     async fn dump_db_state(db: &Database) {
         println!("\nVoters:");
         let mut voters = Coll::<Voter>::from_db(db).find(None, None).await.unwrap();
@@ -632,7 +643,6 @@ mod tests {
             .find(None, None)
             .await
             .unwrap();
-        println!("yeet");
         while let Some(Ok(total)) = totals.next().await {
             println!("{:?}", total);
         }
@@ -823,8 +833,8 @@ mod tests {
             .await
             .unwrap();
         for total in totals.iter() {
-            assert_eq!(total.totals.totals.r_sum, DreipScalar::zero());
-            assert_eq!(total.totals.totals.tally, DreipScalar::zero());
+            assert_eq!(total.crypto.r_sum, DreipScalar::zero());
+            assert_eq!(total.crypto.tally, DreipScalar::zero());
         }
     }
 
@@ -853,8 +863,6 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
-
-        dump_db_state(&db).await;
 
         // Confirm the ballot.
         let ballot_recalls = vec![BallotRecall {
@@ -912,16 +920,16 @@ mod tests {
             .unwrap();
         for total in candidate_totals.iter() {
             if total.question_id == question_id && total.candidate_name == candidate_id {
-                assert_eq!(total.totals.totals.tally, DreipScalar::one());
+                assert_eq!(total.crypto.tally, DreipScalar::one());
             } else {
-                assert_eq!(total.totals.totals.tally, DreipScalar::zero());
+                assert_eq!(total.crypto.tally, DreipScalar::zero());
             }
         }
         let mut ballots = HashMap::new();
         ballots.insert(second_receipt.id.to_bytes(), second_receipt.crypto);
         let mut totals = HashMap::new();
         for total in candidate_totals {
-            totals.insert(total.candidate_name.clone(), total.totals.totals);
+            totals.insert(total.candidate_name.clone(), total.totals.crypto);
         }
         let results = ElectionResults {
             election: election.election.crypto,
