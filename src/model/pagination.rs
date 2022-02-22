@@ -1,8 +1,11 @@
 use rocket::form::{self, DataField, Errors, FromForm, FromFormField, ValueField};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// Max page size of a single paginated response.
+pub const MAX_PAGE_SIZE: u32 = 100;
 
 /// Pagination request from a client - which page do they want, and how big?
-#[derive(UriDisplayQuery)]
+#[derive(Debug, UriDisplayQuery)]
 pub struct PaginationRequest {
     /// Which page is this?
     pub page_num: u32,
@@ -11,14 +14,6 @@ pub struct PaginationRequest {
 }
 
 impl PaginationRequest {
-    /// Create a new pagination request.
-    pub fn new(page_num: u32, page_size: u32) -> Self {
-        Self {
-            page_num,
-            page_size,
-        }
-    }
-
     /// Calculate how many elements to skip before the start of this page.
     pub fn skip(&self) -> u32 {
         (self.page_num - 1) * self.page_size
@@ -26,14 +21,14 @@ impl PaginationRequest {
 
     /// Get the page size.
     pub fn page_size(&self) -> u32 {
-        self.page_size
+        std::cmp::min(self.page_size, MAX_PAGE_SIZE)
     }
 
-    /// Convert into a response with the given total.
+    /// Convert into a response with the given total number of items.
     pub fn to_response(&self, total: u64) -> PaginationResponse {
         PaginationResponse {
             page_num: self.page_num,
-            page_size: self.page_size,
+            page_size: self.page_size(),
             total,
         }
     }
@@ -108,7 +103,7 @@ impl<'r> FromForm<'r> for PaginationRequest {
 
 /// Pagination response to a client - which page did you actually get, how big
 /// is it actually, and how many items are there in total?
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PaginationResponse {
     /// Which page is this?
     pub page_num: u32,
@@ -119,8 +114,8 @@ pub struct PaginationResponse {
 }
 
 /// A paginated vector of T, with pagination metadata.
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Paginated<T> {
-    items: Vec<T>,
-    pagination: PaginationResponse,
+    pub items: Vec<T>,
+    pub pagination: PaginationResponse,
 }
