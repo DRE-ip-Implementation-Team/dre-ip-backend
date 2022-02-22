@@ -36,7 +36,6 @@ pub struct Ballot<S: BallotState> {
 impl Ballot<Unconfirmed> {
     /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
     pub fn new(
-        election_id: Id,
         question_id: Id,
         yes_candidate: CandidateID,
         no_candidates: impl IntoIterator<Item = CandidateID>,
@@ -44,6 +43,7 @@ impl Ballot<Unconfirmed> {
         rng: impl RngCore + CryptoRng,
     ) -> Option<Self> {
         let id = Id::new();
+        let election_id = election.id;
         let creation_time = Utc::now();
         let crypto =
             election
@@ -73,9 +73,9 @@ impl Ballot<Unconfirmed> {
         }
     }
 
-    pub fn confirm<'a>(
+    pub fn confirm<'a, 'b: 'a>(
         self,
-        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>,
+        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'b mut CandidateTotals<DreipGroup>>>>,
     ) -> Ballot<Confirmed> {
         Ballot {
             id: self.id,
@@ -104,7 +104,7 @@ impl<S: BallotState> DerefMut for Ballot<S> {
 /// A ballot that is either Confirmed or Audited.
 /// With the untagged representation, `Ballot<Audited>` and
 /// `Ballot<Confirmed>` can both directly deserialize to this type.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum FinishedBallot {
     Audited(Ballot<Audited>),
