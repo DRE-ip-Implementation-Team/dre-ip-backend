@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::Utc;
 use mongodb::{bson::doc, options::ReplaceOptions, Client};
 use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
 use serde::{Deserialize, Serialize};
@@ -13,8 +14,6 @@ use crate::model::{
     mongodb::{Coll, Id},
     voter::Voter,
 };
-
-use super::common::active_election_by_id;
 
 pub fn routes() -> Vec<Route> {
     routes![
@@ -51,26 +50,22 @@ async fn join_election(
 
     // Check that electorates and groups exist and meet mutex requirements
     for (electorate_name, groups) in &joins.0 {
-        let electorate = election
-            .election
-            .electorates
-            .get(electorate_name)
-            .ok_or_else(|| {
-                Error::not_found(format!("Electorate with name '{}'", electorate_name))
-            })?;
+        let electorate = election.electorates.get(electorate_name).ok_or_else(|| {
+            Error::not_found(format!("Electorate with name '{}'", electorate_name))
+        })?;
 
         if electorate.is_mutex && groups.len() > 1 {
             return Err(Error::Status(
                 Status::UnprocessableEntity,
                 format!(
-                    "Cannot join mutex electorate {} with more than one group",
+                    "Cannot join more than one group in mutex electorate {}",
                     electorate_name
                 ),
             ));
         }
 
         let invalid_groups: Vec<_> = groups.difference(&electorate.groups).collect();
-        if invalid_groups.is_empty() {
+        if !invalid_groups.is_empty() {
             return Err(Error::not_found(format!(
                 "Groups for electorate '{}' with the following names '{:?}'",
                 electorate_name, invalid_groups
@@ -94,13 +89,13 @@ async fn join_election(
         .collect::<Vec<_>>();
 
     // Join the election by adding the voter's unanswered questions
-    let path = format!("allowed_questions.{}", election.id);
+    let allowed_questions_election_id = format!("allowed_questions.{}", election.id);
     voters
         .update_one(
             voter.id.as_doc(),
             doc! {
                 "$set": {
-                    path: allowed_questions
+                    allowed_questions_election_id: allowed_questions
                 }
             },
             None,
@@ -394,6 +389,24 @@ async fn confirm_ballots(
     Ok(Json(receipts))
 }
 
+/// Return an active Election from the database via ID lookup.
+/// An active election is finalised and within its start and end times.
+async fn active_election_by_id(election_id: Id, elections: &Coll<Election>) -> Result<Election> {
+    let now = Utc::now();
+
+    let is_active = doc! {
+        "_id": *election_id,
+        "finalised": true,
+        "start_time": { "$lte": now },
+        "end_time": { "$gt": now },
+    };
+
+    elections
+        .find_one(is_active, None)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("Active election with ID '{}'", election_id)))
+}
+
 /// Get the given unconfirmed ballots, verifying their signatures.
 async fn recall_ballots(
     ballot_recalls: Vec<BallotRecall>,
@@ -424,76 +437,6 @@ async fn recall_ballots(
     Ok(ballots)
 }
 
-// #[derive(Deserialize)]
-// #[serde(transparent)]
-// struct Joins(HashMap<String, Vec<String>>);
-
-// impl Deref for Joins {
-//     type Target = HashMap<String, Vec<String>>;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
-// #[rocket::async_trait]
-// impl<'r> FromData<'r> for Joins {
-//     type Error = JoinsError;
-
-//     async fn from_data(req: &'r Request<'_>, data: Data<'r>) -> data::Outcome<'r, Self> {
-//         if req.content_type() != Some(&ContentType::JSON) {
-//             return data::Outcome::Forward(data);
-//         }
-
-//         let raw_data = try_outcome!(data
-//             .open(512_i32.megabytes())
-//             .into_string()
-//             .await
-//             .map_err(JoinsError::Io)
-//             .into_outcome(Status::BadRequest));
-
-//         let json = try_outcome!(json::from_str::<Value>(&raw_data)
-//             .map_err(JoinsError::Json)
-//             .into_outcome(Status::BadRequest));
-
-//         let object = try_outcome!(json
-//             .as_object()
-//             .ok_or_else(|| JoinsError::NotObject)
-//             .into_outcome(Status::UnprocessableEntity));
-
-//         let electorate_groups = HashMap::with_capacity(80);
-
-//         for (electorate, value) in object {
-//             let array = try_outcome!(value
-//                 .as_array()
-//                 .ok_or_else(|| JoinsError::NotArray)
-//                 .into_outcome(Status::UnprocessableEntity));
-
-//             let groups = try_outcome!(array
-//                 .iter()
-//                 .map(|group| Ok(group
-//                     .as_str()
-//                     .ok_or_else(|| JoinsError::NotStr)?
-//                     .to_string()))
-//                 .collect::<std::result::Result<Vec<_>, _>>()
-//                 .into_outcome(Status::UnprocessableEntity));
-
-//             electorate_groups.insert(*electorate, groups);
-//         }
-
-//         data::Outcome::Success(Joins(electorate_groups))
-//     }
-// }
-
-// #[derive(Debug)]
-// enum JoinsError {
-//     Io(std::io::Error),
-//     Json(JsonError),
-//     NotObject,
-//     NotArray,
-//     NotStr,
-// }
-
 /// A ballot that the voter wishes to cast, representing a specific candidate
 /// for a specific question.
 #[derive(Debug, Serialize, Deserialize)]
@@ -517,6 +460,7 @@ struct BallotRecall {
 mod tests {
     use backend_test::backend_test;
     use chrono::{Duration, Utc};
+    use dre_ip::group::Serializable;
     use dre_ip::{
         group::{DreipPublicKey, DreipScalar},
         ElectionResults,
@@ -646,6 +590,203 @@ mod tests {
         while let Some(Ok(total)) = totals.next().await {
             println!("{:?}", total);
         }
+    }
+
+    #[backend_test(voter)]
+    async fn join_all_groups(client: Client, db: Database) {
+        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election_id: Id = Coll::<NewElection>::from_db(&db)
+            .insert_one(&election, None)
+            .await
+            .unwrap()
+            .inserted_id
+            .as_object_id()
+            .unwrap()
+            .into();
+
+        // Check no questions are allowed.
+        let voter = Coll::<Voter>::from_db(&db)
+            .find_one(doc! {"sms": Sms::example()}, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(voter.allowed_questions, HashMap::new());
+
+        // Join as many groups as we can.
+        let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![
+            (
+                "Societies".to_string(),
+                HashSet::from_iter(vec!["Quidditch", "Moongolf"].into_iter().map(String::from)),
+            ),
+            (
+                "Courses".to_string(),
+                HashSet::from_iter(vec!["CompSci".to_string()]),
+            ),
+        ]);
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_none());
+
+        // Check all questions are allowed.
+        let voter = Coll::<Voter>::from_db(&db)
+            .find_one(doc! {"sms": Sms::example()}, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            voter.allowed_questions[&election_id]
+                .iter()
+                .collect::<HashSet<_>>(),
+            election.questions.keys().collect()
+        );
+    }
+
+    #[backend_test(voter)]
+    async fn join_one_group(client: Client, db: Database) {
+        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election_id: Id = Coll::<NewElection>::from_db(&db)
+            .insert_one(&election, None)
+            .await
+            .unwrap()
+            .inserted_id
+            .as_object_id()
+            .unwrap()
+            .into();
+
+        // Check no questions are allowed.
+        let voter = Coll::<Voter>::from_db(&db)
+            .find_one(doc! {"sms": Sms::example()}, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(voter.allowed_questions, HashMap::new());
+
+        // Join one group only.
+        let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![(
+            "Societies".to_string(),
+            HashSet::from_iter(vec!["Quidditch".to_string()]),
+        )]);
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_none());
+
+        // Check the correct question is allowed.
+        let voter = Coll::<Voter>::from_db(&db)
+            .find_one(doc! {"sms": Sms::example()}, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            voter.allowed_questions[&election_id]
+                .iter()
+                .collect::<HashSet<_>>(),
+            election
+                .questions
+                .iter()
+                .filter_map(
+                    |(id, q)| if q.description == QuestionSpec::example1().description {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                )
+                .collect()
+        );
+    }
+
+    #[backend_test(voter)]
+    async fn bad_joins(client: Client, db: Database) {
+        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election_id: Id = Coll::<NewElection>::from_db(&db)
+            .insert_one(election, None)
+            .await
+            .unwrap()
+            .inserted_id
+            .as_object_id()
+            .unwrap()
+            .into();
+
+        // Try to join a non-existent election.
+        let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![(
+            "Societies".to_string(),
+            HashSet::from_iter(vec!["Quidditch".to_string()]),
+        )]);
+        let response = client
+            .post(uri!(join_election(Id::new())))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try to join a non-existent electorate.
+        let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![(
+            "Foo".to_string(),
+            HashSet::from_iter(vec!["Quidditch".to_string()]),
+        )]);
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try to join a non-existent group.
+        let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![(
+            "Societies".to_string(),
+            HashSet::from_iter(vec!["Foo".to_string()]),
+        )]);
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try to join two mutually-exclusive groups.
+        let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![(
+            "Courses".to_string(),
+            HashSet::from_iter(vec!["CompSci", "Maths"].into_iter().map(String::from)),
+        )]);
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::UnprocessableEntity);
+
+        // Try to join an election twice.
+        let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![(
+            "Societies".to_string(),
+            HashSet::from_iter(vec!["Quidditch".to_string()]),
+        )]);
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&joins).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Forbidden);
     }
 
     #[backend_test(voter)]
@@ -996,7 +1137,191 @@ mod tests {
     }
 
     #[backend_test(voter)]
-    async fn bad_audit_confirms() {
-        // TODO
+    async fn bad_votes(client: Client, db: Database) {
+        let (election_id, question_id) = insert_test_data(&db).await;
+
+        // Vote on an inactive election.
+        let inactive_election = Coll::<Election>::from_db(&db)
+            .find_one(doc! {"_id": {"$ne": *election_id}}, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let question = *inactive_election.questions.keys().next().unwrap();
+        let ballot_specs = vec![BallotSpec {
+            question,
+            candidate: inactive_election
+                .questions
+                .get(&question)
+                .unwrap()
+                .candidates[0]
+                .clone(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(inactive_election.id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Vote on a non-existent election.
+        let response = client
+            .post(uri!(cast_ballots(Id::new())))
+            .header(ContentType::JSON)
+            .body("[]")
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Vote on a non-existent question.
+        let ballot_specs = vec![BallotSpec {
+            question: Id::new(),
+            candidate: "Alice".to_string(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Vote on the question we are not allowed to.
+        let not_allowed_question = *Coll::<Election>::from_db(&db)
+            .find_one(election_id.as_doc(), None)
+            .await
+            .unwrap()
+            .unwrap()
+            .questions
+            .iter()
+            .find_map(|(id, q)| {
+                if q.description == QuestionSpec::example2().description {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let ballot_specs = vec![BallotSpec {
+            question: not_allowed_question,
+            candidate: "Alice".to_string(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Vote for a non-existent candidate.
+        let ballot_specs = vec![BallotSpec {
+            question: question_id,
+            candidate: "Alice".to_string(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Vote on the question we are allowed to.
+        let candidate_id = "Chris Riches".to_string();
+        let ballot_specs = vec![BallotSpec {
+            question: question_id,
+            candidate: candidate_id.clone(),
+        }];
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+        let raw_response = response.into_string().await.unwrap();
+        let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+
+        // Try to confirm the wrong ballot ID.
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: Id::new(),
+            question_id,
+            signature: first_receipt.signature,
+        }];
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try to confirm the wrong question ID.
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: first_receipt.id,
+            question_id: Id::new(),
+            signature: first_receipt.signature,
+        }];
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try to confirm the wrong signature.
+        let mut signature = first_receipt.signature.to_bytes();
+        signature[0] = signature[0].wrapping_add(1);
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: first_receipt.id,
+            question_id,
+            signature: Signature::from_bytes(&signature).unwrap(),
+        }];
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Correctly confirm.
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: first_receipt.id,
+            question_id,
+            signature: first_receipt.signature,
+        }];
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+
+        // Try to confirm again.
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Try to audit after confirming.
+        let response = client
+            .post(uri!(audit_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
     }
 }

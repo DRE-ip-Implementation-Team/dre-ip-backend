@@ -2,7 +2,6 @@ use rocket::Route;
 
 mod admin;
 mod auth;
-mod common;
 mod group;
 mod public;
 mod voting;
