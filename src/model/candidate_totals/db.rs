@@ -7,7 +7,7 @@ use crate::model::mongodb::Id;
 use super::candidate_totals_core::CandidateTotalsCore;
 
 /// Candidate totals from the database, with their unique ID.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct CandidateTotals {
     pub id: Id,

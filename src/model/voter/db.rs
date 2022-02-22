@@ -19,7 +19,7 @@ use crate::{
 use super::voter_core::VoterCore;
 
 /// A voter user from the database, with its unique ID.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Voter {
     #[serde(rename = "_id")]
     pub id: Id,
