@@ -23,7 +23,9 @@ mod examples {
         pub fn example1() -> Self {
             Self {
                 name: "Societies".to_string(),
-                groups: HashSet::default(),
+                groups: HashSet::from_iter(
+                    vec!["Quidditch", "Moongolf"].into_iter().map(String::from),
+                ),
                 is_mutex: false,
             }
         }
@@ -31,7 +33,11 @@ mod examples {
         pub fn example2() -> Self {
             Self {
                 name: "Courses".to_string(),
-                groups: HashSet::default(),
+                groups: HashSet::from_iter(
+                    vec!["CompSci", "Maths", "Physics"]
+                        .into_iter()
+                        .map(String::from),
+                ),
                 is_mutex: true,
             }
         }

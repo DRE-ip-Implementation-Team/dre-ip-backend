@@ -90,7 +90,7 @@ mod examples {
                     start_time,
                     end_time,
                 },
-                electorates: vec![Electorate::example1()],
+                electorates: vec![Electorate::example1(), Electorate::example2()],
                 questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
             }
         }
@@ -105,7 +105,7 @@ mod examples {
                     start_time,
                     end_time,
                 },
-                electorates: vec![Electorate::example1()],
+                electorates: vec![Electorate::example1(), Electorate::example2()],
                 questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
             }
         }
@@ -115,7 +115,10 @@ mod examples {
         pub fn example1() -> Self {
             Self {
                 description: "Who should be captain of the Quidditch team?".to_string(),
-                constraints: HashMap::new(),
+                constraints: HashMap::from_iter(vec![(
+                    "Societies".to_string(),
+                    HashSet::from_iter(vec!["Quidditch".to_string()]),
+                )]),
                 candidates: vec!["Chris Riches".to_string(), "Parry Hotter".to_string()],
             }
         }
@@ -123,7 +126,10 @@ mod examples {
         pub fn example2() -> Self {
             Self {
                 description: "Who should be president of Warwick Extreme Moongolf?".to_string(),
-                constraints: HashMap::new(),
+                constraints: HashMap::from_iter(vec![(
+                    "Societies".to_string(),
+                    HashSet::from_iter(vec!["Moongolf".to_string()]),
+                )]),
                 candidates: vec!["John Smith".to_string(), "Jane Doe".to_string()],
             }
         }
