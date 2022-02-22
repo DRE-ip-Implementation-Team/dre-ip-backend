@@ -58,7 +58,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                     let cookie = cookies.get_private(crate::model::otp::CHALLENGE_COOKIE).unwrap();
                     let config = rocket_client.rocket().state::<crate::Config>().unwrap();
                     let challenge = crate::model::otp::Challenge::from_cookie(&cookie, config).unwrap();
-                    let code = challenge.code();
+                    let code = challenge.code;
 
                     rocket_client
                         .post(uri!(crate::api::auth::verify))
@@ -81,7 +81,8 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
             async fn setup() -> (rocket::local::asynchronous::Client, mongodb::Database) {
                 let db_client = crate::db_client().await;
                 let db_name = crate::database();
-                let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db(db_client.clone(), &db_name))
+                let notifier = aws_sdk_sns::Client::new(&aws_config::load_from_env().await);
+                let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_and_notifier(db_client.clone(), &db_name, notifier))
                     .await
                     .unwrap();
                 let db = db_client.database(&db_name);

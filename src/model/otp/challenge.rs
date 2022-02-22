@@ -21,22 +21,12 @@ pub const CHALLENGE_COOKIE: &str = "challenge";
 /// A challenge token tied to a specific SMS number and OTP code.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Challenge {
-    sms: Sms,
+    pub sms: Sms,
     #[serde(rename = "cod")]
-    code: Code,
+    pub code: Code,
 }
 
 impl Challenge {
-    /// Get the SMS number.
-    pub fn sms(self) -> Sms {
-        self.sms
-    }
-
-    /// Get the correct OTP code.
-    pub fn code(&self) -> Code {
-        self.code
-    }
-
     /// Create a new challenge with a random code.
     pub fn new(sms: Sms) -> Self {
         let code = Code::random();

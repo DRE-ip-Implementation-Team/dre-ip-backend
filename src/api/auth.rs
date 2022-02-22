@@ -1,3 +1,4 @@
+use aws_sdk_sns::Client as SnsClient;
 use mongodb::bson::doc;
 use rocket::{
     http::{Cookie, CookieJar, Status},
@@ -51,9 +52,31 @@ pub async fn authenticate(
 }
 
 #[get("/voter/challenge?<sms>")]
-pub fn challenge(sms: Sms, cookies: &CookieJar<'_>, config: &State<Config>) {
+pub async fn challenge(
+    sms: Sms,
+    cookies: &CookieJar<'_>,
+    config: &State<Config>,
+    sender: &State<SnsClient>,
+) -> Result<()> {
     let challenge = Challenge::new(sms);
+
+    #[cfg(not(test))]
+    sender
+        .publish()
+        .phone_number(challenge.sms.to_string())
+        .message(format!("Voter registration code: {}", challenge.code))
+        .send()
+        .await
+        .map_err(|_| {
+            Error::Status(
+                Status::InternalServerError,
+                "Failed to send message".to_string(),
+            )
+        })?;
+
     cookies.add_private(challenge.into_cookie(config));
+
+    Ok(())
 }
 
 #[post("/voter/verify", data = "<code>", format = "json")]
@@ -65,7 +88,7 @@ pub async fn verify(
     new_voters: Coll<NewVoter>,
     config: &State<Config>,
 ) -> Result<()> {
-    if challenge.code() != *code {
+    if challenge.code != *code {
         // Submitted code is invalid and so the verification fails
         return Err(Error::Status(
             Status::Unauthorized,
@@ -73,7 +96,7 @@ pub async fn verify(
         ));
     }
 
-    let voter = NewVoter::new(challenge.sms());
+    let voter = NewVoter::new(challenge.sms);
 
     let with_sms = doc! {
         "sms": &voter.sms
@@ -187,7 +210,7 @@ mod tests {
         let response = client
             .post(uri!(verify))
             .header(ContentType::JSON)
-            .body(json!(challenge.code()).to_string())
+            .body(json!(challenge.code).to_string())
             .dispatch()
             .await;
 
@@ -232,7 +255,7 @@ mod tests {
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())
             .unwrap()
-            .code();
+            .code;
 
         let mut wrong_code = [0; CODE_LENGTH];
         wrong_code[0] = if code[0] == 0 { 1 } else { code[0] - 1 };
@@ -266,7 +289,7 @@ mod tests {
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())
             .unwrap()
-            .code();
+            .code;
 
         client
             .post(uri!(verify))
