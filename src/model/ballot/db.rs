@@ -16,7 +16,7 @@ use super::ballot_core::{Audited, BallotCore, BallotState, Confirmed, Unconfirme
 
 /// A ballot from the database, with its unique ID.
 /// Also contains an election and question ID foreign key.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct Ballot<S: BallotState> {
     #[serde(rename = "_id")]

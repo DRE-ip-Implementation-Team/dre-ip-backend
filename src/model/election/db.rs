@@ -16,7 +16,7 @@ use crate::{
 use super::election_core::ElectionCore;
 
 /// An election from the database, with its unique ID.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Election {
     #[serde(rename = "_id")]
     pub id: Id,

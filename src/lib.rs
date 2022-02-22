@@ -22,7 +22,7 @@ pub(crate) async fn db_client() -> Client {
     let db_uri = env!("db_uri");
     Client::with_uri_str(db_uri)
         .await
-        .unwrap_or_else(|err| panic!("{}", err))
+        .unwrap()
 }
 
 /// Get the name of the database to use.
@@ -34,7 +34,9 @@ fn database() -> String {
     #[cfg(test)]
     {
         let random: u32 = rand::random();
-        format!("test{}", random)
+        let db = format!("test{}", random);
+        println!("Using database {}", db);
+        db
     }
 }
 
