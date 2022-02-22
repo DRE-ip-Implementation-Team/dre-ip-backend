@@ -170,7 +170,6 @@ async fn cast_ballots(
 
             // Create the ballot.
             let ballot = Ballot::new(
-                election_id,
                 question.id,
                 yes_candidate,
                 no_candidates,
@@ -842,17 +841,19 @@ mod tests {
         // Validate PWFs.
         assert!(receipt
             .crypto
-            .verify(&election.crypto, receipt.id.to_bytes())
+            .verify(&election.crypto, receipt.ballot_id.to_bytes())
             .is_ok());
         // Validate signature.
         let mut msg = receipt.crypto.to_bytes();
-        msg.extend(receipt.id.to_bytes());
+        msg.extend(receipt.ballot_id.to_bytes());
+        msg.extend(receipt.election_id.to_bytes());
+        msg.extend(receipt.question_id.to_bytes());
         msg.extend(receipt.state.as_ref());
         assert!(election.crypto.public_key.verify(&msg, &receipt.signature));
 
         // Ensure the ballot in the database is correct.
         let ballot = Coll::<Ballot<Unconfirmed>>::from_db(&db)
-            .find_one(doc! {"_id": *receipt.id}, None)
+            .find_one(doc! {"_id": *receipt.ballot_id}, None)
             .await
             .unwrap()
             .unwrap();
@@ -913,7 +914,7 @@ mod tests {
 
         // Audit the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -940,7 +941,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(first_receipt.id, second_receipt.id);
+        assert_eq!(first_receipt.ballot_id, second_receipt.ballot_id);
         assert_eq!(first_receipt.crypto.pwf, second_receipt.crypto.pwf);
         for (candidate, vote1) in first_receipt.crypto.votes.iter() {
             let vote2 = second_receipt.crypto.votes.get(candidate).unwrap();
@@ -954,11 +955,13 @@ mod tests {
         // Validate PWFs.
         assert!(second_receipt
             .crypto
-            .verify(&election.crypto, second_receipt.id.to_bytes())
+            .verify(&election.crypto, second_receipt.ballot_id.to_bytes())
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
-        msg.extend(second_receipt.id.to_bytes());
+        msg.extend(second_receipt.ballot_id.to_bytes());
+        msg.extend(second_receipt.election_id.to_bytes());
+        msg.extend(second_receipt.question_id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
         assert!(election
             .crypto
@@ -1007,7 +1010,7 @@ mod tests {
 
         // Confirm the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1034,17 +1037,19 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(first_receipt.id, second_receipt.id);
+        assert_eq!(first_receipt.ballot_id, second_receipt.ballot_id);
         assert_eq!(first_receipt.crypto, second_receipt.crypto);
 
         // Validate PWFs.
         assert!(second_receipt
             .crypto
-            .verify(&election.crypto, second_receipt.id.to_bytes())
+            .verify(&election.crypto, second_receipt.ballot_id.to_bytes())
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
-        msg.extend(second_receipt.id.to_bytes());
+        msg.extend(second_receipt.ballot_id.to_bytes());
+        msg.extend(second_receipt.election_id.to_bytes());
+        msg.extend(second_receipt.question_id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
         assert!(election
             .crypto
@@ -1067,7 +1072,7 @@ mod tests {
             }
         }
         let mut ballots = HashMap::new();
-        ballots.insert(second_receipt.id.to_bytes(), second_receipt.crypto);
+        ballots.insert(second_receipt.ballot_id.to_bytes(), second_receipt.crypto);
         let mut totals = HashMap::new();
         for total in candidate_totals {
             totals.insert(total.candidate_name.clone(), total.totals.crypto);
@@ -1264,7 +1269,7 @@ mod tests {
 
         // Try to confirm the wrong question ID.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.id,
+            ballot_id: first_receipt.ballot_id,
             question_id: Id::new(),
             signature: first_receipt.signature,
         }];
@@ -1280,7 +1285,7 @@ mod tests {
         let mut signature = first_receipt.signature.to_bytes();
         signature[0] = signature[0].wrapping_add(1);
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: Signature::from_bytes(&signature).unwrap(),
         }];
@@ -1294,7 +1299,7 @@ mod tests {
 
         // Correctly confirm.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
