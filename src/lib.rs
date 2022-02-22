@@ -20,9 +20,7 @@ pub async fn build() -> Rocket<Build> {
 
 pub(crate) async fn db_client() -> Client {
     let db_uri = env!("db_uri");
-    Client::with_uri_str(db_uri)
-        .await
-        .unwrap()
+    Client::with_uri_str(db_uri).await.unwrap()
 }
 
 /// Get the name of the database to use.

@@ -11,7 +11,7 @@ pub struct CandidateTotalsCore {
     pub question_id: Id,
     pub candidate_name: String,
     #[serde(flatten)]
-    pub totals: DreipTotals<DreipGroup>,
+    pub crypto: DreipTotals<DreipGroup>,
 }
 
 impl CandidateTotalsCore {
@@ -21,7 +21,7 @@ impl CandidateTotalsCore {
             election_id,
             question_id,
             candidate_name,
-            totals: DreipTotals::default(),
+            crypto: DreipTotals::default(),
         }
     }
 }

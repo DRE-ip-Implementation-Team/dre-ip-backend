@@ -26,11 +26,6 @@ impl Error {
     /// The cause is a concise sentence-cased description of the resource that was not found.
     ///
     /// Error messages will be displayed as `Not Found: <cause>`.
-    ///
-    /// ```
-    /// # use rocket::http::Status;
-    /// assert_eq!(Error::Status(Status::NotFound, "My resource".to_string()), Error::not_found("My resource".to_string()));
-    /// ```
     pub fn not_found(cause: String) -> Self {
         Self::Status(Status::NotFound, cause)
     }
