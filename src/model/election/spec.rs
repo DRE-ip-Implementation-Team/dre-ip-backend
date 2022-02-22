@@ -1,9 +1,11 @@
+use std::collections::{HashMap, HashSet};
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::Id;
 
 use super::election_core::{ElectionCore, ElectionMetadata, Question};
-use super::groups::Electorate;
+use super::electorate::Electorate;
 
 /// An election specification.
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,8 +52,8 @@ impl From<ElectionSpec> for ElectionMetadata {
 pub struct QuestionSpec {
     /// Question text.
     pub description: String,
-    /// A voter must be in at least one of these groups to vote on this question.
-    pub groups: Vec<String>,
+    /// A voter must be in at least one of these electorate groups to vote on this question.
+    pub constraints: HashMap<String, HashSet<String>>,
     /// Candidates / possible answers for this question.
     pub candidates: Vec<String>,
 }
@@ -62,7 +64,7 @@ impl From<QuestionSpec> for (Id, Question) {
         let question = Question {
             id,
             description: spec.description,
-            groups: spec.groups,
+            constraints: spec.constraints,
             candidates: spec.candidates,
         };
 
@@ -113,7 +115,7 @@ mod examples {
         pub fn example1() -> Self {
             Self {
                 description: "Who should be captain of the Quidditch team?".to_string(),
-                groups: vec![],
+                constraints: HashMap::new(),
                 candidates: vec!["Chris Riches".to_string(), "Parry Hotter".to_string()],
             }
         }
@@ -121,7 +123,7 @@ mod examples {
         pub fn example2() -> Self {
             Self {
                 description: "Who should be president of Warwick Extreme Moongolf?".to_string(),
-                groups: vec![],
+                constraints: HashMap::new(),
                 candidates: vec!["John Smith".to_string(), "Jane Doe".to_string()],
             }
         }

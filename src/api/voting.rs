@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use mongodb::bson::oid::ObjectId;
 use mongodb::{bson::doc, Client};
+
 use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
 use serde::{Deserialize, Serialize};
 
@@ -14,27 +16,111 @@ use crate::model::{
     voter::Voter,
 };
 
-use super::common::{active_election_by_id, voter_by_token};
+use super::common::active_election_by_id;
 
 pub fn routes() -> Vec<Route> {
-    routes![get_allowed, cast_ballots, audit_ballots, confirm_ballots]
+    routes![
+        join_election,
+        get_allowed,
+        cast_ballots,
+        audit_ballots,
+        confirm_ballots
+    ]
+}
+
+#[post(
+    "/voter/elections/<election_id>/join",
+    data = "<joins>",
+    format = "json"
+)]
+async fn join_election(
+    voter: Voter,
+    election_id: Id,
+    election: Election,
+    joins: Json<HashMap<String, HashSet<String>>>,
+    voters: Coll<Voter>,
+) -> Result<()> {
+    // Reject if voter has already joined the election
+    if voter.allowed_questions.contains_key(&election_id) {
+        return Err(Error::Status(
+            Status::Forbidden,
+            format!(
+                "Voter has already joined election with ID '{}'",
+                election_id
+            ),
+        ));
+    }
+
+    // Check that electorates and groups exist and meet mutex requirements
+    for (electorate_name, groups) in &joins.0 {
+        let electorate = election
+            .election
+            .electorates
+            .get(electorate_name)
+            .ok_or_else(|| {
+                Error::not_found(format!("Electorate with name '{}'", electorate_name))
+            })?;
+
+        if electorate.is_mutex && groups.len() > 1 {
+            return Err(Error::Status(
+                Status::UnprocessableEntity,
+                format!(
+                    "Cannot join mutex electorate {} with more than one group",
+                    electorate_name
+                ),
+            ));
+        }
+
+        let invalid_groups: Vec<_> = groups.difference(&electorate.groups).collect();
+        if invalid_groups.is_empty() {
+            return Err(Error::not_found(format!(
+                "Groups for electorate '{}' with the following names '{:?}'",
+                electorate_name, invalid_groups
+            )));
+        }
+    }
+
+    // Find questions restricted to those groups
+    let allowed_questions = election
+        .election
+        .questions
+        .iter()
+        .filter_map(|(question_id, question)| {
+            // Index into join object is valid since electorates and groups in it and the question
+            // constraints are existence-checked
+            question
+                .constraints
+                .iter()
+                .any(|(electorate_name, groups)| !groups.is_disjoint(&joins[electorate_name]))
+                .then(|| -> ObjectId { (*question_id).into() })
+        })
+        .collect::<Vec<_>>();
+
+    // Join the election by adding the voter's unanswered questions
+    let path = format!("allowed_questions.{}", election.id);
+    voters
+        .update_one(
+            voter.id.as_doc(),
+            doc! {
+                "$set": {
+                    path: allowed_questions
+                }
+            },
+            None,
+        )
+        .await?;
+
+    Ok(())
 }
 
 #[get("/voter/elections/<election_id>/questions/allowed")]
-async fn get_allowed(
-    token: AuthToken<Voter>,
-    election_id: Id,
-    voters: Coll<Voter>,
-) -> Result<Json<Vec<Id>>> {
-    // Get the voter.
-    let voter = voter_by_token(&token, &voters).await?;
-
+fn get_allowed(voter: Voter, election_id: Id) -> Result<Json<Vec<Id>>> {
     // Find what questions they can still vote for.
     let allowed = voter
         .allowed_questions
         .get(&election_id)
         .cloned()
-        .unwrap_or_else(Vec::new);
+        .unwrap_or_default();
 
     Ok(Json(allowed))
 }
@@ -59,19 +145,16 @@ async fn cast_ballots(
     for ballot_spec in &*ballot_specs {
         if let Some(question) = election.questions.get(&ballot_spec.question) {
             if !question.candidates.contains(&ballot_spec.candidate) {
-                return Err(Error::Status(
-                    Status::NotFound,
-                    format!(
-                        "Candidate '{}' not found for question '{:?}'",
-                        ballot_spec.candidate, ballot_spec.question
-                    ),
-                ));
+                return Err(Error::not_found(format!(
+                    "Candidate '{}' for question '{}'",
+                    ballot_spec.candidate, ballot_spec.question
+                )));
             }
         } else {
-            return Err(Error::Status(
-                Status::NotFound,
-                format!("Question '{:?}' not found", ballot_spec.question),
-            ));
+            return Err(Error::not_found(format!(
+                "Question '{}'",
+                ballot_spec.question
+            )));
         }
     }
 
@@ -212,7 +295,7 @@ async fn confirm_ballots(
         session.start_transaction(None).await?;
 
         for ballot in recalled_ballots {
-            // Check that the user is eligible to vote on this question.
+            // Check that the voter is eligible to vote on this question.
             let filter = doc! {
                 "_id": *token.id,
                 "allowed_questions": {
@@ -318,40 +401,101 @@ async fn recall_ballots(
         let ballot = unconfirmed_ballots
             .find_one(filter, None)
             .await?
-            .and_then(|ballot| {
+            .filter(|ballot| {
                 // Verify ownership of the ballot. If this fails, we return
                 // an error indistinguishable from the ballot ID not existing,
                 // so an attacker cannot learn anything about valid ballot IDs.
                 let true_signature = Receipt::from_ballot(ballot.clone(), election).signature;
-                if true_signature == recall.signature {
-                    Some(ballot)
-                } else {
-                    None
-                }
+                true_signature == recall.signature
             })
-            .ok_or_else(|| {
-                Error::Status(
-                    Status::NotFound,
-                    format!("Ballot not found with ID {:?}", recall.ballot_id),
-                )
-            })?;
+            .ok_or_else(|| Error::not_found(format!("Ballot with ID '{}'", recall.ballot_id)))?;
         ballots.push(ballot);
     }
     Ok(ballots)
 }
 
-/// A ballot that the user wishes to cast, representing a specific candidate
+// #[derive(Deserialize)]
+// #[serde(transparent)]
+// struct Joins(HashMap<String, Vec<String>>);
+
+// impl Deref for Joins {
+//     type Target = HashMap<String, Vec<String>>;
+
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
+
+// #[rocket::async_trait]
+// impl<'r> FromData<'r> for Joins {
+//     type Error = JoinsError;
+
+//     async fn from_data(req: &'r Request<'_>, data: Data<'r>) -> data::Outcome<'r, Self> {
+//         if req.content_type() != Some(&ContentType::JSON) {
+//             return data::Outcome::Forward(data);
+//         }
+
+//         let raw_data = try_outcome!(data
+//             .open(512_i32.megabytes())
+//             .into_string()
+//             .await
+//             .map_err(JoinsError::Io)
+//             .into_outcome(Status::BadRequest));
+
+//         let json = try_outcome!(json::from_str::<Value>(&raw_data)
+//             .map_err(JoinsError::Json)
+//             .into_outcome(Status::BadRequest));
+
+//         let object = try_outcome!(json
+//             .as_object()
+//             .ok_or_else(|| JoinsError::NotObject)
+//             .into_outcome(Status::UnprocessableEntity));
+
+//         let electorate_groups = HashMap::with_capacity(80);
+
+//         for (electorate, value) in object {
+//             let array = try_outcome!(value
+//                 .as_array()
+//                 .ok_or_else(|| JoinsError::NotArray)
+//                 .into_outcome(Status::UnprocessableEntity));
+
+//             let groups = try_outcome!(array
+//                 .iter()
+//                 .map(|group| Ok(group
+//                     .as_str()
+//                     .ok_or_else(|| JoinsError::NotStr)?
+//                     .to_string()))
+//                 .collect::<std::result::Result<Vec<_>, _>>()
+//                 .into_outcome(Status::UnprocessableEntity));
+
+//             electorate_groups.insert(*electorate, groups);
+//         }
+
+//         data::Outcome::Success(Joins(electorate_groups))
+//     }
+// }
+
+// #[derive(Debug)]
+// enum JoinsError {
+//     Io(std::io::Error),
+//     Json(JsonError),
+//     NotObject,
+//     NotArray,
+//     NotStr,
+// }
+
+/// A ballot that the voter wishes to cast, representing a specific candidate
 /// for a specific question.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct BallotSpec {
     pub question: Id,
     pub candidate: String,
 }
 
-/// A ballot that the user wishes to recall in order to audit or confirm.
+/// A ballot that the voter wishes to recall in order to audit or confirm.
 /// The ballot is identified by its ID and question ID, and ownership of this
 /// ballot is verified by the signature, which only the owning voter will have.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct BallotRecall {
     pub ballot_id: Id,
     pub question_id: Id,
@@ -363,10 +507,13 @@ struct BallotRecall {
 mod tests {
     use backend_test::backend_test;
     use chrono::{Duration, Utc};
+    use dre_ip::group::{DreipPublicKey, DreipScalar};
     use dre_ip::ElectionResults;
-    use dre_ip::group::{DreipScalar, DreipPublicKey};
     use mongodb::Database;
-    use rocket::{futures::TryStreamExt, http::ContentType, local::asynchronous::Client, serde::json::serde_json};
+    use rocket::{
+        futures::TryStreamExt, http::ContentType, local::asynchronous::Client,
+        serde::json::serde_json,
+    };
 
     use crate::model::{
         election::{Election, ElectionSpec, NewElection, QuestionSpec},
@@ -390,7 +537,10 @@ mod tests {
             election,
         };
         let elections = Coll::<Election>::from_db(db);
-        elections.insert_many(vec![&election1, &election2], None).await.unwrap();
+        elections
+            .insert_many(vec![&election1, &election2], None)
+            .await
+            .unwrap();
 
         // Allow the voter to vote on one of the two questions.
         let voters = Coll::<Voter>::from_db(db);
@@ -469,13 +619,23 @@ mod tests {
 
         // Ensure the response is a valid receipt.
         let raw_response = response.into_string().await.unwrap();
-        let receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+        let receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Ensure the receipt passes validation.
         let election = Coll::<Election>::from_db(&db)
-            .find_one(doc!{"_id": *election_id}, None).await.unwrap().unwrap();
+            .find_one(doc! {"_id": *election_id}, None)
+            .await
+            .unwrap()
+            .unwrap();
         // Validate PWFs.
-        assert!(receipt.crypto.verify(&election.crypto, receipt.id.to_bytes()).is_ok());
+        assert!(receipt
+            .crypto
+            .verify(&election.crypto, receipt.id.to_bytes())
+            .is_ok());
         // Validate signature.
         let mut msg = receipt.crypto.to_bytes();
         msg.extend(receipt.id.to_bytes());
@@ -484,11 +644,17 @@ mod tests {
 
         // Ensure the ballot in the database is correct.
         let ballot = Coll::<Ballot<Unconfirmed>>::from_db(&db)
-            .find_one(doc!{"_id": *receipt.id}, None).await.unwrap().unwrap();
+            .find_one(doc! {"_id": *receipt.id}, None)
+            .await
+            .unwrap()
+            .unwrap();
         // Check metadata.
         assert_eq!(ballot.election_id, election_id);
         assert_eq!(ballot.question_id, question_id);
-        assert!(ballot.creation_time < Utc::now() && ballot.creation_time + Duration::minutes(1) > Utc::now());
+        assert!(
+            ballot.creation_time < Utc::now()
+                && ballot.creation_time + Duration::minutes(1) > Utc::now()
+        );
         let mut yes_votes = 0;
         for (candidate, vote) in ballot.crypto.votes.iter() {
             // Check the vote value is correct.
@@ -531,7 +697,11 @@ mod tests {
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
         let raw_response = response.into_string().await.unwrap();
-        let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+        let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Audit the ballot.
         let ballot_recalls = vec![BallotRecall {
@@ -550,11 +720,18 @@ mod tests {
 
         // Ensure the response is a valid receipt.
         let raw_response = response.into_string().await.unwrap();
-        let second_receipt: Receipt<Audited> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+        let second_receipt: Receipt<Audited> = serde_json::from_str::<Vec<_>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Ensure the receipts match.
         let election = Coll::<Election>::from_db(&db)
-            .find_one(doc!{"_id": *election_id}, None).await.unwrap().unwrap();
+            .find_one(doc! {"_id": *election_id}, None)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(first_receipt.id, second_receipt.id);
         assert_eq!(first_receipt.crypto.pwf, second_receipt.crypto.pwf);
         for (candidate, vote1) in first_receipt.crypto.votes.iter() {
@@ -567,16 +744,27 @@ mod tests {
         }
 
         // Validate PWFs.
-        assert!(second_receipt.crypto.verify(&election.crypto, second_receipt.id.to_bytes()).is_ok());
+        assert!(second_receipt
+            .crypto
+            .verify(&election.crypto, second_receipt.id.to_bytes())
+            .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
         msg.extend(second_receipt.id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
-        assert!(election.crypto.public_key.verify(&msg, &second_receipt.signature));
+        assert!(election
+            .crypto
+            .public_key
+            .verify(&msg, &second_receipt.signature));
 
         // Check the candidate totals weren't affected.
         let totals: Vec<CandidateTotals> = Coll::<CandidateTotals>::from_db(&db)
-            .find(None, None).await.unwrap().try_collect().await.unwrap();
+            .find(None, None)
+            .await
+            .unwrap()
+            .try_collect()
+            .await
+            .unwrap();
         for total in totals.iter() {
             assert_eq!(total.totals.totals.r_sum, DreipScalar::zero());
             assert_eq!(total.totals.totals.tally, DreipScalar::zero());
@@ -603,7 +791,11 @@ mod tests {
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
         let raw_response = response.into_string().await.unwrap();
-        let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+        let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Confirm the ballot.
         let ballot_recalls = vec![BallotRecall {
@@ -622,25 +814,43 @@ mod tests {
 
         // Ensure the response is a valid receipt.
         let raw_response = response.into_string().await.unwrap();
-        let second_receipt: Receipt<Confirmed> = serde_json::from_str::<Vec<_>>(&raw_response).unwrap().into_iter().next().unwrap();
+        let second_receipt: Receipt<Confirmed> = serde_json::from_str::<Vec<_>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Ensure the receipts match.
         let election = Coll::<Election>::from_db(&db)
-            .find_one(doc!{"_id": *election_id}, None).await.unwrap().unwrap();
+            .find_one(doc! {"_id": *election_id}, None)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(first_receipt.id, second_receipt.id);
         assert_eq!(first_receipt.crypto, second_receipt.crypto);
 
         // Validate PWFs.
-        assert!(second_receipt.crypto.verify(&election.crypto, second_receipt.id.to_bytes()).is_ok());
+        assert!(second_receipt
+            .crypto
+            .verify(&election.crypto, second_receipt.id.to_bytes())
+            .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
         msg.extend(second_receipt.id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
-        assert!(election.crypto.public_key.verify(&msg, &second_receipt.signature));
+        assert!(election
+            .crypto
+            .public_key
+            .verify(&msg, &second_receipt.signature));
 
         // Check the candidate totals are correct.
         let candidate_totals: Vec<CandidateTotals> = Coll::<CandidateTotals>::from_db(&db)
-            .find(None, None).await.unwrap().try_collect().await.unwrap();
+            .find(None, None)
+            .await
+            .unwrap()
+            .try_collect()
+            .await
+            .unwrap();
         for total in candidate_totals.iter() {
             if total.question_id == question_id && total.candidate_name == candidate_id {
                 assert_eq!(total.totals.totals.tally, DreipScalar::one());
@@ -694,7 +904,10 @@ mod tests {
 
         // Try voting on an inactive election.
         let inactive_election = Coll::<Election>::from_db(&db)
-            .find_one(doc!{"finalised": false}, None).await.unwrap().unwrap();
+            .find_one(doc! {"finalised": false}, None)
+            .await
+            .unwrap()
+            .unwrap();
         let ballot_specs = vec![BallotSpec {
             question: question_id,
             candidate: "Chris Riches".to_string(),
@@ -709,7 +922,9 @@ mod tests {
 
         // Ensure nothing we did had any effect.
         let ballots = Coll::<Ballot<Unconfirmed>>::from_db(&db)
-            .find(None, None).await.unwrap();
+            .find(None, None)
+            .await
+            .unwrap();
         assert_eq!(ballots.try_collect::<Vec<_>>().await.unwrap().len(), 0);
     }
 

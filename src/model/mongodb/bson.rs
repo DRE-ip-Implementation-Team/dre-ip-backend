@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
 
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{doc, oid::ObjectId, Document};
 use rocket::{
     data::ToByteUnit,
     form::{self, prelude::ErrorKind, DataField, FromFormField, ValueField},
@@ -29,6 +29,11 @@ impl Id {
     pub fn to_bytes(&self) -> Vec<u8> {
         self.0.bytes().to_vec()
     }
+
+    /// Conversion to a `MongoDB` query
+    pub fn as_doc(&self) -> Document {
+        doc! { "_id": self.0 }
+    }
 }
 
 impl Deref for Id {
@@ -54,6 +59,12 @@ impl Display for Id {
 impl From<Id> for String {
     fn from(id: Id) -> Self {
         id.to_string()
+    }
+}
+
+impl From<Id> for ObjectId {
+    fn from(id: Id) -> Self {
+        id.0
     }
 }
 
@@ -112,21 +123,23 @@ impl UriDisplay<Path> for Id {
 
 impl_from_uri_param_identity!([Path] Id);
 
-/// Serde (de)serialization for HashMap<K, V> as HashMap<String, V> where K implements
-/// both [`ToString`] and [`FromStr`]. Use via the attribute `#[serde(with = ...)]`.
+/// Ser/deserialize a [`HashMap<K, V>`](std::collections::HashMap) as a
+/// [`HashMap<String, V>`](std::collections::HashMap) where `K: Display + FromStr`.
+///
+/// Use via the attribute `#[serde(with = ...)]`.
 /// This is useful for BSON, since document keys must be strings but we may want
 /// to use different key types internally.
-/// In other words, any `HashMap<K, V>` we want to store in mongodb must either
-/// have `K = String` or be annotated with this module.
+/// In other words, any [`HashMap<K, V>`](std::collections::HashMap) we want to store in `MongoDB`
+/// must either have `K = String` or be annotated with this module.
 pub mod serde_string_map {
-    use std::collections::HashMap;
     use std::hash::Hash;
+    use std::{collections::HashMap, fmt::Display};
 
-    use super::*;
+    use super::{Deserialize, FromStr, Serialize};
 
     pub fn serialize<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
     where
-        K: ToString,
+        K: Display,
         V: Serialize,
         S: serde::Serializer,
     {

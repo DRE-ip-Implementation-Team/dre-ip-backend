@@ -13,7 +13,7 @@ use rocket::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// A user's SMS number.
+/// A voter's SMS number.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Sms {
