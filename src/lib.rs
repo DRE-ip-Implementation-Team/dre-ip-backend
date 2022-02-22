@@ -5,6 +5,7 @@ extern crate rocket;
 #[macro_use]
 extern crate backend_test;
 
+use aws_sdk_sns::Client as SnsClient;
 use chrono::Duration;
 use mongodb::Client;
 use rocket::{fairing::AdHoc, Build, Rocket};
@@ -15,12 +16,15 @@ pub mod error;
 pub mod model;
 
 pub async fn build() -> Rocket<Build> {
-    rocket_for_db(db_client().await, &database())
+    rocket_for_db_and_notifier(db_client().await, &database(), notifier().await)
 }
 
 pub(crate) async fn db_client() -> Client {
-    let db_uri = env!("db_uri");
-    Client::with_uri_str(db_uri).await.unwrap()
+    Client::with_uri_str(env!("db_uri")).await.unwrap()
+}
+
+pub(crate) async fn notifier() -> SnsClient {
+    SnsClient::new(&aws_config::load_from_env().await)
 }
 
 /// Get the name of the database to use.
@@ -38,7 +42,12 @@ fn database() -> String {
     }
 }
 
-pub(crate) fn rocket_for_db(client: Client, db: &str) -> Rocket<Build> {
+/// Used in both the application entry point and the `backend_test` macro
+pub(crate) fn rocket_for_db_and_notifier(
+    client: Client,
+    db: &str,
+    notifier: SnsClient,
+) -> Rocket<Build> {
     let db = client.database(db);
 
     rocket::build()
@@ -46,6 +55,7 @@ pub(crate) fn rocket_for_db(client: Client, db: &str) -> Rocket<Build> {
         .attach(AdHoc::config::<Config>())
         .manage(client)
         .manage(db)
+        .manage(notifier)
 }
 
 #[derive(Deserialize)]
