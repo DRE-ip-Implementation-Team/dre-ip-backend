@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use dre_ip::Election as DreipElection;
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::{serde_string_map, Id};
 
-use super::groups::Electorate;
+use super::electorate::Electorate;
 use super::{CandidateID, DreipGroup, QuestionID};
 
 /// Core election data, as stored in the database.
@@ -18,7 +18,7 @@ pub struct ElectionCore {
     /// Top-level metadata.
     #[serde(flatten)]
     pub metadata: ElectionMetadata,
-    /// Election electorates.
+    /// Election electorates by name.
     pub electorates: HashMap<String, Electorate>,
     /// Election questions.
     #[serde(with = "serde_string_map")]
@@ -76,8 +76,44 @@ pub struct Question {
     pub id: Id,
     /// Question text.
     pub description: String,
-    /// A voter must be in at least one of these groups to vote on this question.
-    pub groups: Vec<String>,
+    /// A voter must be in at least one of these electorate groups to vote on this question.
+    pub constraints: HashMap<String, HashSet<String>>,
     /// Candidates / possible answers for this question.
     pub candidates: Vec<CandidateID>,
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::thread_rng;
+
+    use super::*;
+
+    impl ElectionCore {
+        pub fn example() -> Self {
+            let electorates = [
+                (Electorate::example1().name, Electorate::example1()),
+                (Electorate::example2().name, Electorate::example2()),
+            ]
+            .into_iter()
+            .collect();
+            let questions = HashMap::default();
+            Self::new(
+                ElectionMetadata::example(),
+                electorates,
+                questions,
+                thread_rng(),
+            )
+        }
+    }
+
+    impl ElectionMetadata {
+        pub fn example() -> Self {
+            Self {
+                name: "".to_string(),
+                finalised: false,
+                start_time: Utc::now(),
+                end_time: Utc::now(),
+            }
+        }
+    }
 }

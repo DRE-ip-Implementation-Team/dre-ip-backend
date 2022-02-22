@@ -2,7 +2,7 @@ use mongodb::{
     bson::{doc, Document},
     options::FindOptions,
 };
-use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route};
+use rocket::{futures::TryStreamExt, serde::json::Json, Route};
 
 use crate::{
     error::{Error, Result},
@@ -55,19 +55,9 @@ async fn election(
     elections: Coll<Election>,
 ) -> Result<Json<Election>> {
     let election = elections
-        .find_one(
-            doc! {
-                "_id": *election_id,
-            },
-            None,
-        )
+        .find_one(election_id.as_doc(), None)
         .await?
-        .ok_or_else(|| {
-            Error::Status(
-                Status::NotFound,
-                format!("No election found with ID `{}`", *election_id),
-            )
-        })?;
+        .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", *election_id)))?;
     Ok(Json(election))
 }
 
@@ -82,10 +72,7 @@ async fn finalised_election(election_id: Id, elections: Coll<Election>) -> Resul
         .find_one(finalised_election, None)
         .await?
         .ok_or_else(|| {
-            Error::Status(
-                Status::NotFound,
-                format!("No finalised election found with ID `{}`", *election_id),
-            )
+            Error::not_found(format!("Finalised election with ID '{}'", *election_id))
         })?;
 
     Ok(Json(election))
@@ -139,13 +126,10 @@ async fn election_question_ballot(
         .find_one(election_question_ballot, None)
         .await?
         .ok_or_else(|| {
-            Error::Status(
-                Status::NotFound,
-                format!(
-                    "a ballot with ID `{:?}` for election {:?}, question {:?} does not exist",
-                    ballot_id, election_id, question_id
-                ),
-            )
+            Error::not_found(format!(
+                "Ballot with ID '{}' for election '{}', question '{}'",
+                ballot_id, election_id, question_id
+            ))
         })?;
 
     Ok(Some(Json(ballot)))
@@ -162,7 +146,7 @@ async fn elections_matching(
 #[cfg(test)]
 mod tests {
     use mongodb::Database;
-    use rocket::{local::asynchronous::Client, serde::json::serde_json};
+    use rocket::{http::Status, local::asynchronous::Client, serde::json::serde_json};
 
     use crate::model::election::{Election, ElectionMetadata, ElectionSpec, NewElection};
 

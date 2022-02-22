@@ -1,11 +1,11 @@
 pub use db::Election;
 pub use election_core::{ElectionMetadata, Question};
-pub use groups::Electorate;
+pub use electorate::Electorate;
 pub use spec::{ElectionSpec, QuestionSpec};
 
 mod db;
 mod election_core;
-mod groups;
+mod electorate;
 mod spec;
 
 /// A new election ready for DB insertion is just an [`Election`] without an ID, i.e. an `ElectionCore`.

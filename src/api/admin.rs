@@ -7,7 +7,7 @@ use crate::{
         admin::{Admin, AdminCredentials, NewAdmin},
         auth::AuthToken,
         election::{Election, ElectionSpec, NewElection},
-        mongodb::Coll,
+        mongodb::{Coll, Id},
     },
 };
 
@@ -33,16 +33,14 @@ async fn create_election(
     elections: Coll<Election>,
 ) -> Result<Json<Election>> {
     let election: NewElection = spec.0.into();
-    let new_id = new_elections
+    let new_id: Id = new_elections
         .insert_one(&election, None)
         .await?
         .inserted_id
         .as_object_id()
-        .unwrap(); // Valid because the ID comes directly from the DB
-    let db_election = elections
-        .find_one(doc! { "_id": new_id }, None)
-        .await?
-        .unwrap();
+        .unwrap() // Valid because the ID comes directly from the DB
+        .into();
+    let db_election = elections.find_one(new_id.as_doc(), None).await?.unwrap();
     Ok(Json(db_election))
 }
 

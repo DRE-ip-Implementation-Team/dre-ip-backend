@@ -49,6 +49,8 @@ where
     type Error = ();
 
     /// Get the database connection from the managed state and wrap it in a collection.
+    ///
+    /// Panics iff the [`Database`] is not managed by [`rocket::Rocket`].
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let db = req.guard::<&State<Database>>().await.unwrap();
         request::Outcome::Success(Coll::from_db(db))

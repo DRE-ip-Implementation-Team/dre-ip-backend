@@ -10,7 +10,7 @@ use crate::{
     model::{
         admin::{Admin, AdminCredentials},
         auth::{AuthToken, AUTH_TOKEN_COOKIE},
-        mongodb::Coll,
+        mongodb::{Coll, Id},
         otp::{Challenge, Code, CHALLENGE_COOKIE},
         sms::Sms,
         voter::{NewVoter, Voter},
@@ -86,16 +86,14 @@ pub async fn verify(
         voter
     } else {
         // Voter doesn't exist yet.
-        let new_id = new_voters
+        let new_id: Id = new_voters
             .insert_one(&voter, None)
             .await?
             .inserted_id
             .as_object_id()
-            .unwrap(); // Safe because the ID comes directly from the database.
-        voters
-            .find_one(doc! { "_id": new_id }, None)
-            .await?
-            .unwrap()
+            .unwrap() // Safe because the ID comes directly from the database.
+            .into();
+        voters.find_one(new_id.as_doc(), None).await?.unwrap()
     };
 
     // Ensure the voter is authenticated

@@ -1,6 +1,6 @@
 use argon2::Error as Argon2Error;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
-use mongodb::error::Error as DbError;
+use mongodb::{bson::oid::Error as OidError, error::Error as DbError};
 use rocket::{http::Status, response::Responder};
 use thiserror::Error;
 
@@ -11,6 +11,8 @@ pub enum Error {
     #[error(transparent)]
     Db(#[from] DbError),
     #[error(transparent)]
+    Oid(#[from] OidError),
+    #[error(transparent)]
     Jwt(#[from] JwtError),
     #[error(transparent)]
     Argon2(#[from] Argon2Error),
@@ -18,11 +20,27 @@ pub enum Error {
     Status(Status, String),
 }
 
+impl Error {
+    /// Creates an [`Error::Status`] with [`Status::NotFound`], citing the given cause.
+    ///
+    /// The cause is a concise sentence-cased description of the resource that was not found.
+    ///
+    /// Error messages will be displayed as `Not Found: <cause>`.
+    ///
+    /// ```
+    /// # use rocket::http::Status;
+    /// assert_eq!(Error::Status(Status::NotFound, "My resource".to_string()), Error::not_found("My resource".to_string()));
+    /// ```
+    pub fn not_found(cause: String) -> Self {
+        Self::Status(Status::NotFound, cause)
+    }
+}
+
 impl From<Error> for Status {
     fn from(error: Error) -> Self {
         match error {
-            Error::Argon2(_) => Status::BadRequest,
             Error::Db(_) => Status::InternalServerError,
+            Error::Oid(_) | Error::Argon2(_) => Status::BadRequest,
             Error::Jwt(err) => match err.into_kind() {
                 JwtErrorKind::ExpiredSignature | JwtErrorKind::ImmatureSignature => {
                     Status::Unauthorized
