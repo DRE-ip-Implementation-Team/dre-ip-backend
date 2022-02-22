@@ -31,9 +31,9 @@ impl BallotCore<Unconfirmed> {
     }
 
     /// Confirm this ballot, incrementing the `CandidateTotals` if given.
-    pub fn confirm<'a>(
+    pub fn confirm<'a, 'b: 'a>(
         self,
-        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'a mut CandidateTotals<DreipGroup>>>>,
+        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'b mut CandidateTotals<DreipGroup>>>>,
     ) -> BallotCore<Confirmed> {
         BallotCore {
             crypto: self.crypto.confirm(totals.into()),
