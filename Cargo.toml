@@ -13,16 +13,13 @@ thiserror = "1.0.30"
 rand = "0.8.4"
 time = "0.2.11"
 serde_repr = "0.1"
+serde_unit_struct = "0.1"
 rust-argon2 = "0.8"
 aws-config = "0.6.0"
 aws-sdk-sns = "0.6.0"
 
 [dependencies.dre-ip]
 path = "protocol"
-
-[dependencies.serde_unit_struct]
-# TODO replace git dependency with a proper one once stable
-git = "https://github.com/cjriches/serde_unit_struct"
 
 [dependencies.rocket]
 version = "=0.5.0-rc.1"
