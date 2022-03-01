@@ -51,6 +51,7 @@ pub async fn authenticate(
     Ok(())
 }
 
+#[cfg_attr(test, allow(unused_variables))]
 #[get("/voter/challenge?<sms>")]
 pub async fn challenge(
     sms: Sms,
