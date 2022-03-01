@@ -10,6 +10,7 @@ use super::candidate_totals_core::CandidateTotalsCore;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct CandidateTotals {
+    #[serde(rename = "_id")]
     pub id: Id,
     #[serde(flatten)]
     pub totals: CandidateTotalsCore,

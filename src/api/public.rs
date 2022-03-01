@@ -1,11 +1,16 @@
+use std::collections::HashMap;
+
+use dre_ip::ElectionResults;
 use mongodb::{
     bson::{doc, Document},
-    options::FindOptions,
+    Client,
+    options::{FindOptions, SessionOptions},
 };
 use rocket::{
     futures::{StreamExt, TryStreamExt},
     serde::json::Json,
     Route,
+    State,
 };
 
 use crate::{
@@ -14,7 +19,8 @@ use crate::{
         admin::Admin,
         auth::AuthToken,
         ballot::{FinishedBallot, FinishedReceipt, AUDITED, CONFIRMED},
-        election::{Election, ElectionMetadata},
+        candidate_totals::CandidateTotals,
+        election::{CandidateID, DreipGroup, Election, ElectionMetadata},
         mongodb::{Coll, Id},
         pagination::{Paginated, PaginationRequest},
     },
@@ -27,7 +33,9 @@ pub fn routes() -> Vec<Route> {
         election,
         finalised_election,
         election_question_ballots,
-        election_question_ballot
+        election_question_ballot,
+        candidate_totals,
+        question_dump,
     ]
 }
 
@@ -153,9 +161,92 @@ async fn election_question_ballot(
     Ok(Json(ballot))
 }
 
-// TODO get candidate totals
+#[get("/elections/<election_id>/<question_id>/totals")]
+async fn candidate_totals(
+    election_id: Id,
+    question_id: Id,
+    totals: Coll<CandidateTotals>,
+) -> Result<Json<HashMap<CandidateID, CandidateTotals>>> {
+    let question_totals_filter = doc! {
+        "election_id": *election_id,
+        "question_id": *question_id,
+    };
+    let question_totals = totals
+        .find(question_totals_filter, None)
+        .await?
+        .map_ok(|tot| (tot.candidate_name.clone(), tot))
+        .try_collect::<HashMap<_, _>>()
+        .await?;
 
-// TODO get entire election dump
+    Ok(Json(question_totals))
+}
+
+#[get("/elections/<election_id>/<question_id>/dump")]
+async fn question_dump(
+    election_id: Id,
+    question_id: Id,
+    elections: Coll<Election>,
+    totals: Coll<CandidateTotals>,
+    ballots: Coll<FinishedBallot>,
+    db_client: &State<Client>,
+) -> Result<Json<ElectionResults<String, String, DreipGroup>>> {
+    // Ensure we read a consistent snapshot of the election data.
+    let election;
+    let mut election_totals = HashMap::new();
+    let mut audited_ballots = HashMap::new();
+    let mut confirmed_ballots = HashMap::new();
+    {
+        let session_options = SessionOptions::builder()
+            .snapshot(true)
+            .build();
+        let mut session = db_client.start_session(Some(session_options)).await?;
+
+        election = elections
+            .find_one_with_session(election_id.as_doc(), None, &mut session)
+            .await?
+            .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
+
+        let totals_filter = doc! {
+            "election_id": *election_id,
+            "question_id": *question_id,
+        };
+        let mut totals_cursor = totals
+            .find_with_session(totals_filter, None, &mut session)
+            .await?;
+        while let Some(total) = totals_cursor.next(&mut session).await {
+            let total = total?;
+            election_totals.insert(total.candidate_name.clone(), total.totals.crypto);
+        }
+
+        let ballots_filter = doc! {
+            "election_id": *election_id,
+            "question_id": *question_id,
+            "$or": [{"state": AUDITED}, {"state": CONFIRMED}],
+        };
+        let mut election_ballots = ballots
+            .find_with_session(ballots_filter, None, &mut session)
+            .await?;
+        while let Some(ballot) = election_ballots.next(&mut session).await {
+            match ballot? {
+                FinishedBallot::Audited(b) => {
+                    audited_ballots.insert(b.id.to_string(), b.ballot.crypto);
+                }
+                FinishedBallot::Confirmed(b) => {
+                    confirmed_ballots.insert(b.id.to_string(), b.ballot.crypto);
+                }
+            }
+        }
+    }
+
+    let dump = ElectionResults {
+        election: election.election.crypto,
+        audited: audited_ballots,
+        confirmed: confirmed_ballots,
+        totals: election_totals,
+    };
+
+    Ok(Json(dump))
+}
 
 async fn elections_matching(
     elections: Coll<ElectionMetadata>,
@@ -416,6 +507,70 @@ mod tests {
         );
     }
 
+    #[backend_test]
+    async fn candidate_totals(client: Client, db: Database) {
+        insert_elections(&db).await;
+        insert_ballots(&db).await;
+
+        let election = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+
+        let q1 = election
+            .questions
+            .values()
+            .find(|q| q.description == QuestionSpec::example1().description)
+            .unwrap();
+
+        let response = client
+            .get(uri!(candidate_totals(
+                election.id,
+                q1.id,
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        let raw_response = response.into_string().await.unwrap();
+        let totals: HashMap<CandidateID, CandidateTotals> = serde_json::from_str(&raw_response).unwrap();
+        assert_eq!(totals.len(), QuestionSpec::example1().candidates.len());
+    }
+
+    #[backend_test]
+    async fn question_dump(client: Client, db: Database) {
+        insert_elections(&db).await;
+        insert_ballots(&db).await;
+
+        let election = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+
+        let q1 = election
+            .questions
+            .values()
+            .find(|q| q.description == QuestionSpec::example1().description)
+            .unwrap();
+
+        let response = client
+            .get(uri!(question_dump(
+                election.id,
+                q1.id,
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        let raw_response = response.into_string().await.unwrap();
+        let results: ElectionResults<Id, CandidateID, DreipGroup> = serde_json::from_str(&raw_response).unwrap();
+        // Id does not and cannot implement AsRef<[u8]>, hence the awkward workaround.
+        let results = ElectionResults {
+            election: results.election,
+            audited: results.audited.into_iter().map(|(id, b)| (id.to_bytes(), b)).collect(),
+            confirmed: results.confirmed.into_iter().map(|(id, b)| (id.to_bytes(), b)).collect(),
+            totals: results.totals,
+        };
+        assert_eq!(results.election, election.crypto);
+        assert!(results.verify().is_ok());
+    }
+
     async fn insert_elections(db: &Database) {
         Coll::<NewElection>::from_db(&db)
             .insert_many(
@@ -535,5 +690,27 @@ mod tests {
             .await
             .unwrap()
             .unwrap()
+    }
+
+    /// Dump the current state of the database to stdout; useful for debugging.
+    #[allow(dead_code)]
+    async fn dump_db_state(db: &Database) {
+        println!("\nElections:");
+        let mut elections = Coll::<Election>::from_db(db)
+            .find(None, None)
+            .await
+            .unwrap();
+        while let Some(Ok(election)) = elections.next().await {
+            println!("{:#?}", election);
+        }
+
+        println!("\nCandidate Totals:");
+        let mut totals = Coll::<CandidateTotals>::from_db(db)
+            .find(None, None)
+            .await
+            .unwrap();
+        while let Some(Ok(total)) = totals.next().await {
+            println!("{:#?}", total);
+        }
     }
 }
