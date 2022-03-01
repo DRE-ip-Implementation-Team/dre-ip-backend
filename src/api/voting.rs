@@ -1079,7 +1079,8 @@ mod tests {
         }
         let results = ElectionResults {
             election: election.election.crypto,
-            ballots,
+            audited: HashMap::new(),
+            confirmed: ballots,
             totals,
         };
         assert!(results.verify().is_ok());
