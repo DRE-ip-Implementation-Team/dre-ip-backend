@@ -23,7 +23,7 @@ pub fn routes() -> Vec<Route> {
     routes![authenticate, challenge, verify, logout]
 }
 
-#[post("/admins/authenticate", data = "<credentials>", format = "json")]
+#[post("/auth/admin", data = "<credentials>", format = "json")]
 pub async fn authenticate(
     cookies: &CookieJar<'_>,
     credentials: Json<AdminCredentials>,
@@ -52,7 +52,7 @@ pub async fn authenticate(
 }
 
 #[cfg_attr(test, allow(unused_variables))]
-#[get("/voter/challenge?<sms>")]
+#[get("/auth/voter/challenge?<sms>")]
 pub async fn challenge(
     sms: Sms,
     cookies: &CookieJar<'_>,
@@ -80,7 +80,7 @@ pub async fn challenge(
     Ok(())
 }
 
-#[post("/voter/verify", data = "<code>", format = "json")]
+#[post("/auth/voter/verify", data = "<code>", format = "json")]
 pub async fn verify(
     code: Json<Code>,
     challenge: Challenge,
