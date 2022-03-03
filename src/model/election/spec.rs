@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::Id;
 
-use super::election_core::{ElectionCore, ElectionMetadata, Question};
+use super::NewElection;
+use super::election_core::{ElectionMetadata, Question};
 use super::electorate::Electorate;
 
 /// An election specification.
@@ -19,7 +20,7 @@ pub struct ElectionSpec {
     pub questions: Vec<QuestionSpec>,
 }
 
-impl From<ElectionSpec> for ElectionCore {
+impl From<ElectionSpec> for NewElection {
     fn from(spec: ElectionSpec) -> Self {
         let electorates = spec
             .electorates
@@ -48,7 +49,6 @@ impl From<ElectionSpec> for ElectionMetadata {
 
 /// A question specification.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
 pub struct QuestionSpec {
     /// Question text.
     pub description: String,

@@ -10,7 +10,7 @@ use crate::model::{
     auth::AuthToken,
     ballot::{Audited, Ballot, Confirmed, Receipt, Signature, Unconfirmed, UNCONFIRMED},
     candidate_totals::{CandidateTotals, NewCandidateTotals},
-    election::Election,
+    election::ElectionWithSecrets,
     mongodb::{Coll, Id},
     voter::Voter,
 };
@@ -34,7 +34,7 @@ async fn join_election(
     voter: Voter,
     election_id: Id,
     joins: Json<HashMap<String, HashSet<String>>>,
-    elections: Coll<Election>,
+    elections: Coll<ElectionWithSecrets>,
     voters: Coll<Voter>,
 ) -> Result<()> {
     // Reject if voter has already joined the election
@@ -128,7 +128,7 @@ async fn cast_ballots(
     _token: AuthToken<Voter>,
     election_id: Id,
     ballot_specs: Json<Vec<BallotSpec>>,
-    elections: Coll<Election>,
+    elections: Coll<ElectionWithSecrets>,
     ballots: Coll<Ballot<Unconfirmed>>,
     db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
@@ -216,7 +216,7 @@ async fn audit_ballots(
     _token: AuthToken<Voter>,
     election_id: Id,
     ballot_recalls: Json<Vec<BallotRecall>>,
-    elections: Coll<Election>,
+    elections: Coll<ElectionWithSecrets>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     audited_ballots: Coll<Ballot<Audited>>,
     db_client: &State<Client>,
@@ -270,7 +270,7 @@ async fn confirm_ballots(
     election_id: Id,
     ballot_recalls: Json<Vec<BallotRecall>>,
     voters: Coll<Voter>,
-    elections: Coll<Election>,
+    elections: Coll<ElectionWithSecrets>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     confirmed_ballots: Coll<Ballot<Confirmed>>,
     candidate_totals: Coll<CandidateTotals>,
@@ -392,7 +392,7 @@ async fn confirm_ballots(
 
 /// Return an active Election from the database via ID lookup.
 /// An active election is finalised and within its start and end times.
-async fn active_election_by_id(election_id: Id, elections: &Coll<Election>) -> Result<Election> {
+async fn active_election_by_id(election_id: Id, elections: &Coll<ElectionWithSecrets>) -> Result<ElectionWithSecrets> {
     let now = Utc::now();
 
     let is_active = doc! {
@@ -412,7 +412,7 @@ async fn active_election_by_id(election_id: Id, elections: &Coll<Election>) -> R
 async fn recall_ballots(
     ballot_recalls: Vec<BallotRecall>,
     unconfirmed_ballots: &Coll<Ballot<Unconfirmed>>,
-    election: &Election,
+    election: &ElectionWithSecrets,
 ) -> Result<Vec<Ballot<Unconfirmed>>> {
     let mut ballots = Vec::with_capacity(ballot_recalls.len());
     for recall in ballot_recalls {
@@ -495,7 +495,7 @@ mod tests {
             id: Id::new(),
             election,
         };
-        let elections = Coll::<Election>::from_db(db);
+        let elections = Coll::<ElectionWithSecrets>::from_db(db);
         elections
             .insert_many(vec![&election1, &election2], None)
             .await
@@ -550,7 +550,7 @@ mod tests {
         }
 
         println!("\nElections:");
-        let mut elections = Coll::<Election>::from_db(db)
+        let mut elections = Coll::<ElectionWithSecrets>::from_db(db)
             .find(None, None)
             .await
             .unwrap();
@@ -835,7 +835,7 @@ mod tests {
             .unwrap();
 
         // Ensure the receipt passes validation.
-        let election = Coll::<Election>::from_db(&db)
+        let election = Coll::<ElectionWithSecrets>::from_db(&db)
             .find_one(doc! {"_id": *election_id}, None)
             .await
             .unwrap()
@@ -938,7 +938,7 @@ mod tests {
             .unwrap();
 
         // Ensure the receipts match.
-        let election = Coll::<Election>::from_db(&db)
+        let election = Coll::<ElectionWithSecrets>::from_db(&db)
             .find_one(doc! {"_id": *election_id}, None)
             .await
             .unwrap()
@@ -1034,7 +1034,7 @@ mod tests {
             .unwrap();
 
         // Ensure the receipts match.
-        let election = Coll::<Election>::from_db(&db)
+        let election = Coll::<ElectionWithSecrets>::from_db(&db)
             .find_one(doc! {"_id": *election_id}, None)
             .await
             .unwrap()
@@ -1080,7 +1080,7 @@ mod tests {
             totals.insert(total.candidate_name.clone(), total.totals.crypto);
         }
         let results = ElectionResults {
-            election: election.election.crypto,
+            election: election.election.crypto.erase_secrets(),
             audited: HashMap::new(),
             confirmed: ballots,
             totals,
@@ -1119,7 +1119,7 @@ mod tests {
         assert_eq!(response.status(), Status::NotFound);
 
         // Try voting on an inactive election.
-        let inactive_election = Coll::<Election>::from_db(&db)
+        let inactive_election = Coll::<ElectionWithSecrets>::from_db(&db)
             .find_one(doc! {"finalised": false}, None)
             .await
             .unwrap()
@@ -1149,7 +1149,7 @@ mod tests {
         let (election_id, question_id) = insert_test_data(&db).await;
 
         // Vote on an inactive election.
-        let inactive_election = Coll::<Election>::from_db(&db)
+        let inactive_election = Coll::<ElectionWithSecrets>::from_db(&db)
             .find_one(doc! {"_id": {"$ne": *election_id}}, None)
             .await
             .unwrap()
@@ -1195,7 +1195,7 @@ mod tests {
         assert_eq!(response.status(), Status::NotFound);
 
         // Vote on the question we are not allowed to.
-        let not_allowed_question = *Coll::<Election>::from_db(&db)
+        let not_allowed_question = *Coll::<ElectionWithSecrets>::from_db(&db)
             .find_one(election_id.as_doc(), None)
             .await
             .unwrap()

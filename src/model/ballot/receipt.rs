@@ -2,7 +2,7 @@ use dre_ip::group::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    election::{DreipGroup, Election},
+    election::{DreipGroup, ElectionWithSecrets},
     mongodb::Id,
 };
 
@@ -35,7 +35,7 @@ where
     for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
 {
     /// Construct a receipt from the given ballot.
-    pub fn from_ballot(ballot: Ballot<S>, election: &Election) -> Self {
+    pub fn from_ballot(ballot: Ballot<S>, election: &ElectionWithSecrets) -> Self {
         // Convert the ballot from internal to receipt representation.
         let crypto = S::internal_to_receipt(ballot.ballot.crypto);
 
@@ -70,7 +70,7 @@ pub enum FinishedReceipt {
 }
 
 impl FinishedReceipt {
-    pub fn from_finished_ballot(ballot: FinishedBallot, election: &Election) -> Self {
+    pub fn from_finished_ballot(ballot: FinishedBallot, election: &ElectionWithSecrets) -> Self {
         match ballot {
             FinishedBallot::Audited(ballot) => {
                 FinishedReceipt::Audited(Receipt::from_ballot(ballot, election))

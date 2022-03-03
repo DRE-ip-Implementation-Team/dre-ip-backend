@@ -7,7 +7,7 @@ use crate::{
     model::{
         admin::{Admin, AdminCredentials, NewAdmin},
         auth::AuthToken,
-        election::{Election, ElectionSpec, NewElection},
+        election::{ElectionNoSecrets, ElectionSpec, NewElection},
         mongodb::{Coll, Id},
     },
 };
@@ -57,8 +57,8 @@ async fn delete_admin(
 async fn create_election(
     spec: Json<ElectionSpec>,
     new_elections: Coll<NewElection>,
-    elections: Coll<Election>,
-) -> Result<Json<Election>> {
+    elections: Coll<ElectionNoSecrets>,
+) -> Result<Json<ElectionNoSecrets>> {
     let election: NewElection = spec.0.into();
     let new_id: Id = new_elections
         .insert_one(&election, None)
@@ -68,7 +68,7 @@ async fn create_election(
         .unwrap() // Valid because the ID comes directly from the DB
         .into();
     let db_election = elections.find_one(new_id.as_doc(), None).await?.unwrap();
-    Ok(Json(db_election))
+    Ok(Json(db_election.erase_secrets()))
 }
 
 // TODO election deletion and modification.

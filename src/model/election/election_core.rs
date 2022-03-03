@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
-use dre_ip::Election as DreipElection;
+use dre_ip::{Election as DreipElection, PrivateKey, NoSecrets};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -12,9 +12,9 @@ use super::electorate::Electorate;
 use super::{CandidateID, DreipGroup, QuestionID};
 
 /// Core election data, as stored in the database.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
-pub struct ElectionCore {
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(serialize = "S: Serialize", deserialize = "for<'a> S: Deserialize<'a>"))]
+pub struct ElectionCore<S> {
     /// Top-level metadata.
     #[serde(flatten)]
     pub metadata: ElectionMetadata,
@@ -24,10 +24,10 @@ pub struct ElectionCore {
     #[serde(with = "serde_string_map")]
     pub questions: HashMap<QuestionID, Question>,
     /// Election cryptographic configuration.
-    pub crypto: DreipElection<DreipGroup>,
+    pub crypto: DreipElection<DreipGroup, S>,
 }
 
-impl ElectionCore {
+impl ElectionCore<PrivateKey<DreipGroup>> {
     /// Create a new election.
     pub fn new(
         metadata: ElectionMetadata,
@@ -53,6 +53,18 @@ impl ElectionCore {
     }
 }
 
+impl<S> ElectionCore<S> {
+    /// Erase the secrets from this election.
+    pub fn erase_secrets(self) -> ElectionCore<NoSecrets> {
+        ElectionCore {
+            metadata: self.metadata,
+            electorates: self.electorates,
+            questions: self.questions,
+            crypto: self.crypto.erase_secrets(),
+        }
+    }
+}
+
 /// A view on just the election's top-level metadata.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ElectionMetadata {
@@ -69,8 +81,7 @@ pub struct ElectionMetadata {
 }
 
 /// A single question.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Question {
     /// Question unique ID.
     pub id: Id,
@@ -88,7 +99,7 @@ mod tests {
 
     use super::*;
 
-    impl ElectionCore {
+    impl ElectionCore<PrivateKey<DreipGroup>> {
         pub fn example() -> Self {
             let electorates = [
                 (Electorate::example1().name, Electorate::example1()),

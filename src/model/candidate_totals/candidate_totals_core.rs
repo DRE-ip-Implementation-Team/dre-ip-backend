@@ -5,7 +5,6 @@ use crate::model::{election::DreipGroup, mongodb::Id};
 
 /// Core candidate totals data, linked to a specific election->question->candidate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
 pub struct CandidateTotalsCore {
     pub election_id: Id,
     pub question_id: Id,

@@ -17,7 +17,6 @@ use super::ballot_core::{Audited, BallotCore, BallotState, Confirmed, Unconfirme
 /// A ballot from the database, with its unique ID.
 /// Also contains an election and question ID foreign key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
 pub struct Ballot<S: BallotState> {
     #[serde(rename = "_id")]
     pub id: Id,
@@ -35,11 +34,11 @@ pub struct Ballot<S: BallotState> {
 
 impl Ballot<Unconfirmed> {
     /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
-    pub fn new(
+    pub fn new<S>(
         question_id: Id,
         yes_candidate: CandidateID,
         no_candidates: impl IntoIterator<Item = CandidateID>,
-        election: &Election,
+        election: &Election<S>,
         rng: impl RngCore + CryptoRng,
     ) -> Option<Self> {
         let id = Id::new();

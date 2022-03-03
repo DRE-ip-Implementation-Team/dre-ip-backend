@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// An electorate is a potentially mutually-exclusive set of logically related groups.
 /// Voters belong to groups, and certain questions may be gated by group membership.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Electorate {
     /// Electorate name.
     pub name: String,
