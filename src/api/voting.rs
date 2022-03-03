@@ -25,11 +25,7 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-#[post(
-    "/elections/<election_id>/join",
-    data = "<joins>",
-    format = "json"
-)]
+#[post("/elections/<election_id>/join", data = "<joins>", format = "json")]
 async fn join_election(
     voter: Voter,
     election_id: Id,
@@ -392,7 +388,10 @@ async fn confirm_ballots(
 
 /// Return an active Election from the database via ID lookup.
 /// An active election is finalised and within its start and end times.
-async fn active_election_by_id(election_id: Id, elections: &Coll<ElectionWithSecrets>) -> Result<ElectionWithSecrets> {
+async fn active_election_by_id(
+    election_id: Id,
+    elections: &Coll<ElectionWithSecrets>,
+) -> Result<ElectionWithSecrets> {
     let now = Utc::now();
 
     let is_active = doc! {
@@ -461,11 +460,7 @@ struct BallotRecall {
 mod tests {
     use backend_test::backend_test;
     use chrono::{Duration, Utc};
-    use dre_ip::group::Serializable;
-    use dre_ip::{
-        group::{DreipPublicKey, DreipScalar},
-        ElectionResults,
-    };
+    use dre_ip::{DreipPublicKey, DreipScalar, ElectionResults, Serializable};
     use mongodb::Database;
     use rocket::{
         futures::{StreamExt, TryStreamExt},
@@ -843,7 +838,11 @@ mod tests {
         // Validate PWFs.
         assert!(receipt
             .crypto
-            .verify(election.crypto.g1, election.crypto.g2, receipt.ballot_id.to_bytes())
+            .verify(
+                election.crypto.g1,
+                election.crypto.g2,
+                receipt.ballot_id.to_bytes()
+            )
             .is_ok());
         // Validate signature.
         let mut msg = receipt.crypto.to_bytes();
@@ -882,7 +881,10 @@ mod tests {
             assert_eq!(vote.pwf, receipt_vote.pwf);
             // Check the public values were correctly calculated from the secrets.
             assert_eq!(vote.R, election.crypto.g2 * vote.secrets.r);
-            assert_eq!(vote.Z, election.crypto.g1 * (vote.secrets.r + vote.secrets.v));
+            assert_eq!(
+                vote.Z,
+                election.crypto.g1 * (vote.secrets.r + vote.secrets.v)
+            );
         }
         // Check there was exactly one yes vote (already guaranteed by the PWF, but sanity checks are good).
         assert_eq!(yes_votes, 1);
@@ -951,13 +953,20 @@ mod tests {
             assert_eq!(vote1.R, vote2.R);
             assert_eq!(vote1.Z, vote2.Z);
             assert_eq!(vote1.R, election.crypto.g2 * vote2.secrets.r);
-            assert_eq!(vote1.Z, election.crypto.g1 * (vote2.secrets.r + vote2.secrets.v));
+            assert_eq!(
+                vote1.Z,
+                election.crypto.g1 * (vote2.secrets.r + vote2.secrets.v)
+            );
         }
 
         // Validate PWFs.
         assert!(second_receipt
             .crypto
-            .verify(election.crypto.g1, election.crypto.g2, second_receipt.ballot_id.to_bytes())
+            .verify(
+                election.crypto.g1,
+                election.crypto.g2,
+                second_receipt.ballot_id.to_bytes()
+            )
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
@@ -1045,7 +1054,11 @@ mod tests {
         // Validate PWFs.
         assert!(second_receipt
             .crypto
-            .verify(election.crypto.g1, election.crypto.g2, second_receipt.ballot_id.to_bytes())
+            .verify(
+                election.crypto.g1,
+                election.crypto.g2,
+                second_receipt.ballot_id.to_bytes()
+            )
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
