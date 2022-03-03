@@ -1,6 +1,6 @@
 use mongodb::bson::doc;
-use rocket::{serde::json::Json, Route};
 use rocket::http::Status;
+use rocket::{serde::json::Json, Route};
 
 use crate::{
     error::{Error, Result},
@@ -37,7 +37,10 @@ async fn delete_admin(
     // Prevent deleting the last admin.
     let count = admins.count_documents(None, None).await?;
     if count == 1 {
-        return Err(Error::Status(Status::UnprocessableEntity, "Cannot delete last admin!".to_string()));
+        return Err(Error::Status(
+            Status::UnprocessableEntity,
+            "Cannot delete last admin!".to_string(),
+        ));
     }
 
     let filter = doc! {

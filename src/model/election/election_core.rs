@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
-use dre_ip::{Election as DreipElection, PrivateKey, NoSecrets};
+use dre_ip::{Election as DreipElection, NoSecrets, PrivateKey};
 use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};

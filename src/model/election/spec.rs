@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::Id;
 
-use super::NewElection;
 use super::election_core::{ElectionMetadata, Question};
 use super::electorate::Electorate;
+use super::NewElection;
 
 /// An election specification.
 #[derive(Debug, Serialize, Deserialize)]

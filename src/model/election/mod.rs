@@ -1,4 +1,4 @@
-use dre_ip::{PrivateKey, NoSecrets};
+use dre_ip::{NoSecrets, PrivateKey};
 
 pub use db::Election;
 pub use election_core::{ElectionMetadata, Question};

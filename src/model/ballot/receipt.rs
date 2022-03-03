@@ -1,4 +1,4 @@
-use dre_ip::group::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
+use dre_ip::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{

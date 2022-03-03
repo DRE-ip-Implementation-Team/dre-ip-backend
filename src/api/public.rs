@@ -3,14 +3,13 @@ use std::collections::HashMap;
 use dre_ip::ElectionResults;
 use mongodb::{
     bson::{doc, Document},
-    Client,
     options::{FindOptions, SessionOptions},
+    Client,
 };
 use rocket::{
     futures::{StreamExt, TryStreamExt},
     serde::json::Json,
-    Route,
-    State,
+    Route, State,
 };
 
 use crate::{
@@ -20,7 +19,9 @@ use crate::{
         auth::AuthToken,
         ballot::{FinishedBallot, FinishedReceipt, AUDITED, CONFIRMED},
         candidate_totals::CandidateTotals,
-        election::{CandidateID, DreipGroup, ElectionNoSecrets, ElectionWithSecrets, ElectionMetadata},
+        election::{
+            CandidateID, DreipGroup, ElectionMetadata, ElectionNoSecrets, ElectionWithSecrets,
+        },
         mongodb::{Coll, Id},
         pagination::{Paginated, PaginationRequest},
     },
@@ -74,7 +75,10 @@ async fn election(
 }
 
 #[get("/elections/<election_id>", rank = 2)]
-async fn finalised_election(election_id: Id, elections: Coll<ElectionNoSecrets>) -> Result<Json<ElectionNoSecrets>> {
+async fn finalised_election(
+    election_id: Id,
+    elections: Coll<ElectionNoSecrets>,
+) -> Result<Json<ElectionNoSecrets>> {
     let finalised_election = doc! {
         "_id": *election_id,
         "finalised": true,
@@ -196,9 +200,7 @@ async fn question_dump(
     let mut audited_ballots = HashMap::new();
     let mut confirmed_ballots = HashMap::new();
     {
-        let session_options = SessionOptions::builder()
-            .snapshot(true)
-            .build();
+        let session_options = SessionOptions::builder().snapshot(true).build();
         let mut session = db_client.start_session(Some(session_options)).await?;
 
         let election_filter = doc! {
@@ -344,9 +346,9 @@ mod tests {
         for question in expected.questions.values() {
             let matching = fetched_election.questions.values().find(|q| {
                 // Compare everything except the IDs.
-                q.description == question.description &&
-                    q.candidates == question.candidates &&
-                    q.constraints == question.constraints
+                q.description == question.description
+                    && q.candidates == question.candidates
+                    && q.constraints == question.constraints
             });
             assert!(matching.is_some());
         }
@@ -545,17 +547,15 @@ mod tests {
             .unwrap();
 
         let response = client
-            .get(uri!(candidate_totals(
-                election.id,
-                q1.id,
-            )))
+            .get(uri!(candidate_totals(election.id, q1.id,)))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let totals: HashMap<CandidateID, CandidateTotals> = serde_json::from_str(&raw_response).unwrap();
+        let totals: HashMap<CandidateID, CandidateTotals> =
+            serde_json::from_str(&raw_response).unwrap();
         assert_eq!(totals.len(), QuestionSpec::example1().candidates.len());
     }
 
@@ -573,22 +573,28 @@ mod tests {
             .unwrap();
 
         let response = client
-            .get(uri!(question_dump(
-                election.id,
-                q1.id,
-            )))
+            .get(uri!(question_dump(election.id, q1.id,)))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let results: ElectionResults<Id, CandidateID, DreipGroup> = serde_json::from_str(&raw_response).unwrap();
+        let results: ElectionResults<Id, CandidateID, DreipGroup> =
+            serde_json::from_str(&raw_response).unwrap();
         // Id does not and cannot implement AsRef<[u8]>, hence the awkward workaround.
         let results = ElectionResults {
             election: results.election,
-            audited: results.audited.into_iter().map(|(id, b)| (id.to_bytes(), b)).collect(),
-            confirmed: results.confirmed.into_iter().map(|(id, b)| (id.to_bytes(), b)).collect(),
+            audited: results
+                .audited
+                .into_iter()
+                .map(|(id, b)| (id.to_bytes(), b))
+                .collect(),
+            confirmed: results
+                .confirmed
+                .into_iter()
+                .map(|(id, b)| (id.to_bytes(), b))
+                .collect(),
             totals: results.totals,
         };
         assert_eq!(results.election, election.erase_secrets().crypto);
