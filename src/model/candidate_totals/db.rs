@@ -8,7 +8,6 @@ use super::candidate_totals_core::CandidateTotalsCore;
 
 /// Candidate totals from the database, with their unique ID.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
 pub struct CandidateTotals {
     #[serde(rename = "_id")]
     pub id: Id,

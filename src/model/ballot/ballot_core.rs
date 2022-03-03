@@ -12,7 +12,6 @@ pub type BallotCrypto<S> = DreipBallot<CandidateID, DreipGroup, S>;
 
 /// Core ballot data, as stored in the database.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename = "camelCase")]
 pub struct BallotCore<S: BallotState> {
     /// The cryptographic data.
     #[serde(flatten)]

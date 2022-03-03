@@ -77,7 +77,7 @@ impl MongoCollection for NewVoter {
 
 // Election collections
 const ELECTIONS: &str = "elections";
-impl MongoCollection for Election {
+impl<S> MongoCollection for Election<S> {
     const NAME: &'static str = ELECTIONS;
 }
 impl MongoCollection for ElectionMetadata {
