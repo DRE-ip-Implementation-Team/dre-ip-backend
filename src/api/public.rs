@@ -66,6 +66,7 @@ async fn election(
     election_id: Id,
     elections: Coll<Election>,
 ) -> Result<Json<Election>> {
+    // TODO AVOID EXPOSING PRIVATE KEY!!!
     let election = elections
         .find_one(election_id.as_doc(), None)
         .await?
@@ -75,6 +76,7 @@ async fn election(
 
 #[get("/elections/<election_id>", rank = 2)]
 async fn finalised_election(election_id: Id, elections: Coll<Election>) -> Result<Json<Election>> {
+    // TODO AVOID EXPOSING PRIVATE KEY!!!
     let finalised_election = doc! {
         "_id": *election_id,
         "finalised": true,
@@ -201,10 +203,15 @@ async fn question_dump(
             .build();
         let mut session = db_client.start_session(Some(session_options)).await?;
 
+        let election_filter = doc! {
+            "_id": *election_id,
+            "finalised": true,
+        };
         election = elections
-            .find_one_with_session(election_id.as_doc(), None, &mut session)
+            .find_one_with_session(election_filter, None, &mut session)
             .await?
             .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
+        // TODO AVOID EXPOSING PRIVATE KEY!!!
 
         let totals_filter = doc! {
             "election_id": *election_id,

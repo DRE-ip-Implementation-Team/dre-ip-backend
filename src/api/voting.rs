@@ -26,15 +26,15 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[post(
-    "/voter/elections/<election_id>/join",
+    "/elections/<election_id>/join",
     data = "<joins>",
     format = "json"
 )]
 async fn join_election(
     voter: Voter,
     election_id: Id,
-    election: Election,
     joins: Json<HashMap<String, HashSet<String>>>,
+    elections: Coll<Election>,
     voters: Coll<Voter>,
 ) -> Result<()> {
     // Reject if voter has already joined the election
@@ -47,6 +47,8 @@ async fn join_election(
             ),
         ));
     }
+
+    let election = active_election_by_id(election_id, &elections).await?;
 
     // Check that electorates and groups exist and meet mutex requirements
     for (electorate_name, groups) in &joins.0 {
@@ -105,7 +107,7 @@ async fn join_election(
     Ok(())
 }
 
-#[get("/voter/elections/<election_id>/questions/allowed")]
+#[get("/elections/<election_id>/questions/allowed")]
 fn get_allowed(voter: Voter, election_id: Id) -> Result<Json<Vec<Id>>> {
     // Find what questions they can still vote for.
     let allowed = voter
@@ -118,7 +120,7 @@ fn get_allowed(voter: Voter, election_id: Id) -> Result<Json<Vec<Id>>> {
 }
 
 #[post(
-    "/voter/elections/<election_id>/votes/cast",
+    "/elections/<election_id>/votes/cast",
     data = "<ballot_specs>",
     format = "json"
 )]
@@ -206,7 +208,7 @@ async fn cast_ballots(
 }
 
 #[post(
-    "/voter/elections/<election_id>/votes/audit",
+    "/elections/<election_id>/votes/audit",
     data = "<ballot_recalls>",
     format = "json"
 )]
@@ -258,7 +260,7 @@ async fn audit_ballots(
 }
 
 #[post(
-    "/voter/elections/<election_id>/votes/confirm",
+    "/elections/<election_id>/votes/confirm",
     data = "<ballot_recalls>",
     format = "json"
 )]
