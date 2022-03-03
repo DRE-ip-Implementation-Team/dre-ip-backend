@@ -16,7 +16,7 @@ pub type Signature = <DreipGroup as DreipGroupTrait>::Signature;
 pub struct Receipt<S: BallotState> {
     /// The cryptographic data.
     #[serde(flatten)]
-    pub crypto: BallotCrypto<S::ReceiptVote>,
+    pub crypto: BallotCrypto<S::ExposedSecrets>,
     /// Ballot ID.
     pub ballot_id: Id,
     /// Election ID.
@@ -30,7 +30,10 @@ pub struct Receipt<S: BallotState> {
     pub signature: Signature,
 }
 
-impl<S: BallotState> Receipt<S> {
+impl<S: BallotState> Receipt<S>
+where
+    for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
+{
     /// Construct a receipt from the given ballot.
     pub fn from_ballot(ballot: Ballot<S>, election: &Election) -> Self {
         // Convert the ballot from internal to receipt representation.

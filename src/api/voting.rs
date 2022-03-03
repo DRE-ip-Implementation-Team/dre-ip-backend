@@ -843,7 +843,7 @@ mod tests {
         // Validate PWFs.
         assert!(receipt
             .crypto
-            .verify(&election.crypto, receipt.ballot_id.to_bytes())
+            .verify(election.crypto.g1, election.crypto.g2, receipt.ballot_id.to_bytes())
             .is_ok());
         // Validate signature.
         let mut msg = receipt.crypto.to_bytes();
@@ -870,10 +870,10 @@ mod tests {
         for (candidate, vote) in ballot.crypto.votes.iter() {
             // Check the vote value is correct.
             if candidate == &candidate_id {
-                assert_eq!(vote.v, DreipScalar::one());
+                assert_eq!(vote.secrets.v, DreipScalar::one());
                 yes_votes += 1;
             } else {
-                assert_eq!(vote.v, DreipScalar::zero());
+                assert_eq!(vote.secrets.v, DreipScalar::zero());
             }
             // Check the receipt matches the internal vote.
             let receipt_vote = receipt.crypto.votes.get(candidate).unwrap();
@@ -881,8 +881,8 @@ mod tests {
             assert_eq!(vote.Z, receipt_vote.Z);
             assert_eq!(vote.pwf, receipt_vote.pwf);
             // Check the public values were correctly calculated from the secrets.
-            assert_eq!(vote.R, election.crypto.g2 * vote.r);
-            assert_eq!(vote.Z, election.crypto.g1 * (vote.r + vote.v));
+            assert_eq!(vote.R, election.crypto.g2 * vote.secrets.r);
+            assert_eq!(vote.Z, election.crypto.g1 * (vote.secrets.r + vote.secrets.v));
         }
         // Check there was exactly one yes vote (already guaranteed by the PWF, but sanity checks are good).
         assert_eq!(yes_votes, 1);
@@ -950,14 +950,14 @@ mod tests {
             assert_eq!(vote1.pwf, vote2.pwf);
             assert_eq!(vote1.R, vote2.R);
             assert_eq!(vote1.Z, vote2.Z);
-            assert_eq!(vote1.R, election.crypto.g2 * vote2.r);
-            assert_eq!(vote1.Z, election.crypto.g1 * (vote2.r + vote2.v));
+            assert_eq!(vote1.R, election.crypto.g2 * vote2.secrets.r);
+            assert_eq!(vote1.Z, election.crypto.g1 * (vote2.secrets.r + vote2.secrets.v));
         }
 
         // Validate PWFs.
         assert!(second_receipt
             .crypto
-            .verify(&election.crypto, second_receipt.ballot_id.to_bytes())
+            .verify(election.crypto.g1, election.crypto.g2, second_receipt.ballot_id.to_bytes())
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
@@ -1045,7 +1045,7 @@ mod tests {
         // Validate PWFs.
         assert!(second_receipt
             .crypto
-            .verify(&election.crypto, second_receipt.ballot_id.to_bytes())
+            .verify(election.crypto.g1, election.crypto.g2, second_receipt.ballot_id.to_bytes())
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();

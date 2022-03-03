@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use dre_ip::{Ballot as DreipBallot, CandidateTotals, Vote as DreipVote};
+use dre_ip::{Ballot as DreipBallot, CandidateTotals, NoSecrets, VoteSecrets};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
 
 use crate::model::election::{CandidateID, DreipGroup};
 
-pub type BallotCrypto<V> = DreipBallot<CandidateID, DreipGroup, V>;
+pub type BallotCrypto<S> = DreipBallot<CandidateID, DreipGroup, S>;
 
 /// Core ballot data, as stored in the database.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -16,7 +16,7 @@ pub type BallotCrypto<V> = DreipBallot<CandidateID, DreipGroup, V>;
 pub struct BallotCore<S: BallotState> {
     /// The cryptographic data.
     #[serde(flatten)]
-    pub crypto: BallotCrypto<S::InternalVote>,
+    pub crypto: BallotCrypto<S::InternalSecrets>,
     /// The current state of the ballot.
     pub state: S,
 }
@@ -45,15 +45,14 @@ impl BallotCore<Unconfirmed> {
 /// Trait for the ballot state, enforcing on the type level that secrets are present
 /// if and only if the ballot is unconfirmed or audited.
 pub trait BallotState: Copy + AsRef<[u8]> {
-    /// Is this state represented internally by a `ConfirmedVote` or an `UnconfirmedVote`?
-    type InternalVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone + Debug;
-    /// Do we show the user a `ConfirmedVote` or an `UnconfirmedVote` (do we reveal the
-    /// secrets in the receipt)?
-    type ReceiptVote: DreipVote<DreipGroup> + Serialize + DeserializeOwned + Clone + Debug;
+    /// Do we store the secrets internally?
+    type InternalSecrets: Serialize + DeserializeOwned + Debug + Clone;
+    /// Do we reveal the secrets in the receipt?
+    type ExposedSecrets: Serialize + DeserializeOwned + Debug + Clone;
     /// Convert internal representation into receipt representation.
     fn internal_to_receipt(
-        internal: BallotCrypto<Self::InternalVote>,
-    ) -> BallotCrypto<Self::ReceiptVote>;
+        internal: BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<Self::ExposedSecrets>;
 }
 
 /// Marker type for unconfirmed ballots.
@@ -70,12 +69,12 @@ impl AsRef<[u8]> for Unconfirmed {
 
 /// Unconfirmed ballots have secrets internally but do not reveal them in receipts.
 impl BallotState for Unconfirmed {
-    type InternalVote = dre_ip::election::UnconfirmedVote<DreipGroup>;
-    type ReceiptVote = dre_ip::election::ConfirmedVote<DreipGroup>;
+    type InternalSecrets = VoteSecrets<DreipGroup>;
+    type ExposedSecrets = NoSecrets;
 
     fn internal_to_receipt(
-        internal: BallotCrypto<Self::InternalVote>,
-    ) -> BallotCrypto<Self::ReceiptVote> {
+        internal: BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<Self::ExposedSecrets> {
         internal.confirm(None)
     }
 }
@@ -94,12 +93,12 @@ impl AsRef<[u8]> for Audited {
 
 /// Audited ballots have secrets internally and also make them public in receipts.
 impl BallotState for Audited {
-    type InternalVote = dre_ip::election::UnconfirmedVote<DreipGroup>;
-    type ReceiptVote = dre_ip::election::UnconfirmedVote<DreipGroup>;
+    type InternalSecrets = VoteSecrets<DreipGroup>;
+    type ExposedSecrets = VoteSecrets<DreipGroup>;
 
     fn internal_to_receipt(
-        internal: BallotCrypto<Self::InternalVote>,
-    ) -> BallotCrypto<Self::ReceiptVote> {
+        internal: BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<Self::ExposedSecrets> {
         internal
     }
 }
@@ -118,12 +117,12 @@ impl AsRef<[u8]> for Confirmed {
 
 /// Confirmed ballots have secrets erased; they are not present internally or in receipts.
 impl BallotState for Confirmed {
-    type InternalVote = dre_ip::election::ConfirmedVote<DreipGroup>;
-    type ReceiptVote = dre_ip::election::ConfirmedVote<DreipGroup>;
+    type InternalSecrets = NoSecrets;
+    type ExposedSecrets = NoSecrets;
 
     fn internal_to_receipt(
-        internal: BallotCrypto<Self::InternalVote>,
-    ) -> BallotCrypto<Self::ReceiptVote> {
+        internal: BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<Self::ExposedSecrets> {
         internal
     }
 }
