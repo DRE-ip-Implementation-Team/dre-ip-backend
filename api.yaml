@@ -301,6 +301,24 @@ paths:
   /elections/{electionID}/join:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
+    get:
+      summary: Ask if the current voter has already joined this election.
+      tags:
+        - Voting Endpoints
+      responses:
+        200:
+          description: Successfully retrieved boolean answer.
+          content:
+            application/json:
+              schema:
+                type: boolean
+                example: false
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
     post:
       summary: Join an election for the first time, specifying groups.
       tags:

@@ -17,12 +17,18 @@ use crate::model::{
 
 pub fn routes() -> Vec<Route> {
     routes![
+        has_joined,
         join_election,
         get_allowed,
         cast_ballots,
         audit_ballots,
         confirm_ballots
     ]
+}
+
+#[get("/elections/<election_id>/join")]
+async fn has_joined(voter: Voter, election_id: Id) -> Json<bool> {
+    Json(voter.allowed_questions.contains_key(&election_id))
 }
 
 #[post("/elections/<election_id>/join", data = "<joins>", format = "json")]
@@ -593,6 +599,47 @@ mod tests {
         while let Some(Ok(total)) = totals.next().await {
             println!("{:?}", total);
         }
+    }
+
+    #[backend_test(voter)]
+    async fn has_joined(client: Client, db: Database) {
+        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election_id: Id = Coll::<NewElection>::from_db(&db)
+            .insert_one(&election, None)
+            .await
+            .unwrap()
+            .inserted_id
+            .as_object_id()
+            .unwrap()
+            .into();
+
+        // We haven't yet joined the election, so the endpoint should agree.
+        let response = client.get(uri!(has_joined(election_id)))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+        let joined: bool = serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
+        assert!(!joined);
+
+        // Join the election (no groups).
+        let response = client
+            .post(uri!(join_election(election_id)))
+            .header(ContentType::JSON)
+            .body("{}")
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_none());
+
+        // The endpoint should now say we have joined.
+        let response = client.get(uri!(has_joined(election_id)))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+        let joined: bool = serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
+        assert!(joined);
     }
 
     #[backend_test(voter)]
