@@ -581,6 +581,8 @@ components:
     ElectionMetadata:
       type: object
       properties:
+        id:
+          $ref: '#/components/schemas/ID'
         name:
           type: string
         finalised:
@@ -595,6 +597,7 @@ components:
         - start_time
         - end_time
       example:
+        id: 6220e3b1069d947c996b5f7a
         name: Course Representatives
         finalised: true
         start_time: "2022-03-10T00:00:00Z"
