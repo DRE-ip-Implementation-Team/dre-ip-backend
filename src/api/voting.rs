@@ -12,7 +12,7 @@ use crate::model::{
     candidate_totals::{CandidateTotals, NewCandidateTotals},
     election::ElectionWithSecrets,
     mongodb::{Coll, Id},
-    voter::Voter,
+    voter::{AllowedQuestions, Voter},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -95,9 +95,13 @@ async fn join_election(
                         false
                     }
                 })
-                .then(|| **question_id)
+                .then(|| (*question_id, false))
         })
-        .collect::<Vec<_>>();
+        .collect::<HashMap<_, _>>();
+    let allowed_questions = AllowedQuestions {
+        confirmed: allowed_questions,
+    };
+    let allowed_questions = mongodb::bson::to_bson(&allowed_questions).unwrap(); // Cannot fail.
 
     // Join the election by adding the voter's unanswered questions
     let allowed_questions_election_id = format!("allowed_questions.{}", election.id);
@@ -117,7 +121,7 @@ async fn join_election(
 }
 
 #[get("/elections/<election_id>/questions/allowed")]
-fn get_allowed(voter: Voter, election_id: Id) -> Result<Json<Vec<Id>>> {
+fn get_allowed(voter: Voter, election_id: Id) -> Result<Json<AllowedQuestions>> {
     // Find what questions they can still vote for.
     let allowed = voter
         .allowed_questions
@@ -275,7 +279,7 @@ async fn audit_ballots(
 )]
 #[allow(clippy::too_many_arguments)]
 async fn confirm_ballots(
-    token: AuthToken<Voter>,
+    mut voter: Voter,
     election_id: Id,
     ballot_recalls: Json<Vec<BallotRecall>>,
     voters: Coll<Voter>,
@@ -298,29 +302,48 @@ async fn confirm_ballots(
 
         for ballot in recalled_ballots {
             // Check that the user is eligible to vote on this question.
-            let allowed_questions_election_id = format!("allowed_questions.{}", election_id);
-            let filter = doc! {
-                "_id": *token.id,
-                &allowed_questions_election_id: {
-                    "$in": [*ballot.question_id],
-                },
+            let allowed_questions = match voter.allowed_questions.get_mut(&election_id) {
+                Some(allowed) => allowed,
+                None => {
+                    return Err(Error::Status(
+                        Status::BadRequest,
+                        format!(
+                            "Voter {} has not yet joined election {}",
+                            voter.id, election_id
+                        ),
+                    ));
+                }
             };
-            let update = doc! {
-                "$pull": {
-                    &allowed_questions_election_id: {
-                        "$eq": *ballot.question_id,
-                    },
-                },
-            };
-            let result = voters
-                .update_one_with_session(filter, update, None, &mut session)
-                .await?;
-            if result.modified_count != 1 {
+            if let Some(confirmed) = allowed_questions.confirmed.get_mut(&ballot.question_id) {
+                if *confirmed {
+                    return Err(Error::Status(
+                        Status::BadRequest,
+                        format!(
+                            "Voter {} has already voted on question {}",
+                            voter.id, ballot.question_id
+                        ),
+                    ));
+                } else {
+                    // All tests passed, the voter can confirm this ballot.
+                    *confirmed = true; // Not strictly necessary, but best practice to keep our local copy consistent.
+                    let question_confirmed =
+                        format!("allowed_questions.{}.{}", election_id, ballot.question_id);
+                    let update = doc! {
+                        "$set": {
+                            &question_confirmed: true
+                        }
+                    };
+                    let result = voters
+                        .update_one_with_session(voter.id.as_doc(), update, None, &mut session)
+                        .await?;
+                    assert_eq!(result.modified_count, 1);
+                }
+            } else {
                 return Err(Error::Status(
                     Status::BadRequest,
                     format!(
-                        "Voter {:?} does not exist or cannot vote on {:?}",
-                        token.id, ballot.question_id
+                        "Voter {} is not allowed to vote on question {}",
+                        voter.id, ballot.question_id
                     ),
                 ));
             }
@@ -483,6 +506,7 @@ mod tests {
     };
 
     use crate::model::{
+        ballot::{AUDITED, CONFIRMED, UNCONFIRMED},
         election::{Election, ElectionSpec, NewElection, QuestionSpec},
         sms::Sms,
     };
@@ -532,9 +556,12 @@ mod tests {
                 }
             })
             .unwrap();
-        voter
-            .allowed_questions
-            .insert(election1.id, vec![allowed_question]);
+        voter.allowed_questions.insert(
+            election1.id,
+            AllowedQuestions {
+                confirmed: HashMap::from_iter(vec![(allowed_question, false)]),
+            },
+        );
         voters
             .replace_one(
                 doc! {
@@ -614,9 +641,7 @@ mod tests {
             .into();
 
         // We haven't yet joined the election, so the endpoint should agree.
-        let response = client.get(uri!(has_joined(election_id)))
-            .dispatch()
-            .await;
+        let response = client.get(uri!(has_joined(election_id))).dispatch().await;
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
         let joined: bool = serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
@@ -633,9 +658,7 @@ mod tests {
         assert!(response.body().is_none());
 
         // The endpoint should now say we have joined.
-        let response = client.get(uri!(has_joined(election_id)))
-            .dispatch()
-            .await;
+        let response = client.get(uri!(has_joined(election_id))).dispatch().await;
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
         let joined: bool = serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
@@ -691,7 +714,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             voter.allowed_questions[&election_id]
-                .iter()
+                .keys()
                 .collect::<HashSet<_>>(),
             election.questions.keys().collect()
         );
@@ -740,7 +763,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             voter.allowed_questions[&election_id]
-                .iter()
+                .keys()
                 .collect::<HashSet<_>>(),
             election
                 .questions
@@ -852,9 +875,9 @@ mod tests {
 
         // Ensure they are correct.
         let raw_response = response.into_string().await.unwrap();
-        let allowed: Vec<Id> = serde_json::from_str(&raw_response).unwrap();
-        let expected = vec![question_id];
-        assert_eq!(allowed, expected);
+        let allowed: AllowedQuestions = serde_json::from_str(&raw_response).unwrap();
+        let expected = HashMap::from_iter(vec![(question_id, false)]);
+        assert_eq!(allowed.confirmed, expected);
     }
 
     #[backend_test(voter)]
@@ -1155,6 +1178,13 @@ mod tests {
             totals,
         };
         assert!(results.verify().is_ok());
+
+        // Ensure the question is marked as answered.
+        let response = client.get(uri!(get_allowed(election_id))).dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        let raw_response = response.into_string().await.unwrap();
+        let allowed: AllowedQuestions = serde_json::from_str(&raw_response).unwrap();
+        assert!(allowed.confirmed[&question_id]);
     }
 
     #[backend_test(voter)]
@@ -1400,5 +1430,98 @@ mod tests {
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::NotFound);
+    }
+
+    #[backend_test(voter)]
+    async fn cant_vote_twice(client: Client, db: Database) {
+        let (election_id, question_id) = insert_test_data(&client, &db).await;
+
+        // Correctly cast a vote.
+        async fn cast(client: &Client, election_id: Id, question_id: Id) -> Receipt<Unconfirmed> {
+            let candidate_id = "Chris Riches".to_string();
+            let ballot_specs = vec![BallotSpec {
+                question: question_id,
+                candidate: candidate_id.clone(),
+            }];
+            let response = client
+                .post(uri!(cast_ballots(election_id)))
+                .header(ContentType::JSON)
+                .body(serde_json::to_string(&ballot_specs).unwrap())
+                .dispatch()
+                .await;
+            assert_eq!(response.status(), Status::Ok);
+            let raw_response = response.into_string().await.unwrap();
+            let first_receipt: Receipt<Unconfirmed> = serde_json::from_str::<Vec<_>>(&raw_response)
+                .unwrap()
+                .into_iter()
+                .next()
+                .unwrap();
+            first_receipt
+        }
+
+        // Confirm a vote.
+        let receipt = cast(&client, election_id, question_id).await;
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: receipt.ballot_id,
+            question_id,
+            signature: receipt.signature,
+        }];
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+
+        // Cast an identical vote, and audit it.
+        let receipt = cast(&client, election_id, question_id).await;
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: receipt.ballot_id,
+            question_id,
+            signature: receipt.signature,
+        }];
+        let response = client
+            .post(uri!(audit_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+
+        // Ensure we can't confirm a second vote though.
+        let receipt = cast(&client, election_id, question_id).await;
+        let ballot_recalls = vec![BallotRecall {
+            ballot_id: receipt.ballot_id,
+            question_id,
+            signature: receipt.signature,
+        }];
+        let response = client
+            .post(uri!(confirm_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_recalls).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::BadRequest);
+
+        // Ensure there are the expected votes present.
+        let ballots = Coll::<Ballot<Unconfirmed>>::from_db(&db);
+        let total_num = ballots.count_documents(None, None).await.unwrap();
+        assert_eq!(total_num, 3);
+        let unconfirmed_num = ballots
+            .count_documents(doc! {"state": UNCONFIRMED}, None)
+            .await
+            .unwrap();
+        assert_eq!(unconfirmed_num, 1);
+        let audited_num = ballots
+            .count_documents(doc! {"state": AUDITED}, None)
+            .await
+            .unwrap();
+        assert_eq!(audited_num, 1);
+        let confirmed_num = ballots
+            .count_documents(doc! {"state": CONFIRMED}, None)
+            .await
+            .unwrap();
+        assert_eq!(confirmed_num, 1);
     }
 }

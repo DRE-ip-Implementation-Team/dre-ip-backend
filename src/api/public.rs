@@ -259,7 +259,11 @@ async fn metadata_for_elections(
     elections: Coll<ElectionNoSecrets>,
     filter: impl Into<Option<Document>>,
 ) -> Result<Json<Vec<MetadataWithId>>> {
-    let elections = elections.find(filter, None).await?.try_collect::<Vec<_>>().await?;
+    let elections = elections
+        .find(filter, None)
+        .await?
+        .try_collect::<Vec<_>>()
+        .await?;
     let metadata = elections
         .into_iter()
         .map(|e| MetadataWithId {
@@ -303,11 +307,11 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<MetadataWithId>>(&raw_response).unwrap()
-                .into_iter()
-                .map(|m| m.meta)
-                .collect::<Vec<_>>();
+        let fetched_elections = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.meta)
+            .collect::<Vec<_>>();
 
         let expected = vec![
             ElectionMetadata::from(ElectionSpec::finalised_example()),
@@ -328,12 +332,11 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
 
-        let fetched_elections =
-            serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
-                .unwrap()
-                .into_iter()
-                .map(|m| m.meta)
-                .collect::<Vec<_>>();
+        let fetched_elections = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.meta)
+            .collect::<Vec<_>>();
 
         let elections = vec![ElectionMetadata::from(ElectionSpec::finalised_example())];
 
