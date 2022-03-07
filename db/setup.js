@@ -5,7 +5,7 @@ db.dropDatabase();
 // Voter collection
 db.createCollection("voters");
 voters = db.getCollection("voters");
-voters.createIndex({sms: 1}, {unique: true});
+voters.createIndex({sms_hmac: 1}, {unique: true});
 
 // Admin collection
 db.createCollection("admins");
@@ -21,8 +21,8 @@ db.createCollection("ballots");
 ballots = db.getCollection("ballots");
 ballots.createIndex({election_id: 1, question_id: 1})
 ballots.createIndex({creation_time: -1}, {
-  expireAfterSeconds: 3600,
-  partialFilterExpression: { state: "Unconfirmed" }
+	expireAfterSeconds: 3600,
+	partialFilterExpression: {state: "Unconfirmed"}
 })
 
 // Candidate totals collection

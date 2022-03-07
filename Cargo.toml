@@ -17,6 +17,9 @@ serde_unit_struct = "0.1"
 rust-argon2 = "0.8"
 aws-config = "0.6.0"
 aws-sdk-sns = "0.6.0"
+hmac = "0.12.1"
+sha2 = "0.10.2"
+typenum = "1.15.0"
 
 [dependencies.dre-ip]
 path = "protocol"
@@ -31,6 +34,10 @@ features = ["bson-chrono-0_4"]
 
 [dependencies.chrono]
 version = "0.4.19"
+features = ["serde"]
+
+[dependencies.generic-array]
+version = "0.14.4" # Need same version as `crypto-common`
 features = ["serde"]
 
 [dev-dependencies]
