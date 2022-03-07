@@ -81,7 +81,14 @@ async fn join_election(
             question
                 .constraints
                 .iter()
-                .any(|(electorate_name, groups)| !groups.is_disjoint(&joins[electorate_name]))
+                .any(|(electorate_name, groups)| {
+                    let electorate_joined = joins.get(electorate_name);
+                    if let Some(joined) = electorate_joined {
+                        !groups.is_disjoint(joined)
+                    } else {
+                        false
+                    }
+                })
                 .then(|| **question_id)
         })
         .collect::<Vec<_>>();
