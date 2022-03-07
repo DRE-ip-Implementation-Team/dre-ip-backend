@@ -614,7 +614,10 @@ mod tests {
 
         for question in election.questions.values() {
             let ballots = Coll::<FinishedBallot>::from_db(&db)
-                .find(doc!{"question_id": *question.id, "state": {"$ne": UNCONFIRMED}}, None)
+                .find(
+                    doc! {"question_id": *question.id, "state": {"$ne": UNCONFIRMED}},
+                    None,
+                )
                 .await
                 .unwrap()
                 .try_collect::<Vec<_>>()
@@ -626,7 +629,7 @@ mod tests {
             }
             println!();
             let totals = Coll::<CandidateTotals>::from_db(&db)
-                .find(doc!{"question_id": *question.id}, None)
+                .find(doc! {"question_id": *question.id}, None)
                 .await
                 .unwrap()
                 .try_collect::<Vec<_>>()
