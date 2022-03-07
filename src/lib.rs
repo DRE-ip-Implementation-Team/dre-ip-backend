@@ -62,6 +62,7 @@ pub(crate) fn rocket_for_db_and_notifier(
 pub struct Config {
     otp_ttl: u32,
     jwt_secret: String,
+    hmac_secret: String,
     auth_ttl: u32,
 }
 
@@ -76,6 +77,12 @@ impl Config {
     /// Configured via `JWT_SECRET`.
     pub fn jwt_secret(&self) -> &[u8] {
         self.jwt_secret.as_bytes()
+    }
+
+    /// Key used to sign HMACs
+    /// Configured via `HMAC_SECRET`.
+    pub fn hmac_secret(&self) -> &[u8] {
+        self.hmac_secret.as_bytes()
     }
 
     /// Seconds until the authentication token expires

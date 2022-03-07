@@ -1,5 +1,5 @@
 use aws_sdk_sns::Client as SnsClient;
-use mongodb::bson::doc;
+use mongodb::bson::{doc, to_bson};
 use rocket::{
     http::{Cookie, CookieJar, Status},
     serde::json::Json,
@@ -97,15 +97,15 @@ pub async fn verify(
         ));
     }
 
-    let voter = NewVoter::new(challenge.sms);
+    let voter = NewVoter::new(challenge.sms, config);
 
-    let with_sms = doc! {
-        "sms": &voter.sms
+    let with_sms_hmac = doc! {
+        "sms_hmac": to_bson(&voter.sms_hmac).expect("HMAC serialization does not fail"),
     };
 
     // We need an id to associate with the voter's interactions to ensure for instance that they
     // have not already voted for a certain question
-    let db_voter = if let Some(voter) = voters.find_one(with_sms, None).await? {
+    let db_voter = if let Some(voter) = voters.find_one(with_sms_hmac, None).await? {
         // Voter already exists.
         voter
     } else {
@@ -220,12 +220,18 @@ mod tests {
 
         // Check voter was inserted
         let voter = voters
-            .find_one(doc! { "sms": Sms::example() }, None)
+            .find_one(
+                doc! { "sms_hmac": to_bson(&Sms::example_hmac(&client)).unwrap() },
+                None,
+            )
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(NewVoter::example(), voter);
+        assert_eq!(
+            NewVoter::example(client.rocket().state::<Config>().unwrap()),
+            voter
+        );
     }
 
     #[backend_test]

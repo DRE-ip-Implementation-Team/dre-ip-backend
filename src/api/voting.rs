@@ -461,7 +461,7 @@ mod tests {
     use backend_test::backend_test;
     use chrono::{Duration, Utc};
     use dre_ip::{DreipPublicKey, DreipScalar, ElectionResults, Serializable};
-    use mongodb::Database;
+    use mongodb::{bson::to_bson, Database};
     use rocket::{
         futures::{StreamExt, TryStreamExt},
         http::ContentType,
@@ -478,7 +478,7 @@ mod tests {
 
     /// Insert test data, returning the election ID and the ID of the allowed question,
     /// which may differ between runs.
-    async fn insert_test_data(db: &Database) -> (Id, Id) {
+    async fn insert_test_data(client: &Client, db: &Database) -> (Id, Id) {
         // Create some elections, only one of which is active.
         let election: NewElection = ElectionSpec::finalised_example().into();
         let election1 = Election {
@@ -501,7 +501,7 @@ mod tests {
         let mut voter = voters
             .find_one(
                 doc! {
-                    "sms": Sms::example(),
+                    "sms_hmac": to_bson(&Sms::example_hmac(&client)).unwrap(),
                 },
                 None,
             )
@@ -601,8 +601,9 @@ mod tests {
             .into();
 
         // Check no questions are allowed.
+        let sms_hmac = Sms::example_hmac(&client);
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms": Sms::example()}, None)
+            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
             .await
             .unwrap()
             .unwrap();
@@ -630,7 +631,7 @@ mod tests {
 
         // Check all questions are allowed.
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms": Sms::example()}, None)
+            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
             .await
             .unwrap()
             .unwrap();
@@ -655,8 +656,9 @@ mod tests {
             .into();
 
         // Check no questions are allowed.
+        let sms_hmac = Sms::example_hmac(&client);
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms": Sms::example()}, None)
+            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
             .await
             .unwrap()
             .unwrap();
@@ -678,7 +680,7 @@ mod tests {
 
         // Check the correct question is allowed.
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms": Sms::example()}, None)
+            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
             .await
             .unwrap()
             .unwrap();
@@ -787,7 +789,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn get_allowed(client: Client, db: Database) {
-        let (election_id, question_id) = insert_test_data(&db).await;
+        let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Get the allowed questions.
         let response = client.get(uri!(get_allowed(election_id))).dispatch().await;
@@ -803,7 +805,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn cast_ballots(client: Client, db: Database) {
-        let (election_id, question_id) = insert_test_data(&db).await;
+        let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Vote on the question we are allowed to.
         let candidate_id = "Chris Riches".to_string();
@@ -892,7 +894,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn audit(client: Client, db: Database) {
-        let (election_id, question_id) = insert_test_data(&db).await;
+        let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Vote on the question we are allowed to.
         let candidate_id = "Chris Riches".to_string();
@@ -995,7 +997,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn confirm(client: Client, db: Database) {
-        let (election_id, question_id) = insert_test_data(&db).await;
+        let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Vote on the question we are allowed to.
         let candidate_id = "Chris Riches".to_string();
@@ -1103,7 +1105,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn bad_casts(client: Client, db: Database) {
-        let (election_id, question_id) = insert_test_data(&db).await;
+        let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Try voting on a non-existent question.
         let ballot_specs = vec![BallotSpec {
@@ -1159,7 +1161,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn bad_votes(client: Client, db: Database) {
-        let (election_id, question_id) = insert_test_data(&db).await;
+        let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Vote on an inactive election.
         let inactive_election = Coll::<ElectionWithSecrets>::from_db(&db)

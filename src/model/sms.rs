@@ -1,5 +1,6 @@
 use std::{ops::Deref, str::FromStr};
 
+use hmac::{digest::Output, Mac};
 use mongodb::bson::{to_bson, Bson};
 use phonenumber::PhoneNumber;
 use rocket::{
@@ -12,6 +13,10 @@ use rocket::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::Config;
+
+use super::voter::HmacSha256;
 
 /// A voter's SMS number.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +31,15 @@ impl Deref for Sms {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl Sms {
+    pub fn into_hmac(self, config: &Config) -> Output<HmacSha256> {
+        let mut hmac = HmacSha256::new_from_slice(config.hmac_secret())
+            .expect("HMAC can take key of any size");
+        hmac.update(self.to_string().as_bytes());
+        hmac.finalize().into_bytes()
     }
 }
 
@@ -131,11 +145,17 @@ impl From<Sms> for Bson {
 /// Example data for tests.
 #[cfg(test)]
 mod examples {
+    use rocket::local::asynchronous::Client;
+
     use super::*;
 
     impl Sms {
         pub fn example() -> Self {
             "+441234567890".parse().unwrap()
+        }
+
+        pub fn example_hmac(client: &Client) -> Output<HmacSha256> {
+            Self::example().into_hmac(client.rocket().state::<Config>().unwrap())
         }
     }
 }
