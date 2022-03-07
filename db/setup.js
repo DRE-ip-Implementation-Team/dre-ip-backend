@@ -1,5 +1,3 @@
-conn = new Mongo();
-db = conn.getDB("dreip");
 db.dropDatabase();
 
 // Voter collection
