@@ -85,13 +85,13 @@ mod examples {
             let end_time = start_time + Duration::days(30);
             Self {
                 metadata: ElectionMetadata {
-                    name: "Sports Clubs Elections".to_string(),
+                    name: "Test Election".to_string(),
                     finalised: true,
                     start_time,
                     end_time,
                 },
                 electorates: vec![Electorate::example1(), Electorate::example2()],
-                questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
+                questions: vec![QuestionSpec::example1(), QuestionSpec::example2(), QuestionSpec::example3()],
             }
         }
 
@@ -100,12 +100,12 @@ mod examples {
             let end_time = start_time + Duration::days(30);
             Self {
                 metadata: ElectionMetadata {
-                    name: "Sports Clubs Elections 2".to_string(),
+                    name: "Unfinalised Election".to_string(),
                     finalised: false,
                     start_time,
                     end_time,
                 },
-                electorates: vec![Electorate::example1(), Electorate::example2()],
+                electorates: vec![Electorate::example1()],
                 questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
             }
         }
@@ -131,6 +131,23 @@ mod examples {
                     HashSet::from_iter(vec!["Moongolf".to_string()]),
                 )]),
                 candidates: vec!["John Smith".to_string(), "Jane Doe".to_string()],
+            }
+        }
+
+        pub fn example3() -> Self {
+            Self {
+                description: "Should CompSoc host a talk about Quantum Cryptography?".to_string(),
+                constraints: HashMap::from_iter(vec![
+                    (
+                        "Societies".to_string(),
+                        HashSet::from_iter(vec!["CompSoc".to_string()]),
+                    ),
+                    (
+                        "Courses".to_string(),
+                        HashSet::from_iter(vec!["CompSci".to_string()]),
+                    ),
+                ]),
+                candidates: vec!["Yes".to_string(), "No".to_string()],
             }
         }
     }

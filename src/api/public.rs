@@ -269,7 +269,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::model::{
-        ballot::{Audited, Ballot, Confirmed, Unconfirmed},
+        ballot::{Audited, Ballot, Confirmed, Unconfirmed, UNCONFIRMED},
         candidate_totals::NewCandidateTotals,
         election::{ElectionMetadata, ElectionSpec, NewElection, QuestionSpec},
     };
@@ -599,6 +599,45 @@ mod tests {
         };
         assert_eq!(results.election, election.erase_secrets().crypto);
         assert!(results.verify().is_ok());
+    }
+
+    /// This isn't really a test, but a way of generating test data for end-to-end tests.
+    #[backend_test(admin)]
+    async fn generate_test_data(db: Database) {
+        insert_elections(&db).await;
+        insert_ballots(&db).await;
+
+        let election = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+
+        let election_json = serde_json::to_string(&election).unwrap();
+        println!("{election_json}\n");
+
+        for question in election.questions.values() {
+            let ballots = Coll::<FinishedBallot>::from_db(&db)
+                .find(doc!{"question_id": *question.id, "state": {"$ne": UNCONFIRMED}}, None)
+                .await
+                .unwrap()
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap();
+            for ballot in ballots {
+                let ballot_json = serde_json::to_string(&ballot).unwrap();
+                println!("{ballot_json},");
+            }
+            println!();
+            let totals = Coll::<CandidateTotals>::from_db(&db)
+                .find(doc!{"question_id": *question.id}, None)
+                .await
+                .unwrap()
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap();
+            for total in totals {
+                let totals_json = serde_json::to_string(&total).unwrap();
+                println!("{totals_json},");
+            }
+            println!("\n\n\n");
+        }
     }
 
     async fn insert_elections(db: &Database) {
