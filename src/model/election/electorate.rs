@@ -24,7 +24,9 @@ mod examples {
             Self {
                 name: "Societies".to_string(),
                 groups: HashSet::from_iter(
-                    vec!["Quidditch", "Moongolf", "CompSoc"].into_iter().map(String::from),
+                    vec!["Quidditch", "Moongolf", "CompSoc"]
+                        .into_iter()
+                        .map(String::from),
                 ),
                 is_mutex: false,
             }

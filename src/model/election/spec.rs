@@ -91,7 +91,11 @@ mod examples {
                     end_time,
                 },
                 electorates: vec![Electorate::example1(), Electorate::example2()],
-                questions: vec![QuestionSpec::example1(), QuestionSpec::example2(), QuestionSpec::example3()],
+                questions: vec![
+                    QuestionSpec::example1(),
+                    QuestionSpec::example2(),
+                    QuestionSpec::example3(),
+                ],
             }
         }
 
