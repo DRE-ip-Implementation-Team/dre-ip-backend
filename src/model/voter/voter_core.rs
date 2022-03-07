@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 
 use hmac::{digest::Output, Hmac};
 use serde::{Deserialize, Serialize};
@@ -20,10 +21,9 @@ pub struct VoterCore {
     /// Voter unique ID: the HMAC of their SMS number.
     pub sms_hmac: Output<HmacSha256>,
     /// Maps election IDs to the IDs of questions the voter can answer for that election.
-    /// This is populated according to their group constraints when they join groups,
-    /// and depleted as they vote.
+    /// This is populated according to their group constraints when they join an election.
     #[serde(with = "serde_string_map")]
-    pub allowed_questions: HashMap<Id, Vec<Id>>,
+    pub allowed_questions: HashMap<Id, AllowedQuestions>,
 }
 
 impl VoterCore {
@@ -34,6 +34,29 @@ impl VoterCore {
             sms_hmac: sms.into_hmac(config),
             allowed_questions: HashMap::new(),
         }
+    }
+}
+
+/// The questions that a voter may answer for a particular election.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AllowedQuestions {
+    /// For each allowed question, have they already confirmed a ballot?
+    #[serde(with = "serde_string_map")]
+    pub confirmed: HashMap<Id, bool>,
+}
+
+impl Deref for AllowedQuestions {
+    type Target = HashMap<Id, bool>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.confirmed
+    }
+}
+
+impl DerefMut for AllowedQuestions {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.confirmed
     }
 }
 

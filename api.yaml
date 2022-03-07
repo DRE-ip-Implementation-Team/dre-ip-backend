@@ -349,19 +349,29 @@ paths:
     get:
       summary: Get which questions the current voter is allowed to vote on.
       description:
-        A voter may vote on questions for which they satisfy the group
+        A voter may *cast and audit* votes on any question. However, they may
+        only *confirm* votes on questions for which they satisfy the group
         constraints and have not already confirmed a vote.
-        Votes may be cast and audited on any question, but confirmed only on those
-        returned by this endpoint.
+        
+        This endpoint returns all questions that the current voter satisfies
+        the group constraints for. Each question ID is mapped to a boolean
+        specifying whether or not this question has already been confirmed.
+        
+        Therefore, the questions that the voter can confirm votes on are those
+        that appear in this map and are mapped to `false`.
       tags:
         - Voting Endpoints
       responses:
         200:
-          description: Successfully returned list of question IDs.
+          description: Successfully returned map of question IDs.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IDList"
+                type: object
+                example:
+                  "6220e27c5f06ce6366456650": false
+                  "6220e3b1069d947c996b5fb3": true
+                  "6220e3b1069d947c996b5fb9": true
         401:
           $ref: "#/components/responses/Unauthorized"
         403:
@@ -477,16 +487,6 @@ components:
     ID:
       type: string
       example: 6220e27c5f06ce6366456650
-    IDList:
-      type: array
-      items:
-        $ref: "#/components/schemas/ID"
-      minItems: 1
-      uniqueItems: true
-      example:
-        - 6220e27c5f06ce6366456650
-        - 6220e3b1069d947c996b5fb3
-        - 6220e3b1069d947c996b5fb9
     AdminCredentials:
       type: object
       properties:

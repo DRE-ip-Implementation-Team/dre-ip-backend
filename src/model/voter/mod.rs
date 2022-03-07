@@ -1,5 +1,5 @@
 pub use db::Voter;
-pub use voter_core::HmacSha256;
+pub use voter_core::{AllowedQuestions, HmacSha256};
 
 mod db;
 mod voter_core;
