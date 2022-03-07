@@ -58,6 +58,7 @@ async fn delete_admin(
 
 #[post("/elections", data = "<spec>", format = "json")]
 async fn create_election(
+    _token: AuthToken<Admin>,
     spec: Json<ElectionSpec>,
     new_elections: Coll<NewElection>,
     elections: Coll<ElectionNoSecrets>,
