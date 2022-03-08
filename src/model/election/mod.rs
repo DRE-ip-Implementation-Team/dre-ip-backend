@@ -1,7 +1,7 @@
 use dre_ip::{NoSecrets, PrivateKey};
 
 pub use db::Election;
-pub use election_core::{ElectionMetadata, Question};
+pub use election_core::{ElectionMetadata, ElectionState, Question};
 pub use electorate::Electorate;
 pub use spec::{ElectionSpec, QuestionSpec};
 

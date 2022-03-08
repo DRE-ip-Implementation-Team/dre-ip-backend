@@ -134,14 +134,14 @@ mod tests {
         let response = client
             .post(uri!(create_election))
             .header(ContentType::JSON)
-            .body(json!(ElectionSpec::finalised_example()).to_string())
+            .body(json!(ElectionSpec::current_example()).to_string())
             .dispatch()
             .await;
 
         assert_eq!(Status::Ok, response.status());
 
         let elections = Coll::<ElectionMetadata>::from_db(&db);
-        let with_name = doc! { "name": &ElectionSpec::finalised_example().metadata.name };
+        let with_name = doc! { "name": &ElectionSpec::current_example().name };
         let inserted_election = elections
             .find_one(with_name.clone(), None)
             .await
@@ -149,7 +149,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            ElectionMetadata::from(ElectionSpec::finalised_example()),
+            ElectionMetadata::from(ElectionSpec::current_example()),
             inserted_election
         );
     }

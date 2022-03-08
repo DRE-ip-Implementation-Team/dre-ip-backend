@@ -10,7 +10,7 @@ use crate::model::{
     auth::AuthToken,
     ballot::{Audited, Ballot, Confirmed, Receipt, Signature, Unconfirmed, UNCONFIRMED},
     candidate_totals::{CandidateTotals, NewCandidateTotals},
-    election::ElectionWithSecrets,
+    election::{ElectionState, ElectionWithSecrets},
     mongodb::{Coll, Id},
     voter::{AllowedQuestions, Voter},
 };
@@ -432,7 +432,7 @@ async fn active_election_by_id(
 
     let is_active = doc! {
         "_id": *election_id,
-        "finalised": true,
+        "state": ElectionState::Published,
         "start_time": { "$lte": now },
         "end_time": { "$gt": now },
     };
@@ -507,7 +507,7 @@ mod tests {
 
     use crate::model::{
         ballot::{AUDITED, CONFIRMED, UNCONFIRMED},
-        election::{Election, ElectionSpec, NewElection, QuestionSpec},
+        election::{Election, NewElection, QuestionSpec},
         sms::Sms,
     };
 
@@ -517,15 +517,13 @@ mod tests {
     /// which may differ between runs.
     async fn insert_test_data(client: &Client, db: &Database) -> (Id, Id) {
         // Create some elections, only one of which is active.
-        let election: NewElection = ElectionSpec::finalised_example().into();
         let election1 = Election {
             id: Id::new(),
-            election,
+            election: NewElection::published_example(),
         };
-        let election: NewElection = ElectionSpec::unfinalised_example().into();
         let election2 = Election {
             id: Id::new(),
-            election,
+            election: NewElection::draft_example(),
         };
         let elections = Coll::<ElectionWithSecrets>::from_db(db);
         elections
@@ -630,7 +628,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn has_joined(client: Client, db: Database) {
-        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election = NewElection::published_example();
         let election_id: Id = Coll::<NewElection>::from_db(&db)
             .insert_one(&election, None)
             .await
@@ -667,7 +665,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn join_all_groups(client: Client, db: Database) {
-        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election = NewElection::published_example();
         let election_id: Id = Coll::<NewElection>::from_db(&db)
             .insert_one(&election, None)
             .await
@@ -722,7 +720,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn join_one_group(client: Client, db: Database) {
-        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election = NewElection::published_example();
         let election_id: Id = Coll::<NewElection>::from_db(&db)
             .insert_one(&election, None)
             .await
@@ -781,7 +779,7 @@ mod tests {
 
     #[backend_test(voter)]
     async fn bad_joins(client: Client, db: Database) {
-        let election: NewElection = ElectionSpec::finalised_example().into();
+        let election = NewElection::published_example();
         let election_id: Id = Coll::<NewElection>::from_db(&db)
             .insert_one(election, None)
             .await
@@ -1219,7 +1217,7 @@ mod tests {
 
         // Try voting on an inactive election.
         let inactive_election = Coll::<ElectionWithSecrets>::from_db(&db)
-            .find_one(doc! {"finalised": false}, None)
+            .find_one(doc! {"state": ElectionState::Draft}, None)
             .await
             .unwrap()
             .unwrap();
