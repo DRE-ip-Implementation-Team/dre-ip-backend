@@ -84,9 +84,10 @@ async fn election_non_admin(
         "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
     };
 
-    let election = elections.find_one(filter, None).await?.ok_or_else(|| {
-        Error::not_found(format!("Non-admin election with ID '{}'", election_id))
-    })?;
+    let election = elections
+        .find_one(filter, None)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("Non-admin election with ID '{}'", election_id)))?;
 
     Ok(Json(election))
 }

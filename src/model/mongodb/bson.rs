@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
 
-use mongodb::bson::{Bson, doc, oid::ObjectId, Document};
+use mongodb::bson::{doc, oid::ObjectId, Bson, Document};
 use rocket::{
     data::ToByteUnit,
     form::{self, prelude::ErrorKind, DataField, FromFormField, ValueField},
