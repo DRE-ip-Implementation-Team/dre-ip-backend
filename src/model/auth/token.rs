@@ -5,7 +5,7 @@ use jsonwebtoken::{
     errors::Error as JwtError, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use rocket::{
-    http::{Cookie, SameSite, Status},
+    http::{Cookie, SameSite},
     outcome::{try_outcome, IntoOutcome},
     request::{self, FromRequest},
     Request, State,
@@ -109,7 +109,7 @@ where
         let cookie = try_outcome!(req.cookies().get(AUTH_TOKEN_COOKIE).or_forward(()));
 
         let token: Self =
-            try_outcome!(Self::from_cookie(cookie, config).into_outcome(Status::Unauthorized));
+            try_outcome!(Self::from_cookie(cookie, config).or_forward(()));
 
         if token.permits(U::RIGHTS) {
             request::Outcome::Success(token)

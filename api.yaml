@@ -143,10 +143,6 @@ paths:
       responses:
         200:
           description: Successfully deleted.
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
         404:
           description: Admin username not found.
         422:
@@ -170,10 +166,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Election"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
     get:
       summary: Fetch metadata of all elections.
       security: [ ]  # No authentication needed.
@@ -313,10 +305,6 @@ paths:
               schema:
                 type: boolean
                 example: false
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
     post:
@@ -333,12 +321,8 @@ paths:
       responses:
         200:
           description: Successfully joined groups.
-        401:
-          $ref: "#/components/responses/Unauthorized"
         403:
-          description:
-            "`auth_token` cookie does not grant the required permissions, 
-            or you have already joined this election."
+          description: You have already joined this election.
         404:
           $ref: "#/components/responses/NotFound"
         422:
@@ -372,10 +356,6 @@ paths:
                   "6220e27c5f06ce6366456650": false
                   "6220e3b1069d947c996b5fb3": true
                   "6220e3b1069d947c996b5fb9": true
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
   /elections/{electionID}/votes/cast:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
@@ -402,10 +382,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/UnconfirmedReceipt"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/audit:
@@ -434,10 +410,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AuditedReceipt"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/confirm:
@@ -468,10 +440,6 @@ paths:
                   $ref: "#/components/schemas/ConfirmedReceipt"
         400:
           description: Not allowed to confirm at least one of these ballots.
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
         404:
           $ref: "#/components/responses/NotFound"
 
@@ -1073,13 +1041,9 @@ components:
             $ref: "#/components/schemas/AuthToken"
     BadRequest:
       description: Request was malformed.
-    Unauthorized:
-      description:
-        "`auth_token` cookie is absent, invalid, or expired."
-    Forbidden:
-      description:
-        "`auth_token` cookie does not grant the required permissions."
     NotFound:
-      description: Requested resource was not found.
+      description:
+        Requested resource was not found. This can also be produced by
+        authorisation errors, e.g. a missing or invalid `auth_token`.
     InternalServerError:
       description: The server encountered an error.
