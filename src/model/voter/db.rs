@@ -49,8 +49,7 @@ impl<'r> FromRequest<'r> for Voter {
         // Check for voter authentication
         let auth_token = try_outcome!(req
             .guard::<AuthToken<Self>>()
-            .await
-            .map_failure(|(status, jwt_error)| (status, Error::Jwt(jwt_error))));
+            .await);
 
         // See `Coll::from_request`
         let voters = req.guard::<Coll<Self>>().await.unwrap();
