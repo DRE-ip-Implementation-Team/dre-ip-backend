@@ -1,5 +1,5 @@
 pub use ballot_core::{
-    Audited, BallotState, Confirmed, Unconfirmed, AUDITED, CONFIRMED, UNCONFIRMED,
+    Audited, BallotState, Confirmed, Unconfirmed,
 };
 pub use db::{Ballot, FinishedBallot};
 pub use receipt::{FinishedReceipt, Receipt, Signature};
