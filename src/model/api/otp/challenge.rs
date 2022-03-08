@@ -12,7 +12,7 @@ use rocket::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{model::sms::Sms, Config};
+use crate::{model::api::sms::Sms, Config};
 
 use super::code::Code;
 

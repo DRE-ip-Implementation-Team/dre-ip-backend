@@ -10,10 +10,12 @@ use crate::{
     error::{Error, Result},
     model::{
         admin::{Admin, AdminCredentials},
-        auth::{AuthToken, AUTH_TOKEN_COOKIE},
+        api::{
+            auth::{AuthToken, AUTH_TOKEN_COOKIE},
+            otp::{Challenge, Code, CHALLENGE_COOKIE},
+            sms::Sms,
+        },
         mongodb::{Coll, Id},
-        otp::{Challenge, Code, CHALLENGE_COOKIE},
-        sms::Sms,
         voter::{NewVoter, Voter},
     },
     Config,
@@ -142,7 +144,7 @@ mod tests {
 
     use crate::model::{
         admin::NewAdmin,
-        otp::{Challenge, CODE_LENGTH},
+        api::otp::{Challenge, CODE_LENGTH},
     };
 
     use super::*;

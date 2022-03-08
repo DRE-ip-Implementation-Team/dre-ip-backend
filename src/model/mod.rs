@@ -1,10 +1,7 @@
 pub mod admin;
-pub mod auth;
+pub mod api;
 pub mod ballot;
 pub mod candidate_totals;
 pub mod election;
 pub mod mongodb;
-pub mod otp;
-pub mod pagination;
-pub mod sms;
 pub mod voter;

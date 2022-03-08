@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::Error,
     model::{
-        auth::AuthToken,
+        api::auth::AuthToken,
         mongodb::{Coll, Id},
     },
 };

@@ -7,8 +7,8 @@ use sha2::Sha256;
 
 use crate::{
     model::{
+        api::sms::Sms,
         mongodb::{serde_string_map, Id},
-        sms::Sms,
     },
     Config,
 };

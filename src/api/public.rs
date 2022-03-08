@@ -17,7 +17,10 @@ use crate::{
     error::{Error, Result},
     model::{
         admin::Admin,
-        auth::AuthToken,
+        api::{
+            auth::AuthToken,
+            pagination::{Paginated, PaginationRequest},
+        },
         ballot::{Audited, Confirmed, FinishedBallot, FinishedReceipt},
         candidate_totals::CandidateTotals,
         election::{
@@ -25,7 +28,6 @@ use crate::{
             ElectionWithSecrets,
         },
         mongodb::{Coll, Id},
-        pagination::{Paginated, PaginationRequest},
     },
 };
 
