@@ -21,7 +21,7 @@ tags:
   - name: Voting Endpoints
     description: Joining election groups and casting votes. Requires *__voter__* `auth_token` cookie.
   - name: Public Endpoints
-    description: Retrieving public data about elections. Without *__admin__* `auth_token` cookie, only finalised elections are visible.
+    description: Retrieving public data about elections. Draft elections can only be seen with an *__admin__* `auth_token` cookie.
 
 paths:
   /auth/admin:
@@ -51,6 +51,7 @@ paths:
       parameters:
         - in: query
           name: sms
+          required: true
           schema:
             type: string
             pattern: '^\+?[1-9]\d{1,14}$'
@@ -171,6 +172,15 @@ paths:
       security: [ ]  # No authentication needed.
       tags:
         - Public Endpoints
+      parameters:
+        - in: query
+          name: archived
+          required: false
+          description:
+            Archived elections are excluded by default. To see them, pass `?archived=true`;
+            this will show _only_ archived elections.
+          schema:
+            type: boolean
       responses:
         200:
           description: Successfully fetched elections.
@@ -571,21 +581,21 @@ components:
           $ref: '#/components/schemas/ID'
         name:
           type: string
-        finalised:
-          type: boolean
+        state:
+          type: string
         start_time:
           type: string
         end_time:
           type: string
       required:
         - name
-        - finalised
+        - state
         - start_time
         - end_time
       example:
         id: 6220e3b1069d947c996b5f7a
         name: Course Representatives
-        finalised: true
+        state: Published
         start_time: "2022-03-10T00:00:00Z"
         end_time: "2022-03-17T00:00::00Z"
     ElectionSpec:
@@ -593,8 +603,6 @@ components:
       properties:
         name:
           type: string
-        finalised:
-          type: boolean
         start_time:
           type: string
         end_time:
@@ -609,14 +617,12 @@ components:
             $ref: "#/components/schemas/QuestionSpec"
       required:
         - name
-        - finalised
         - start_time
         - end_time
         - electorates
         - questions
       example:
         name: Course Representatives
-        finalised: true
         start_time: "2022-03-10T00:00:00Z"
         end_time: "2022-03-17T00:00::00Z"
         electorates:
@@ -643,8 +649,8 @@ components:
           $ref: '#/components/schemas/ID'
         name:
           type: string
-        finalised:
-          type: boolean
+        state:
+          type: string
         start_time:
           type: string
         end_time:
@@ -668,7 +674,7 @@ components:
       required:
         - id
         - name
-        - finalised
+        - state
         - start_time
         - end_time
         - electorates
@@ -1015,6 +1021,7 @@ components:
     PageNum:
       name: page_num
       in: query
+      required: true
       description: The page index into paginated data, starting at 1.
       schema:
         type: integer
@@ -1023,6 +1030,7 @@ components:
     PageSize:
       name: page_size
       in: query
+      required: true
       description:
         The requested size of a single paginated batch.
         The API may impose a maximum or minimum on this parameter.

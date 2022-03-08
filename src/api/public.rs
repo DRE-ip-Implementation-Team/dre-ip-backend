@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use dre_ip::ElectionResults;
 use mongodb::{
-    bson::{doc, Document},
+    bson::doc,
     options::{FindOptions, SessionOptions},
     Client,
 };
@@ -21,7 +21,8 @@ use crate::{
         ballot::{FinishedBallot, FinishedReceipt, AUDITED, CONFIRMED},
         candidate_totals::CandidateTotals,
         election::{
-            CandidateID, DreipGroup, ElectionMetadata, ElectionNoSecrets, ElectionWithSecrets,
+            CandidateID, DreipGroup, ElectionMetadata, ElectionNoSecrets, ElectionState,
+            ElectionWithSecrets,
         },
         mongodb::{Coll, Id},
         pagination::{Paginated, PaginationRequest},
@@ -30,10 +31,10 @@ use crate::{
 
 pub fn routes() -> Vec<Route> {
     routes![
-        elections,
-        finalised_elections,
-        election,
-        finalised_election,
+        elections_admin,
+        elections_non_admin,
+        election_admin,
+        election_non_admin,
         election_question_ballots,
         election_question_ballot,
         candidate_totals,
@@ -41,29 +42,27 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-#[get("/elections", rank = 1)]
-async fn elections(
+#[get("/elections?<archived>", rank = 1)]
+async fn elections_admin(
     _token: AuthToken<Admin>,
+    archived: Option<bool>,
     elections: Coll<ElectionNoSecrets>,
 ) -> Result<Json<Vec<MetadataWithId>>> {
-    metadata_for_elections(elections, None).await
+    let archived = archived.unwrap_or(false);
+    metadata_for_elections(elections, true, archived).await
 }
 
-#[get("/elections", rank = 2)]
-async fn finalised_elections(
+#[get("/elections?<archived>", rank = 2)]
+async fn elections_non_admin(
+    archived: Option<bool>,
     elections: Coll<ElectionNoSecrets>,
 ) -> Result<Json<Vec<MetadataWithId>>> {
-    metadata_for_elections(
-        elections,
-        doc! {
-            "finalised": true
-        },
-    )
-    .await
+    let archived = archived.unwrap_or(false);
+    metadata_for_elections(elections, false, archived).await
 }
 
 #[get("/elections/<election_id>", rank = 1)]
-async fn election(
+async fn election_admin(
     _token: AuthToken<Admin>,
     election_id: Id,
     elections: Coll<ElectionNoSecrets>,
@@ -76,21 +75,18 @@ async fn election(
 }
 
 #[get("/elections/<election_id>", rank = 2)]
-async fn finalised_election(
+async fn election_non_admin(
     election_id: Id,
     elections: Coll<ElectionNoSecrets>,
 ) -> Result<Json<ElectionNoSecrets>> {
-    let finalised_election = doc! {
+    let filter = doc! {
         "_id": *election_id,
-        "finalised": true,
+        "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
     };
 
-    let election = elections
-        .find_one(finalised_election, None)
-        .await?
-        .ok_or_else(|| {
-            Error::not_found(format!("Finalised election with ID '{}'", *election_id))
-        })?;
+    let election = elections.find_one(filter, None).await?.ok_or_else(|| {
+        Error::not_found(format!("Non-admin election with ID '{}'", *election_id))
+    })?;
 
     Ok(Json(election))
 }
@@ -103,6 +99,7 @@ async fn election_question_ballots(
     elections: Coll<ElectionWithSecrets>,
     ballots: Coll<FinishedBallot>,
 ) -> Result<Json<Paginated<FinishedReceipt>>> {
+    // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
         .find_one(election_id.as_doc(), None)
         .await?
@@ -140,6 +137,7 @@ async fn election_question_ballot(
     elections: Coll<ElectionWithSecrets>,
     ballots: Coll<FinishedBallot>,
 ) -> Result<Json<FinishedReceipt>> {
+    // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
         .find_one(election_id.as_doc(), None)
         .await?
@@ -172,6 +170,7 @@ async fn candidate_totals(
     question_id: Id,
     totals: Coll<CandidateTotals>,
 ) -> Result<Json<HashMap<CandidateID, CandidateTotals>>> {
+    // No need to filter our drafts if non-admin, since draft elections cannot have totals.
     let question_totals_filter = doc! {
         "election_id": *election_id,
         "question_id": *question_id,
@@ -206,7 +205,7 @@ async fn question_dump(
 
         let election_filter = doc! {
             "_id": *election_id,
-            "finalised": true,
+            "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
         };
         election = elections
             .find_one_with_session(election_filter, None, &mut session)
@@ -255,15 +254,34 @@ async fn question_dump(
     Ok(Json(dump))
 }
 
+/// Retrieve the metadata for elections.
+/// If `admin` is false, admin-only elections will be hidden.
+/// If `archived` is true, archived elections will be returned instead of non-archived ones.
 async fn metadata_for_elections(
     elections: Coll<ElectionNoSecrets>,
-    filter: impl Into<Option<Document>>,
+    admin: bool,
+    archived: bool,
 ) -> Result<Json<Vec<MetadataWithId>>> {
+    let filter = if archived {
+        doc! {
+            "state": ElectionState::Archived,
+        }
+    } else if admin {
+        doc! {
+            "$or": [{"state": ElectionState::Draft}, {"state": ElectionState::Published}],
+        }
+    } else {
+        doc! {
+            "state": ElectionState::Published,
+        }
+    };
+
     let elections = elections
         .find(filter, None)
         .await?
         .try_collect::<Vec<_>>()
         .await?;
+
     let metadata = elections
         .into_iter()
         .map(|e| MetadataWithId {
@@ -292,7 +310,7 @@ mod tests {
     use crate::model::{
         ballot::{Audited, Ballot, Confirmed, Unconfirmed, UNCONFIRMED},
         candidate_totals::NewCandidateTotals,
-        election::{ElectionMetadata, ElectionSpec, NewElection, QuestionSpec},
+        election::{ElectionSpec, NewElection, QuestionSpec},
     };
 
     use super::*;
@@ -301,7 +319,10 @@ mod tests {
     async fn get_all_elections_as_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        let response = client.get(uri!(elections)).dispatch().await;
+        let response = client
+            .get(uri!(elections_admin(Some(false))))
+            .dispatch()
+            .await;
 
         assert_eq!(Status::Ok, response.status());
         assert!(response.body().is_some());
@@ -314,18 +335,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         let expected = vec![
-            ElectionMetadata::from(ElectionSpec::finalised_example()),
-            ElectionMetadata::from(ElectionSpec::unfinalised_example()),
+            NewElection::published_example().metadata,
+            NewElection::draft_example().metadata,
         ];
 
         assert_eq!(expected, fetched_elections);
     }
 
     #[backend_test]
-    async fn get_finalised_elections_as_non_admin(client: Client, db: Database) {
+    async fn only_get_published_elections_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        let response = client.get(uri!(finalised_elections)).dispatch().await;
+        let response = client
+            .get(uri!(elections_non_admin(Some(false))))
+            .dispatch()
+            .await;
 
         assert_eq!(Status::Ok, response.status());
         assert!(response.body().is_some());
@@ -338,20 +362,19 @@ mod tests {
             .map(|m| m.meta)
             .collect::<Vec<_>>();
 
-        let elections = vec![ElectionMetadata::from(ElectionSpec::finalised_example())];
+        let elections = vec![NewElection::published_example().metadata];
 
         assert_eq!(elections, fetched_elections);
     }
 
     #[backend_test(admin)]
-    async fn get_finalised_election_as_admin(client: Client, db: Database) {
+    async fn get_published_election_as_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        let finalised_election =
-            get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let response = client
-            .get(uri!(election(finalised_election.id)))
+            .get(uri!(election_admin(election.id)))
             .dispatch()
             .await;
 
@@ -366,7 +389,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::from(ElectionSpec::finalised_example()).erase_secrets();
+        let expected = NewElection::published_example().erase_secrets();
 
         assert_eq!(expected.metadata, fetched_election.metadata);
         assert_eq!(expected.electorates, fetched_election.electorates);
@@ -382,14 +405,13 @@ mod tests {
     }
 
     #[backend_test(admin)]
-    async fn get_unfinalised_election_as_admin(client: Client, db: Database) {
+    async fn get_draft_election_as_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        let unfinalised_election =
-            get_election_for_spec(&db, ElectionSpec::unfinalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::future_example()).await;
 
         let response = client
-            .get(uri!(election(unfinalised_election.id)))
+            .get(uri!(election_admin(election.id)))
             .dispatch()
             .await;
 
@@ -403,20 +425,30 @@ mod tests {
         assert!(error.is_err());
         let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
 
-        let expected = ElectionMetadata::from(ElectionSpec::unfinalised_example());
+        // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
+        let expected = NewElection::draft_example().erase_secrets();
 
-        assert_eq!(expected, fetched_election.metadata);
+        assert_eq!(expected.metadata, fetched_election.metadata);
+        assert_eq!(expected.electorates, fetched_election.electorates);
+        for question in expected.questions.values() {
+            let matching = fetched_election.questions.values().find(|q| {
+                // Compare everything except the IDs.
+                q.description == question.description
+                    && q.candidates == question.candidates
+                    && q.constraints == question.constraints
+            });
+            assert!(matching.is_some());
+        }
     }
 
     #[backend_test]
-    async fn get_finalised_election_as_non_admin(client: Client, db: Database) {
+    async fn get_published_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        let finalised_election =
-            get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let response = client
-            .get(uri!(finalised_election(finalised_election.id)))
+            .get(uri!(election_non_admin(election.id)))
             .dispatch()
             .await;
 
@@ -430,20 +462,30 @@ mod tests {
         assert!(error.is_err());
         let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
 
-        let expected = ElectionMetadata::from(ElectionSpec::finalised_example());
+        // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
+        let expected = NewElection::published_example().erase_secrets();
 
-        assert_eq!(expected, fetched_election.metadata);
+        assert_eq!(expected.metadata, fetched_election.metadata);
+        assert_eq!(expected.electorates, fetched_election.electorates);
+        for question in expected.questions.values() {
+            let matching = fetched_election.questions.values().find(|q| {
+                // Compare everything except the IDs.
+                q.description == question.description
+                    && q.candidates == question.candidates
+                    && q.constraints == question.constraints
+            });
+            assert!(matching.is_some());
+        }
     }
 
     #[backend_test]
-    async fn fail_to_get_unfinalised_election_as_non_admin(client: Client, db: Database) {
+    async fn fail_to_get_draft_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        let unfinalised_election =
-            get_election_for_spec(&db, ElectionSpec::unfinalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::future_example()).await;
 
         let response = client
-            .get(uri!(finalised_election(unfinalised_election.id)))
+            .get(uri!(election_non_admin(election.id)))
             .dispatch()
             .await;
 
@@ -451,12 +493,71 @@ mod tests {
     }
 
     #[backend_test]
+    async fn get_archived(client: Client, db: Database) {
+        insert_elections(&db).await;
+
+        // Try getting all archived.
+        let response = client
+            .get(uri!(elections_non_admin(Some(true))))
+            .dispatch()
+            .await;
+        assert_eq!(Status::Ok, response.status());
+        assert!(response.body().is_some());
+
+        let raw_response = response.into_string().await.unwrap();
+        let fetched_elections = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.meta)
+            .collect::<Vec<_>>();
+
+        let expected = vec![NewElection::archived_example().metadata];
+        assert_eq!(expected, fetched_elections);
+
+        // Try getting a specific archived election.
+        let election_id = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+            .id;
+        let response = client
+            .get(uri!(election_non_admin(election_id)))
+            .dispatch()
+            .await;
+        assert_eq!(Status::Ok, response.status());
+        assert!(response.body().is_some());
+
+        let raw_response = response.into_string().await.unwrap();
+
+        // Ensure we didn't expose any secrets.
+        let error = serde_json::from_str::<ElectionWithSecrets>(&raw_response);
+        assert!(error.is_err());
+        let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
+
+        // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
+        let expected = NewElection::archived_example().erase_secrets();
+
+        assert_eq!(expected.metadata, fetched_election.metadata);
+        assert_eq!(expected.electorates, fetched_election.electorates);
+        for question in expected.questions.values() {
+            let matching = fetched_election.questions.values().find(|q| {
+                // Compare everything except the IDs.
+                q.description == question.description
+                    && q.candidates == question.candidates
+                    && q.constraints == question.constraints
+            });
+            assert!(matching.is_some());
+        }
+    }
+
+    #[backend_test]
     async fn get_election_question_ballots(client: Client, db: Database) {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let finalised = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
-        let question_id = *finalised
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        let question_id = *election
             .questions
             .iter()
             .find_map(|(id, q)| {
@@ -475,7 +576,7 @@ mod tests {
         };
         let response = client
             .get(uri!(election_question_ballots(
-                finalised.id,
+                election.id,
                 question_id,
                 pagination
             )))
@@ -498,7 +599,7 @@ mod tests {
         };
         let response = client
             .get(uri!(election_question_ballots(
-                finalised.id,
+                election.id,
                 question_id,
                 pagination
             )))
@@ -533,7 +634,7 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let finalised = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let ballot = Coll::<Ballot<Audited>>::from_db(&db)
             .find_one(doc! {"state": AUDITED}, None)
@@ -556,7 +657,7 @@ mod tests {
         let receipt: FinishedReceipt = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(
             receipt,
-            FinishedReceipt::from_finished_ballot(FinishedBallot::Audited(ballot), &finalised)
+            FinishedReceipt::from_finished_ballot(FinishedBallot::Audited(ballot), &election)
         );
     }
 
@@ -565,7 +666,7 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let q1 = election
             .questions
@@ -591,7 +692,7 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let q1 = election
             .questions
@@ -634,7 +735,7 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::finalised_example()).await;
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let election_json = serde_json::to_string(&election).unwrap();
         println!("{election_json}\n");
@@ -674,8 +775,9 @@ mod tests {
         Coll::<NewElection>::from_db(&db)
             .insert_many(
                 [
-                    NewElection::from(ElectionSpec::finalised_example()),
-                    NewElection::from(ElectionSpec::unfinalised_example()),
+                    NewElection::published_example(),
+                    NewElection::draft_example(),
+                    NewElection::archived_example(),
                 ],
                 None,
             )
@@ -684,7 +786,7 @@ mod tests {
     }
 
     async fn insert_ballots(db: &Database) {
-        let election = get_election_for_spec(db, ElectionSpec::finalised_example()).await;
+        let election = get_election_for_spec(db, ElectionSpec::current_example()).await;
         let q1 = election
             .questions
             .values()
@@ -785,7 +887,7 @@ mod tests {
 
     async fn get_election_for_spec(db: &Database, election: ElectionSpec) -> ElectionWithSecrets {
         Coll::<ElectionWithSecrets>::from_db(&db)
-            .find_one(doc! { "name": &election.metadata.name }, None)
+            .find_one(doc! { "name": &election.name }, None)
             .await
             .unwrap()
             .unwrap()

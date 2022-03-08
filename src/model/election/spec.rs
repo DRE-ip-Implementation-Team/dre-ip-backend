@@ -1,19 +1,23 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::Id;
 
-use super::election_core::{ElectionMetadata, Question};
+use super::election_core::{ElectionMetadata, ElectionState, Question};
 use super::electorate::Electorate;
 use super::NewElection;
 
 /// An election specification.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ElectionSpec {
-    /// Top-level metadata.
-    #[serde(flatten)]
-    pub metadata: ElectionMetadata,
+    /// Election name.
+    pub name: String,
+    /// Election start time.
+    pub start_time: DateTime<Utc>,
+    /// Election end time.
+    pub end_time: DateTime<Utc>,
     /// Election electorates.
     pub electorates: Vec<Electorate>,
     /// Election questions specifications.
@@ -28,7 +32,9 @@ impl From<ElectionSpec> for NewElection {
             .map(|electorate| (electorate.name.clone(), electorate))
             .collect();
         Self::new(
-            spec.metadata,
+            spec.name,
+            spec.start_time,
+            spec.end_time,
             electorates,
             spec.questions.into_iter().map(QuestionSpec::into).collect(),
             rand::thread_rng(),
@@ -39,10 +45,10 @@ impl From<ElectionSpec> for NewElection {
 impl From<ElectionSpec> for ElectionMetadata {
     fn from(spec: ElectionSpec) -> Self {
         Self {
-            name: spec.metadata.name,
-            finalised: spec.metadata.finalised,
-            start_time: spec.metadata.start_time,
-            end_time: spec.metadata.end_time,
+            name: spec.name,
+            state: ElectionState::Draft,
+            start_time: spec.start_time,
+            end_time: spec.end_time,
         }
     }
 }
@@ -80,16 +86,13 @@ mod examples {
     use chrono::{Duration, Utc};
 
     impl ElectionSpec {
-        pub fn finalised_example() -> Self {
+        pub fn current_example() -> Self {
             let start_time = Utc::today().and_hms(0, 0, 0);
             let end_time = start_time + Duration::days(30);
             Self {
-                metadata: ElectionMetadata {
-                    name: "Test Election".to_string(),
-                    finalised: true,
-                    start_time,
-                    end_time,
-                },
+                name: "Test Election 1".to_string(),
+                start_time,
+                end_time,
                 electorates: vec![Electorate::example1(), Electorate::example2()],
                 questions: vec![
                     QuestionSpec::example1(),
@@ -99,16 +102,13 @@ mod examples {
             }
         }
 
-        pub fn unfinalised_example() -> Self {
+        pub fn future_example() -> Self {
             let start_time = Utc::today().and_hms(0, 0, 0) + Duration::days(30);
             let end_time = start_time + Duration::days(30);
             Self {
-                metadata: ElectionMetadata {
-                    name: "Unfinalised Election".to_string(),
-                    finalised: false,
-                    start_time,
-                    end_time,
-                },
+                name: "Test Election 2".to_string(),
+                start_time,
+                end_time,
                 electorates: vec![Electorate::example1()],
                 questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
             }

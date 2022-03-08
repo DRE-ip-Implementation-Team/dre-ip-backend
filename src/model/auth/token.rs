@@ -108,8 +108,7 @@ where
         // Forward to any routes that do not require an authentication token
         let cookie = try_outcome!(req.cookies().get(AUTH_TOKEN_COOKIE).or_forward(()));
 
-        let token: Self =
-            try_outcome!(Self::from_cookie(cookie, config).or_forward(()));
+        let token: Self = try_outcome!(Self::from_cookie(cookie, config).or_forward(()));
 
         if token.permits(U::RIGHTS) {
             request::Outcome::Success(token)

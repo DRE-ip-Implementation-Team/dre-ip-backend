@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use dre_ip::{Election as DreipElection, NoSecrets, PrivateKey};
-use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
+use mongodb::bson::{self, serde_helpers::chrono_datetime_as_bson_datetime, Bson};
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -30,22 +30,29 @@ pub struct ElectionCore<S> {
 impl ElectionCore<PrivateKey<DreipGroup>> {
     /// Create a new election.
     pub fn new(
-        metadata: ElectionMetadata,
+        name: String,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
         electorates: HashMap<String, Electorate>,
         questions: HashMap<QuestionID, Question>,
         rng: impl RngCore + CryptoRng,
     ) -> Self {
         let crypto = DreipElection::new(
             &[
-                metadata.name.as_bytes(),
-                &metadata.start_time.timestamp().to_le_bytes(),
-                &metadata.end_time.timestamp().to_le_bytes(),
+                name.as_bytes(),
+                &start_time.timestamp().to_le_bytes(),
+                &end_time.timestamp().to_le_bytes(),
             ],
             rng,
         );
 
         Self {
-            metadata,
+            metadata: ElectionMetadata {
+                name,
+                state: ElectionState::Draft,
+                start_time,
+                end_time,
+            },
             electorates,
             questions,
             crypto,
@@ -70,14 +77,32 @@ impl<S> ElectionCore<S> {
 pub struct ElectionMetadata {
     /// Election name.
     pub name: String,
-    /// Is the election finalised?
-    pub finalised: bool,
+    /// Election state.
+    pub state: ElectionState,
     /// Election start time.
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub start_time: DateTime<Utc>,
     /// Election end time.
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub end_time: DateTime<Utc>,
+}
+
+/// States in the Election lifecycle.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ElectionState {
+    /// Under construction, only visible to admins.
+    Draft,
+    /// Ready, in progress, or completed. Visible to all.
+    Published,
+    /// Completed, hidden by default, but retrievable by all.
+    Archived,
+}
+
+// TODO: add similar impls for the ballot states and remove the string constants.
+impl From<ElectionState> for Bson {
+    fn from(state: ElectionState) -> Self {
+        bson::to_bson(&state).unwrap() // Infallible.
+    }
 }
 
 /// A single question.
@@ -95,36 +120,29 @@ pub struct Question {
 
 #[cfg(test)]
 mod tests {
-    use rand::thread_rng;
+    use chrono::Duration;
+
+    use crate::model::election::ElectionSpec;
 
     use super::*;
 
     impl ElectionCore<PrivateKey<DreipGroup>> {
-        pub fn example() -> Self {
-            let electorates = [
-                (Electorate::example1().name, Electorate::example1()),
-                (Electorate::example2().name, Electorate::example2()),
-            ]
-            .into_iter()
-            .collect();
-            let questions = HashMap::default();
-            Self::new(
-                ElectionMetadata::example(),
-                electorates,
-                questions,
-                thread_rng(),
-            )
+        pub fn draft_example() -> Self {
+            ElectionSpec::future_example().into()
         }
-    }
 
-    impl ElectionMetadata {
-        pub fn example() -> Self {
-            Self {
-                name: "".to_string(),
-                finalised: false,
-                start_time: Utc::now(),
-                end_time: Utc::now(),
-            }
+        pub fn published_example() -> Self {
+            let mut example: Self = ElectionSpec::current_example().into();
+            example.metadata.state = ElectionState::Published;
+            example
+        }
+
+        pub fn archived_example() -> Self {
+            let mut example: Self = ElectionSpec::current_example().into();
+            example.metadata.start_time = example.metadata.start_time - Duration::days(100);
+            example.metadata.end_time = example.metadata.end_time - Duration::days(100);
+            example.metadata.state = ElectionState::Archived;
+            example
         }
     }
 }
