@@ -1,9 +1,7 @@
 use std::marker::PhantomData;
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
-use jsonwebtoken::{
-    DecodingKey, EncodingKey, Header, TokenData, Validation,
-};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use rocket::{
     http::{Cookie, SameSite, Status},
     outcome::{try_outcome, IntoOutcome},
@@ -83,7 +81,8 @@ where
             cookie.value(),
             &DecodingKey::from_secret(config.jwt_secret()),
             &Validation::default(),
-        ).map(|claims: TokenData<Claims<U>>| claims.claims.token)?;
+        )
+        .map(|claims: TokenData<Claims<U>>| claims.claims.token)?;
         Ok(token)
     }
 }

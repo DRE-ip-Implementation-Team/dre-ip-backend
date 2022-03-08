@@ -194,7 +194,7 @@ async fn cast_ballots(
             .ok_or_else(|| {
                 Error::Status(
                     Status::InternalServerError,
-                    format!("Duplicate candidates for question {:?}", question.id),
+                    format!("Duplicate candidates for question {}", question.id),
                 )
             })?;
             new_ballots.push(ballot);
