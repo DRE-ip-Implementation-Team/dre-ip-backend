@@ -2,18 +2,23 @@ use std::marker::PhantomData;
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use jsonwebtoken::{
-    errors::Error as JwtError, DecodingKey, EncodingKey, Header, TokenData, Validation,
+    DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use rocket::{
-    http::{Cookie, SameSite},
+    http::{Cookie, SameSite, Status},
     outcome::{try_outcome, IntoOutcome},
-    request::{self, FromRequest},
+    request::{FromRequest, Outcome},
     Request, State,
 };
 use serde::{Deserialize, Serialize};
 use time;
 
-use crate::model::mongodb::Id;
+use crate::error::Error;
+use crate::model::{
+    admin::Admin,
+    mongodb::{Coll, Id},
+    voter::Voter,
+};
 use crate::Config;
 
 use super::user::{Rights, User};
@@ -73,13 +78,13 @@ where
     }
 
     /// Deserialize a token from a cookie.
-    pub fn from_cookie(cookie: &Cookie<'static>, config: &Config) -> Result<Self, JwtError> {
-        jsonwebtoken::decode(
+    pub fn from_cookie(cookie: &Cookie<'static>, config: &Config) -> Result<Self, Error> {
+        let token = jsonwebtoken::decode(
             cookie.value(),
             &DecodingKey::from_secret(config.jwt_secret()),
             &Validation::default(),
-        )
-        .map(|claims: TokenData<Claims<U>>| claims.claims.token)
+        ).map(|claims: TokenData<Claims<U>>| claims.claims.token)?;
+        Ok(token)
     }
 }
 
@@ -95,25 +100,50 @@ struct Claims<U> {
 #[rocket::async_trait]
 impl<'r, U> FromRequest<'r> for AuthToken<U>
 where
-    U: User,
+    U: User + Send,
 {
-    type Error = JwtError;
+    type Error = Error;
 
     /// Get an [`AuthToken`] from the cookie and verify that it has the correct rights for this user
     /// type.
-    async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        // Unwrap is valid as `Config` is always managed
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        // Unwrap is safe as `Config` is always managed.
         let config = req.guard::<&State<Config>>().await.unwrap();
 
-        // Forward to any routes that do not require an authentication token
+        // Forward to any routes that do not require an authentication token.
         let cookie = try_outcome!(req.cookies().get(AUTH_TOKEN_COOKIE).or_forward(()));
 
+        // Decode the token.
         let token: Self = try_outcome!(Self::from_cookie(cookie, config).or_forward(()));
 
-        if token.permits(U::RIGHTS) {
-            request::Outcome::Success(token)
-        } else {
-            request::Outcome::Forward(())
+        // Check it represents the correct rights.
+        if !token.permits(U::RIGHTS) {
+            return Outcome::Forward(());
+        }
+
+        // Check the user actually exists.
+        let db = req.guard::<&State<mongodb::Database>>().await.unwrap();
+        match token.rights {
+            Rights::Voter => {
+                let voter = Coll::<Voter>::from_db(db)
+                    .find_one(token.id.as_doc(), None)
+                    .await;
+                match voter {
+                    Ok(Some(_)) => Outcome::Success(token),
+                    Ok(None) => Outcome::Forward(()),
+                    Err(e) => Outcome::Failure((Status::InternalServerError, e.into())),
+                }
+            }
+            Rights::Admin => {
+                let admin = Coll::<Admin>::from_db(db)
+                    .find_one(token.id.as_doc(), None)
+                    .await;
+                match admin {
+                    Ok(Some(_)) => Outcome::Success(token),
+                    Ok(None) => Outcome::Forward(()),
+                    Err(e) => Outcome::Failure((Status::InternalServerError, e.into())),
+                }
+            }
         }
     }
 }
