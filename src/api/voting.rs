@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::model::{
-    auth::AuthToken,
+    api::auth::AuthToken,
     ballot::{Audited, Ballot, Confirmed, Receipt, Signature, Unconfirmed},
     candidate_totals::{CandidateTotals, NewCandidateTotals},
     election::{ElectionState, ElectionWithSecrets},
@@ -506,9 +506,9 @@ mod tests {
     };
 
     use crate::model::{
+        api::sms::Sms,
         ballot::{Audited, Confirmed, Unconfirmed},
         election::{Election, NewElection, QuestionSpec},
-        sms::Sms,
     };
 
     use super::*;

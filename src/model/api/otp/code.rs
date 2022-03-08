@@ -46,7 +46,7 @@ mod serialize_code {
         Deserializer, Serializer,
     };
 
-    use crate::model::otp::code::LENGTH;
+    use super::LENGTH;
 
     pub fn serialize<S>(code: &[u8; 6], serializer: S) -> Result<S::Ok, S::Error>
     where

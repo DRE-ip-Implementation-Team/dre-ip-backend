@@ -7,7 +7,7 @@ use crate::{
     error::{Error, Result},
     model::{
         admin::{Admin, AdminCredentials, NewAdmin},
-        auth::AuthToken,
+        api::auth::AuthToken,
         ballot::FinishedBallot,
         candidate_totals::CandidateTotals,
         election::{ElectionNoSecrets, ElectionSpec, ElectionState, NewElection},
@@ -263,11 +263,11 @@ mod tests {
     };
 
     use crate::model::{
+        api::sms::Sms,
         ballot::{Audited, Ballot, Confirmed, Unconfirmed},
         candidate_totals::NewCandidateTotals,
         election::{ElectionMetadata, QuestionSpec},
         mongodb::MongoCollection,
-        sms::Sms,
         voter::{AllowedQuestions, NewVoter},
     };
     use crate::Config;
