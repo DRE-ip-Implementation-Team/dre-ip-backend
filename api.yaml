@@ -151,6 +151,9 @@ paths:
   /elections:
     post:
       summary: Create an election.
+      description:
+        Newly-created elections are in the draft state, and must be published
+        to be visible to voters.
       tags:
         - Administration Endpoints
       requestBody:
@@ -207,6 +210,77 @@ paths:
                 $ref: "#/components/schemas/Election"
         404:
           $ref: "#/components/responses/NotFound"
+    put:
+      summary: Modify an election.
+      description:
+        Only draft elections or published elections before their start time
+        may be modified.
+        Modifying a published election will reset it, sending it back to the
+        draft state.
+      tags:
+        - Administration Endpoints
+      requestBody:
+        description: Election specification.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ElectionSpec"
+      responses:
+        200:
+          description: Successfully modified election.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        400:
+          description: Election is not allowed to be modified.
+    delete:
+      summary: Permanently delete an election.
+      description:
+        Only draft or archived elections may be deleted. This will irrecoverably
+        destroy all election data, including ballots and totals.
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully deleted election.
+        400:
+          description: Election is not allowed to be deleted.
+  /elections/{electionID}/publish:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+    post:
+      summary: Publish a draft election.
+      description:
+        Once published, an election will be visible to voters.
+        If it is within the start and end time, a published election will be
+        votable.
+        After the start time has passed, the election becomes locked and cannot
+        be modified, only archived (and afterwards deleted).
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully published election.
+        400:
+          description: Election was not in the draft state.
+  /elections/{electionID}/archive:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+    post:
+      summary: Archive an election.
+      description:
+        Once archived, an election will be hidden by default, but its data is
+        still publically available.
+        Archiving an in-progress election will immediately stop it.
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully archived election.
+        400:
+          description: Election was already archived.
   /elections/{electionID}/{questionID}/ballots:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
