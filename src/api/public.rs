@@ -18,7 +18,7 @@ use crate::{
     model::{
         admin::Admin,
         auth::AuthToken,
-        ballot::{FinishedBallot, FinishedReceipt, AUDITED, CONFIRMED},
+        ballot::{Audited, Confirmed, FinishedBallot, FinishedReceipt},
         candidate_totals::CandidateTotals,
         election::{
             CandidateID, DreipGroup, ElectionMetadata, ElectionNoSecrets, ElectionState,
@@ -70,7 +70,7 @@ async fn election_admin(
     let election = elections
         .find_one(election_id.as_doc(), None)
         .await?
-        .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", *election_id)))?;
+        .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
     Ok(Json(election))
 }
 
@@ -80,12 +80,12 @@ async fn election_non_admin(
     elections: Coll<ElectionNoSecrets>,
 ) -> Result<Json<ElectionNoSecrets>> {
     let filter = doc! {
-        "_id": *election_id,
+        "_id": (election_id),
         "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
     };
 
     let election = elections.find_one(filter, None).await?.ok_or_else(|| {
-        Error::not_found(format!("Non-admin election with ID '{}'", *election_id))
+        Error::not_found(format!("Non-admin election with ID '{}'", election_id))
     })?;
 
     Ok(Json(election))
@@ -106,9 +106,9 @@ async fn election_question_ballots(
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
     let filter = doc! {
-        "election_id": *election_id,
-        "question_id": *question_id,
-        "$or": [{"state": AUDITED}, {"state": CONFIRMED}],
+        "election_id": (election_id),
+        "question_id": (question_id),
+        "$or": [{"state": Audited}, {"state": Confirmed}],
     };
 
     let pagination_options = FindOptions::builder()
@@ -144,10 +144,10 @@ async fn election_question_ballot(
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
     let election_question_ballot = doc! {
-        "_id": *ballot_id,
-        "election_id": *election_id,
-        "question_id": *question_id,
-        "$or": [{"state": AUDITED}, {"state": CONFIRMED}],
+        "_id": (ballot_id),
+        "election_id": (election_id),
+        "question_id": (question_id),
+        "$or": [{"state": Audited}, {"state": Confirmed}],
     };
 
     let ballot = ballots
@@ -172,8 +172,8 @@ async fn candidate_totals(
 ) -> Result<Json<HashMap<CandidateID, CandidateTotals>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have totals.
     let question_totals_filter = doc! {
-        "election_id": *election_id,
-        "question_id": *question_id,
+        "election_id": (election_id),
+        "question_id": (question_id),
     };
     let question_totals = totals
         .find(question_totals_filter, None)
@@ -204,7 +204,7 @@ async fn question_dump(
         let mut session = db_client.start_session(Some(session_options)).await?;
 
         let election_filter = doc! {
-            "_id": *election_id,
+            "_id": (election_id),
             "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
         };
         election = elections
@@ -213,8 +213,8 @@ async fn question_dump(
             .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
         let totals_filter = doc! {
-            "election_id": *election_id,
-            "question_id": *question_id,
+            "election_id": (election_id),
+            "question_id": (question_id),
         };
         let mut totals_cursor = totals
             .find_with_session(totals_filter, None, &mut session)
@@ -225,9 +225,9 @@ async fn question_dump(
         }
 
         let ballots_filter = doc! {
-            "election_id": *election_id,
-            "question_id": *question_id,
-            "$or": [{"state": AUDITED}, {"state": CONFIRMED}],
+            "election_id": (election_id),
+            "question_id": (question_id),
+            "$or": [{"state": Audited}, {"state": Confirmed}],
         };
         let mut election_ballots = ballots
             .find_with_session(ballots_filter, None, &mut session)
@@ -308,7 +308,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::model::{
-        ballot::{Audited, Ballot, Confirmed, Unconfirmed, UNCONFIRMED},
+        ballot::{Ballot, Unconfirmed},
         candidate_totals::NewCandidateTotals,
         election::{ElectionSpec, NewElection, QuestionSpec},
     };
@@ -637,7 +637,7 @@ mod tests {
         let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let ballot = Coll::<Ballot<Audited>>::from_db(&db)
-            .find_one(doc! {"state": AUDITED}, None)
+            .find_one(doc! {"state": Audited}, None)
             .await
             .unwrap()
             .unwrap();
@@ -743,7 +743,7 @@ mod tests {
         for question in election.questions.values() {
             let ballots = Coll::<FinishedBallot>::from_db(&db)
                 .find(
-                    doc! {"question_id": *question.id, "state": {"$ne": UNCONFIRMED}},
+                    doc! {"question_id": *question.id, "state": {"$ne": Unconfirmed}},
                     None,
                 )
                 .await

@@ -64,8 +64,6 @@ async fn delete_admin(
     } else {
         Ok(())
     }
-
-    // TODO how do we revoke `auth_token`s for this newly-deleted admin?
 }
 
 #[post("/elections", data = "<spec>", format = "json")]
@@ -135,7 +133,7 @@ async fn publish_election(
 ) -> Result<()> {
     // Update the state.
     let filter = doc! {
-        "_id": *election_id,
+        "_id": election_id,
         "state": ElectionState::Draft,
     };
     let update = doc! {
@@ -165,7 +163,7 @@ async fn archive_election(
 ) -> Result<()> {
     // Update the state.
     let filter = doc! {
-        "_id": *election_id,
+        "_id": election_id,
         "$or": [{"state": ElectionState::Draft}, {"state": ElectionState::Published}],
     };
     let update = doc! {
@@ -226,7 +224,7 @@ async fn delete_election(
 
         // Delete all ballots and totals.
         let filter = doc! {
-            "election_id": *election_id,
+            "election_id": election_id,
         };
         ballots
             .delete_many_with_session(filter.clone(), None, &mut session)

@@ -98,7 +98,6 @@ pub enum ElectionState {
     Archived,
 }
 
-// TODO: add similar impls for the ballot states and remove the string constants.
 impl From<ElectionState> for Bson {
     fn from(state: ElectionState) -> Self {
         bson::to_bson(&state).unwrap() // Infallible.

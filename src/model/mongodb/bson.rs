@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
 
-use mongodb::bson::{doc, oid::ObjectId, Document};
+use mongodb::bson::{Bson, doc, oid::ObjectId, Document};
 use rocket::{
     data::ToByteUnit,
     form::{self, prelude::ErrorKind, DataField, FromFormField, ValueField},
@@ -79,6 +79,12 @@ impl FromStr for Id {
 impl From<ObjectId> for Id {
     fn from(id: ObjectId) -> Self {
         Self(id)
+    }
+}
+
+impl From<Id> for Bson {
+    fn from(id: Id) -> Self {
+        id.0.into()
     }
 }
 

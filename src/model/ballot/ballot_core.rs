@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use dre_ip::{Ballot as DreipBallot, CandidateTotals, NoSecrets, VoteSecrets};
+use mongodb::bson::{self, Bson};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
@@ -58,11 +59,17 @@ pub trait BallotState: Copy + AsRef<[u8]> {
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Deserialize_unit_struct, Serialize_unit_struct)]
 pub struct Unconfirmed;
 
-pub const UNCONFIRMED: &str = "Unconfirmed";
+const UNCONFIRMED: &str = "Unconfirmed";
 
 impl AsRef<[u8]> for Unconfirmed {
     fn as_ref(&self) -> &[u8] {
         UNCONFIRMED.as_bytes()
+    }
+}
+
+impl From<Unconfirmed> for Bson {
+    fn from(state: Unconfirmed) -> Self {
+        bson::to_bson(&state).unwrap() // Infallible.
     }
 }
 
@@ -82,11 +89,17 @@ impl BallotState for Unconfirmed {
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Deserialize_unit_struct, Serialize_unit_struct)]
 pub struct Audited;
 
-pub const AUDITED: &str = "Audited";
+const AUDITED: &str = "Audited";
 
 impl AsRef<[u8]> for Audited {
     fn as_ref(&self) -> &[u8] {
         AUDITED.as_bytes()
+    }
+}
+
+impl From<Audited> for Bson {
+    fn from(state: Audited) -> Self {
+        bson::to_bson(&state).unwrap() // Infallible.
     }
 }
 
@@ -106,11 +119,17 @@ impl BallotState for Audited {
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Deserialize_unit_struct, Serialize_unit_struct)]
 pub struct Confirmed;
 
-pub const CONFIRMED: &str = "Confirmed";
+const CONFIRMED: &str = "Confirmed";
 
 impl AsRef<[u8]> for Confirmed {
     fn as_ref(&self) -> &[u8] {
         CONFIRMED.as_bytes()
+    }
+}
+
+impl From<Confirmed> for Bson {
+    fn from(state: Confirmed) -> Self {
+        bson::to_bson(&state).unwrap() // Infallible.
     }
 }
 

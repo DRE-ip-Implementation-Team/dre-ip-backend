@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::model::{
     auth::AuthToken,
-    ballot::{Audited, Ballot, Confirmed, Receipt, Signature, Unconfirmed, UNCONFIRMED},
+    ballot::{Audited, Ballot, Confirmed, Receipt, Signature, Unconfirmed},
     candidate_totals::{CandidateTotals, NewCandidateTotals},
     election::{ElectionState, ElectionWithSecrets},
     mongodb::{Coll, Id},
@@ -249,9 +249,9 @@ async fn audit_ballots(
             let audited = ballot.audit();
             let filter = doc! {
                 "_id": *audited.id,
-                "election_id": *election_id,
+                "election_id": election_id,
                 "question_id": *audited.question_id,
-                "state": UNCONFIRMED,
+                "state": Unconfirmed,
             };
             let result = audited_ballots
                 .replace_one_with_session(filter, &audited, None, &mut session)
@@ -350,7 +350,7 @@ async fn confirm_ballots(
 
             // Get candidate totals.
             let filter = doc! {
-                "election_id": *election_id,
+                "election_id": election_id,
                 "question_id": *ballot.question_id,
             };
             let mut totals = candidate_totals
@@ -384,9 +384,9 @@ async fn confirm_ballots(
             let confirmed = ballot.confirm(&mut totals_map);
             let filter = doc! {
                 "_id": *confirmed.id,
-                "election_id": *election_id,
+                "election_id": election_id,
                 "question_id": *confirmed.question_id,
-                "state": UNCONFIRMED,
+                "state": Unconfirmed,
             };
             let result = confirmed_ballots
                 .replace_one_with_session(filter, &confirmed, None, &mut session)
@@ -396,7 +396,7 @@ async fn confirm_ballots(
             // Write updated candidate totals.
             for t in totals {
                 let filter = doc! {
-                    "election_id": *election_id,
+                    "election_id": election_id,
                     "question_id": *confirmed.question_id,
                     "candidate_name": t.candidate_name.clone(),
                 };
@@ -431,7 +431,7 @@ async fn active_election_by_id(
     let now = Utc::now();
 
     let is_active = doc! {
-        "_id": *election_id,
+        "_id": election_id,
         "state": ElectionState::Published,
         "start_time": { "$lte": now },
         "end_time": { "$gt": now },
@@ -455,7 +455,7 @@ async fn recall_ballots(
             "_id": *recall.ballot_id,
             "election_id": *election.id,
             "question_id": *recall.question_id,
-            "state": UNCONFIRMED,
+            "state": Unconfirmed,
         };
         let ballot = unconfirmed_ballots
             .find_one(filter, None)
@@ -506,7 +506,7 @@ mod tests {
     };
 
     use crate::model::{
-        ballot::{AUDITED, CONFIRMED, UNCONFIRMED},
+        ballot::{Audited, Confirmed, Unconfirmed},
         election::{Election, NewElection, QuestionSpec},
         sms::Sms,
     };
@@ -908,7 +908,7 @@ mod tests {
 
         // Ensure the receipt passes validation.
         let election = Coll::<ElectionWithSecrets>::from_db(&db)
-            .find_one(doc! {"_id": *election_id}, None)
+            .find_one(doc! {"_id": election_id}, None)
             .await
             .unwrap()
             .unwrap();
@@ -1018,7 +1018,7 @@ mod tests {
 
         // Ensure the receipts match.
         let election = Coll::<ElectionWithSecrets>::from_db(&db)
-            .find_one(doc! {"_id": *election_id}, None)
+            .find_one(doc! {"_id": election_id}, None)
             .await
             .unwrap()
             .unwrap();
@@ -1121,7 +1121,7 @@ mod tests {
 
         // Ensure the receipts match.
         let election = Coll::<ElectionWithSecrets>::from_db(&db)
-            .find_one(doc! {"_id": *election_id}, None)
+            .find_one(doc! {"_id": election_id}, None)
             .await
             .unwrap()
             .unwrap();
@@ -1247,7 +1247,7 @@ mod tests {
 
         // Vote on an inactive election.
         let inactive_election = Coll::<ElectionWithSecrets>::from_db(&db)
-            .find_one(doc! {"_id": {"$ne": *election_id}}, None)
+            .find_one(doc! {"_id": {"$ne": election_id}}, None)
             .await
             .unwrap()
             .unwrap();
@@ -1507,17 +1507,17 @@ mod tests {
         let total_num = ballots.count_documents(None, None).await.unwrap();
         assert_eq!(total_num, 3);
         let unconfirmed_num = ballots
-            .count_documents(doc! {"state": UNCONFIRMED}, None)
+            .count_documents(doc! {"state": Unconfirmed}, None)
             .await
             .unwrap();
         assert_eq!(unconfirmed_num, 1);
         let audited_num = ballots
-            .count_documents(doc! {"state": AUDITED}, None)
+            .count_documents(doc! {"state": Audited}, None)
             .await
             .unwrap();
         assert_eq!(audited_num, 1);
         let confirmed_num = ballots
-            .count_documents(doc! {"state": CONFIRMED}, None)
+            .count_documents(doc! {"state": Confirmed}, None)
             .await
             .unwrap();
         assert_eq!(confirmed_num, 1);
