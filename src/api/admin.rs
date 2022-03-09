@@ -6,13 +6,11 @@ use rocket::{serde::json::Json, Route, State};
 use crate::{
     error::{Error, Result},
     model::{
-        admin::{Admin, AdminCredentials, NewAdmin},
+        admin::{AdminCredentials, NewAdmin},
         api::auth::AuthToken,
-        ballot::FinishedBallot,
-        candidate_totals::CandidateTotals,
-        election::{ElectionNoSecrets, ElectionSpec, ElectionState, NewElection},
+        db::{Admin, CandidateTotals, ElectionNoSecrets, FinishedBallot, Voter},
+        election::{ElectionSpec, ElectionState, NewElection},
         mongodb::{Coll, Id},
-        voter::Voter,
     },
 };
 
@@ -264,8 +262,9 @@ mod tests {
 
     use crate::model::{
         api::sms::Sms,
-        ballot::{Audited, Ballot, Confirmed, Unconfirmed},
+        ballot::{Audited, Confirmed, Unconfirmed},
         candidate_totals::NewCandidateTotals,
+        db::Ballot,
         election::{ElectionMetadata, QuestionSpec},
         mongodb::MongoCollection,
         voter::{AllowedQuestions, NewVoter},

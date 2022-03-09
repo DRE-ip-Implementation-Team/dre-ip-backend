@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::Id;
 
-use super::candidate_totals_core::CandidateTotalsCore;
+use crate::model::candidate_totals::NewCandidateTotals;
 
 /// Candidate totals from the database, with their unique ID.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,11 +12,11 @@ pub struct CandidateTotals {
     #[serde(rename = "_id")]
     pub id: Id,
     #[serde(flatten)]
-    pub totals: CandidateTotalsCore,
+    pub totals: NewCandidateTotals,
 }
 
 impl Deref for CandidateTotals {
-    type Target = CandidateTotalsCore;
+    type Target = NewCandidateTotals;
 
     fn deref(&self) -> &Self::Target {
         &self.totals

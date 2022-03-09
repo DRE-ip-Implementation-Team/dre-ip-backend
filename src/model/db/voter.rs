@@ -13,10 +13,9 @@ use crate::{
     model::{
         api::auth::AuthToken,
         mongodb::{Coll, Id},
+        voter::NewVoter,
     },
 };
-
-use super::voter_core::VoterCore;
 
 /// A voter user from the database, with its unique ID.
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,11 +23,11 @@ pub struct Voter {
     #[serde(rename = "_id")]
     pub id: Id,
     #[serde(flatten)]
-    pub voter: VoterCore,
+    pub voter: NewVoter,
 }
 
 impl Deref for Voter {
-    type Target = VoterCore;
+    type Target = NewVoter;
 
     fn deref(&self) -> &Self::Target {
         &self.voter
