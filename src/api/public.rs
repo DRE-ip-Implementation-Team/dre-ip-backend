@@ -16,17 +16,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::{Error, Result},
     model::{
-        admin::Admin,
         api::{
             auth::AuthToken,
             pagination::{Paginated, PaginationRequest},
         },
-        ballot::{Audited, Confirmed, FinishedBallot, FinishedReceipt},
-        candidate_totals::CandidateTotals,
-        election::{
-            CandidateID, DreipGroup, ElectionMetadata, ElectionNoSecrets, ElectionState,
-            ElectionWithSecrets,
-        },
+        ballot::{Audited, Confirmed, FinishedReceipt},
+        db::{Admin, CandidateTotals, ElectionNoSecrets, ElectionWithSecrets, FinishedBallot},
+        election::{CandidateID, DreipGroup, ElectionMetadata, ElectionState},
         mongodb::{Coll, Id},
     },
 };
@@ -311,8 +307,9 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::model::{
-        ballot::{Ballot, Unconfirmed},
+        ballot::Unconfirmed,
         candidate_totals::NewCandidateTotals,
+        db::Ballot,
         election::{ElectionSpec, NewElection, QuestionSpec},
     };
 

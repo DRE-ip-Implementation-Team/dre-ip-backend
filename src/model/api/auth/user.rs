@@ -2,7 +2,10 @@ use std::fmt::Display;
 
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::model::{admin::Admin, mongodb::Id, voter::Voter};
+use crate::model::{
+    db::{Admin, Voter},
+    mongodb::Id,
+};
 
 /// A user of our application, having defined rights.
 pub trait User {

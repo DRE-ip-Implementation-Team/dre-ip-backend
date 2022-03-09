@@ -9,14 +9,15 @@ use rocket::{
 use crate::{
     error::{Error, Result},
     model::{
-        admin::{Admin, AdminCredentials},
+        admin::AdminCredentials,
         api::{
             auth::{AuthToken, AUTH_TOKEN_COOKIE},
             otp::{Challenge, Code, CHALLENGE_COOKIE},
             sms::Sms,
         },
+        db::{Admin, Voter},
         mongodb::{Coll, Id},
-        voter::{NewVoter, Voter},
+        voter::NewVoter,
     },
     Config,
 };
