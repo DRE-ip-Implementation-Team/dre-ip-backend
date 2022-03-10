@@ -14,7 +14,7 @@ let month_after_that = new Date(month_after_now.getTime() + month_milliseconds);
 db.elections.insertOne({
   "_id": ObjectId("622650f453036aff34eb72a7"),
   "name": "Test Election",
-  "finalised": true,
+  "state": "Published",
   "start_time": now,
   "end_time": month_after_now,
   "electorates": {
@@ -53,7 +53,7 @@ db.elections.insertOne({
 db.elections.insertOne({
   "_id": ObjectId("622651a81692ca8e92a9879a"),
   "name": "Unfinalised Election",
-  "finalised": false,
+  "state": "Draft",
   "start_time": month_after_now,
   "end_time": month_after_that,
   "electorates": {
