@@ -9,18 +9,19 @@ use rocket::{
 use crate::{
     error::{Error, Result},
     model::{
-        admin::AdminCredentials,
         api::{
             auth::{AuthToken, AUTH_TOKEN_COOKIE},
             otp::{Challenge, Code, CHALLENGE_COOKIE},
             sms::Sms,
         },
+        base::NewVoter,
         db::{Admin, Voter},
         mongodb::{Coll, Id},
-        voter::NewVoter,
     },
     Config,
 };
+
+use super::admin::AdminCredentials;
 
 pub fn routes() -> Vec<Route> {
     routes![authenticate, challenge, verify, logout]
@@ -144,8 +145,8 @@ mod tests {
     use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
 
     use crate::model::{
-        admin::NewAdmin,
         api::otp::{Challenge, CODE_LENGTH},
+        base::NewAdmin,
     };
 
     use super::*;

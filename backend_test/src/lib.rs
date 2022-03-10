@@ -33,15 +33,15 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         .and_then(|arg| {
             if arg == "admin" {
                 Some(quote! {
-                    crate::model::mongodb::Coll::<crate::model::admin::NewAdmin>::from_db(&db)
-                        .insert_one(crate::model::admin::NewAdmin::example(), None)
+                    crate::model::mongodb::Coll::<crate::model::base::NewAdmin>::from_db(&db)
+                        .insert_one(crate::model::base::NewAdmin::example(), None)
                         .await
                         .unwrap();
 
                     rocket_client
                         .post(uri!(crate::api::auth::authenticate))
                         .header(rocket::http::ContentType::JSON)
-                        .body(rocket::serde::json::json!(crate::model::admin::AdminCredentials::example()).to_string())
+                        .body(rocket::serde::json::json!(crate::api::admin::AdminCredentials::example()).to_string())
                         .dispatch()
                         .await;
                 })

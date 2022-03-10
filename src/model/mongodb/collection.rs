@@ -7,12 +7,10 @@ use rocket::{
 };
 
 use crate::model::{
-    admin::NewAdmin,
-    ballot::BallotState,
+    base::{BallotState, NewAdmin, NewVoter},
     candidate_totals::NewCandidateTotals,
     db::{Admin, Ballot, CandidateTotals, Election, FinishedBallot, Voter},
     election::{ElectionMetadata, NewElection},
-    voter::NewVoter,
 };
 
 /// A type that can be directly inserted/read to/from the database.

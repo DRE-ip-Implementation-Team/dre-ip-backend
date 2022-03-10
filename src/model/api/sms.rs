@@ -14,7 +14,7 @@ use rocket::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{model::voter::HmacSha256, Config};
+use crate::{model::base::HmacSha256, Config};
 
 /// A voter's SMS number.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
