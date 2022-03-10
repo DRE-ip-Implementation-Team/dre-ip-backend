@@ -12,8 +12,8 @@ use crate::{
     error::Error,
     model::{
         api::auth::AuthToken,
+        base::NewVoter,
         mongodb::{Coll, Id},
-        voter::NewVoter,
     },
 };
 

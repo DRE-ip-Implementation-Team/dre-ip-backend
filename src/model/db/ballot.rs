@@ -12,7 +12,7 @@ use crate::model::{
     mongodb::Id,
 };
 
-use crate::model::ballot::{Audited, BallotCore, BallotState, Confirmed, Unconfirmed};
+use crate::model::base::{Audited, BallotCore, BallotState, Confirmed, Unconfirmed};
 
 use super::Election;
 

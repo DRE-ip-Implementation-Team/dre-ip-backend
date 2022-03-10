@@ -8,12 +8,11 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::model::{
     api::auth::AuthToken,
-    ballot::{Audited, Confirmed, Receipt, Signature, Unconfirmed},
+    base::{AllowedQuestions, Audited, Confirmed, Unconfirmed},
     candidate_totals::NewCandidateTotals,
-    db::{Ballot, CandidateTotals, ElectionWithSecrets, Voter},
+    db::{Ballot, CandidateTotals, ElectionWithSecrets, Receipt, Signature, Voter},
     election::ElectionState,
     mongodb::{Coll, Id},
-    voter::AllowedQuestions,
 };
 
 pub fn routes() -> Vec<Route> {
@@ -508,7 +507,7 @@ mod tests {
 
     use crate::model::{
         api::sms::Sms,
-        ballot::{Audited, Confirmed, Unconfirmed},
+        base::{Audited, Confirmed, Unconfirmed},
         db::Election,
         election::{NewElection, QuestionSpec},
     };

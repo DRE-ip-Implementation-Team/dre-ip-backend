@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{admin::NewAdmin, mongodb::Id};
+use crate::model::{base::NewAdmin, mongodb::Id};
 
 /// An admin user from the database, with its unique ID.
 #[derive(Serialize, Deserialize)]

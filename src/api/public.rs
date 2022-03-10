@@ -20,8 +20,11 @@ use crate::{
             auth::AuthToken,
             pagination::{Paginated, PaginationRequest},
         },
-        ballot::{Audited, Confirmed, FinishedReceipt},
-        db::{Admin, CandidateTotals, ElectionNoSecrets, ElectionWithSecrets, FinishedBallot},
+        base::{Audited, Confirmed},
+        db::{
+            Admin, CandidateTotals, ElectionNoSecrets, ElectionWithSecrets, FinishedBallot,
+            FinishedReceipt,
+        },
         election::{CandidateID, DreipGroup, ElectionMetadata, ElectionState},
         mongodb::{Coll, Id},
     },
@@ -307,7 +310,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::model::{
-        ballot::Unconfirmed,
+        base::Unconfirmed,
         candidate_totals::NewCandidateTotals,
         db::Ballot,
         election::{ElectionSpec, NewElection, QuestionSpec},
