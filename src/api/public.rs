@@ -20,7 +20,7 @@ use crate::{
             auth::AuthToken,
             pagination::{Paginated, PaginationRequest},
         },
-        base::{CandidateID, DreipGroup, ElectionMetadata, ElectionState},
+        base::{CandidateId, DreipGroup, ElectionMetadata, ElectionState},
         db::{
             Admin, Audited, CandidateTotals, Confirmed, ElectionNoSecrets, ElectionWithSecrets,
             FinishedBallot, FinishedReceipt,
@@ -170,7 +170,7 @@ async fn candidate_totals(
     election_id: Id,
     question_id: Id,
     totals: Coll<CandidateTotals>,
-) -> Result<Json<HashMap<CandidateID, CandidateTotals>>> {
+) -> Result<Json<HashMap<CandidateId, CandidateTotals>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have totals.
     let question_totals_filter = doc! {
         "election_id": (election_id),
@@ -682,7 +682,7 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let totals: HashMap<CandidateID, CandidateTotals> =
+        let totals: HashMap<CandidateId, CandidateTotals> =
             serde_json::from_str(&raw_response).unwrap();
         assert_eq!(totals.len(), QuestionSpec::example1().candidates.len());
     }
@@ -708,7 +708,7 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let results: ElectionResults<Id, CandidateID, DreipGroup> =
+        let results: ElectionResults<Id, CandidateId, DreipGroup> =
             serde_json::from_str(&raw_response).unwrap();
         // Id does not and cannot implement AsRef<[u8]>, hence the awkward workaround.
         let results = ElectionResults {

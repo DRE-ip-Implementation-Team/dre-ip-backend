@@ -7,7 +7,7 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    base::{CandidateID, DreipGroup},
+    base::{CandidateId, DreipGroup},
     db::Election,
     mongodb::Id,
 };
@@ -29,8 +29,8 @@ impl Ballot<Unconfirmed> {
     /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
     pub fn new<S>(
         question_id: Id,
-        yes_candidate: CandidateID,
-        no_candidates: impl IntoIterator<Item = CandidateID>,
+        yes_candidate: CandidateId,
+        no_candidates: impl IntoIterator<Item = CandidateId>,
         election: &Election<S>,
         rng: impl RngCore + CryptoRng,
     ) -> Option<Self> {
@@ -61,7 +61,7 @@ impl Ballot<Unconfirmed> {
 
     pub fn confirm<'a, 'b: 'a>(
         self,
-        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'b mut CandidateTotals<DreipGroup>>>>,
+        totals: impl Into<Option<&'a mut HashMap<CandidateId, &'b mut CandidateTotals<DreipGroup>>>>,
     ) -> Ballot<Confirmed> {
         Ballot {
             id: self.id,

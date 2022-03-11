@@ -9,11 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
 
 use crate::model::{
-    base::{CandidateID, DreipGroup},
+    base::{CandidateId, DreipGroup},
     mongodb::Id,
 };
 
-pub type BallotCrypto<S> = DreipBallot<CandidateID, DreipGroup, S>;
+pub type BallotCrypto<S> = DreipBallot<CandidateId, DreipGroup, S>;
 
 /// Core ballot data, as stored in the database.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -47,7 +47,7 @@ impl BallotCore<Unconfirmed> {
     /// Confirm this ballot, incrementing the `CandidateTotals` if given.
     pub fn confirm<'a, 'b: 'a>(
         self,
-        totals: impl Into<Option<&'a mut HashMap<CandidateID, &'b mut CandidateTotals<DreipGroup>>>>,
+        totals: impl Into<Option<&'a mut HashMap<CandidateId, &'b mut CandidateTotals<DreipGroup>>>>,
     ) -> BallotCore<Confirmed> {
         BallotCore {
             election_id: self.election_id,

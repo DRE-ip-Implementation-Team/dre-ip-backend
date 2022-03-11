@@ -6,7 +6,7 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    base::{CandidateID, DreipGroup, ElectionMetadata, ElectionState, Electorate, QuestionID},
+    base::{CandidateId, DreipGroup, ElectionMetadata, ElectionState, Electorate, QuestionId},
     mongodb::{serde_string_map, Id},
 };
 
@@ -21,7 +21,7 @@ pub struct ElectionCore<S> {
     pub electorates: HashMap<String, Electorate>,
     /// Election questions.
     #[serde(with = "serde_string_map")]
-    pub questions: HashMap<QuestionID, Question>,
+    pub questions: HashMap<QuestionId, Question>,
     /// Election cryptographic configuration.
     pub crypto: DreipElection<DreipGroup, S>,
 }
@@ -33,7 +33,7 @@ impl ElectionCore<PrivateKey<DreipGroup>> {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
         electorates: HashMap<String, Electorate>,
-        questions: HashMap<QuestionID, Question>,
+        questions: HashMap<QuestionId, Question>,
         rng: impl RngCore + CryptoRng,
     ) -> Self {
         let crypto = DreipElection::new(
@@ -81,7 +81,7 @@ pub struct Question {
     /// A voter must be in at least one of these electorate groups to vote on this question.
     pub constraints: HashMap<String, HashSet<String>>,
     /// Candidates / possible answers for this question.
-    pub candidates: Vec<CandidateID>,
+    pub candidates: Vec<CandidateId>,
 }
 
 #[cfg(test)]
