@@ -8,6 +8,6 @@ pub use voter::{AllowedQuestions, HmacSha256, NewVoter};
 
 mod election;
 pub use election::{
-    CandidateID, DreipGroup, ElectionMetadata, ElectionSpec, ElectionState, Electorate, QuestionID,
+    CandidateId, DreipGroup, ElectionMetadata, ElectionSpec, ElectionState, Electorate, QuestionId,
     QuestionSpec,
 };
