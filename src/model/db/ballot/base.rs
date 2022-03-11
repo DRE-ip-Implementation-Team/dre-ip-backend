@@ -3,7 +3,8 @@ use std::fmt::Debug;
 
 use chrono::{DateTime, Utc};
 use dre_ip::{Ballot as DreipBallot, CandidateTotals, NoSecrets, VoteSecrets};
-use mongodb::bson::{self, serde_helpers::chrono_datetime_as_bson_datetime, Bson};
+use mongodb::bson::to_bson;
+use mongodb::bson::{serde_helpers::chrono_datetime_as_bson_datetime, Bson};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
@@ -86,7 +87,7 @@ impl AsRef<[u8]> for Unconfirmed {
 
 impl From<Unconfirmed> for Bson {
     fn from(state: Unconfirmed) -> Self {
-        bson::to_bson(&state).unwrap() // Infallible.
+        to_bson(&state).expect("Serialisation is infallible")
     }
 }
 
@@ -116,7 +117,7 @@ impl AsRef<[u8]> for Audited {
 
 impl From<Audited> for Bson {
     fn from(state: Audited) -> Self {
-        bson::to_bson(&state).unwrap() // Infallible.
+        to_bson(&state).expect("Serialisation is infallible")
     }
 }
 
@@ -146,7 +147,7 @@ impl AsRef<[u8]> for Confirmed {
 
 impl From<Confirmed> for Bson {
     fn from(state: Confirmed) -> Self {
-        bson::to_bson(&state).unwrap() // Infallible.
+        to_bson(&state).expect("Serialisation is infallible")
     }
 }
 

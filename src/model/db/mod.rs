@@ -2,7 +2,7 @@
 //!
 //! The types in this module are serialised in an DB-friendly way, e.g.:
 //!
-//! - IDs and datetimes are serialised in MongoDB's own format.
+//! - IDs and datetimes are serialised in `MongoDB`'s own format.
 
 mod admin;
 pub use admin::Admin;
