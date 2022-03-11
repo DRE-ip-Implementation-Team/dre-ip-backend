@@ -122,7 +122,7 @@ async fn join_election(
 }
 
 #[get("/elections/<election_id>/questions/allowed")]
-fn get_allowed(voter: Voter, election_id: Id) -> Result<Json<AllowedQuestions>> {
+fn get_allowed(voter: Voter, election_id: Id) -> Json<AllowedQuestions> {
     // Find what questions they can still vote for.
     let allowed = voter
         .allowed_questions
@@ -130,7 +130,7 @@ fn get_allowed(voter: Voter, election_id: Id) -> Result<Json<AllowedQuestions>> 
         .cloned()
         .unwrap_or_default();
 
-    Ok(Json(allowed))
+    Json(allowed)
 }
 
 #[post(
