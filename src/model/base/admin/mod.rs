@@ -1,4 +1,4 @@
 mod base;
 
-/// A new admin ready for DB insertion is just an [`Admin`] without an ID, i.e. an `AdminCore`.
+/// An [`crate::model::db::Admin`] without an ID.
 pub type NewAdmin = base::AdminCore;

@@ -30,6 +30,6 @@ pub enum ElectionState {
 
 impl From<ElectionState> for Bson {
     fn from(state: ElectionState) -> Self {
-        to_bson(&state).unwrap() // Infallible.
+        to_bson(&state).expect("Serialisation is infallible")
     }
 }

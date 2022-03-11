@@ -52,7 +52,6 @@ where
         }
     }
 
-    // JWT encoding is infallible with default settings
     #[allow(clippy::missing_panics_doc)]
     /// Serialize this cookie into a token.
     pub fn into_cookie(self, config: &Config) -> Cookie<'static> {
@@ -66,7 +65,7 @@ where
             &claims,
             &EncodingKey::from_secret(config.jwt_secret()),
         )
-        .unwrap();
+        .expect("JWT encoding is infallible with default settings");
 
         Cookie::build(AUTH_TOKEN_COOKIE, token)
             .max_age(time::Duration::seconds(config.auth_ttl().num_seconds()))

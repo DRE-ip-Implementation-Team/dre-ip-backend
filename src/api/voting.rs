@@ -28,7 +28,7 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[get("/elections/<election_id>/join")]
-async fn has_joined(voter: Voter, election_id: Id) -> Json<bool> {
+fn has_joined(voter: Voter, election_id: Id) -> Json<bool> {
     Json(voter.allowed_questions.contains_key(&election_id))
 }
 
@@ -324,21 +324,21 @@ async fn confirm_ballots(
                             voter.id, ballot.question_id
                         ),
                     ));
-                } else {
-                    // All tests passed, the voter can confirm this ballot.
-                    *confirmed = true; // Not strictly necessary, but best practice to keep our local copy consistent.
-                    let question_confirmed =
-                        format!("allowed_questions.{}.{}", election_id, ballot.question_id);
-                    let update = doc! {
-                        "$set": {
-                            &question_confirmed: true
-                        }
-                    };
-                    let result = voters
-                        .update_one_with_session(voter.id.as_doc(), update, None, &mut session)
-                        .await?;
-                    assert_eq!(result.modified_count, 1);
                 }
+
+                // All tests passed, the voter can confirm this ballot.
+                *confirmed = true; // Not strictly necessary, but best practice to keep our local copy consistent.
+                let question_confirmed =
+                    format!("allowed_questions.{}.{}", election_id, ballot.question_id);
+                let update = doc! {
+                    "$set": {
+                        &question_confirmed: true
+                    }
+                };
+                let result = voters
+                    .update_one_with_session(voter.id.as_doc(), update, None, &mut session)
+                    .await?;
+                assert_eq!(result.modified_count, 1);
             } else {
                 return Err(Error::Status(
                     Status::BadRequest,
@@ -363,7 +363,7 @@ async fn confirm_ballots(
             if totals.len() != ballot.crypto.votes.len() {
                 assert_eq!(totals.len(), 0);
                 let question = election.questions.get(&ballot.question_id).unwrap();
-                for candidate in question.candidates.iter() {
+                for candidate in &question.candidates {
                     totals.push(CandidateTotals {
                         id: Id::new(),
                         totals: NewCandidateTotals::new(

@@ -15,5 +15,5 @@ pub type ElectionNoSecrets = db::Election<NoSecrets>;
 mod base;
 pub use base::Question;
 
-/// A new election ready for DB insertion is just an [`Election`] without an ID, i.e. an `ElectionCore`.
+/// An [`crate::model::db::Election`] without an ID.
 pub type NewElection = base::ElectionCore<PrivateKey<DreipGroup>>;
