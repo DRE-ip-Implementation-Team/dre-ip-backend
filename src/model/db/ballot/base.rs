@@ -1,19 +1,30 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use chrono::{DateTime, Utc};
 use dre_ip::{Ballot as DreipBallot, CandidateTotals, NoSecrets, VoteSecrets};
-use mongodb::bson::{self, Bson};
+use mongodb::bson::{self, serde_helpers::chrono_datetime_as_bson_datetime, Bson};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
 
-use crate::model::election::{CandidateID, DreipGroup};
+use crate::model::{
+    base::{CandidateID, DreipGroup},
+    mongodb::Id,
+};
 
 pub type BallotCrypto<S> = DreipBallot<CandidateID, DreipGroup, S>;
 
 /// Core ballot data, as stored in the database.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BallotCore<S: BallotState> {
+    /// Foreign Key election ID.
+    pub election_id: Id,
+    /// Foreign Key question ID.
+    pub question_id: Id,
+    /// Ballot creation time, used to automatically expire unconfirmed votes.
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub creation_time: DateTime<Utc>,
     /// The cryptographic data.
     #[serde(flatten)]
     pub crypto: BallotCrypto<S::InternalSecrets>,
@@ -25,6 +36,9 @@ impl BallotCore<Unconfirmed> {
     /// Audit this ballot.
     pub fn audit(self) -> BallotCore<Audited> {
         BallotCore {
+            election_id: self.election_id,
+            question_id: self.question_id,
+            creation_time: self.creation_time,
             crypto: self.crypto,
             state: Audited,
         }
@@ -36,6 +50,9 @@ impl BallotCore<Unconfirmed> {
         totals: impl Into<Option<&'a mut HashMap<CandidateID, &'b mut CandidateTotals<DreipGroup>>>>,
     ) -> BallotCore<Confirmed> {
         BallotCore {
+            election_id: self.election_id,
+            question_id: self.question_id,
+            creation_time: self.creation_time,
             crypto: self.crypto.confirm(totals.into()),
             state: Confirmed,
         }

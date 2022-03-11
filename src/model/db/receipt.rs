@@ -1,10 +1,9 @@
 use dre_ip::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{db::ElectionWithSecrets, election::DreipGroup, mongodb::Id};
+use crate::model::{base::DreipGroup, db::ElectionWithSecrets, mongodb::Id};
 
-use crate::model::base::{Audited, BallotCrypto, BallotState, Confirmed};
-use crate::model::db::{Ballot, FinishedBallot};
+use crate::model::db::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot};
 
 pub type Signature = <DreipGroup as DreipGroupTrait>::Signature;
 
@@ -39,8 +38,8 @@ where
         // Sign the receipt.
         let mut msg = crypto.to_bytes();
         msg.extend(ballot.id.to_bytes());
-        msg.extend(ballot.election_id.to_bytes());
-        msg.extend(ballot.question_id.to_bytes());
+        msg.extend(ballot.ballot.election_id.to_bytes());
+        msg.extend(ballot.ballot.question_id.to_bytes());
         msg.extend(ballot.ballot.state.as_ref());
         let signature = election.crypto.private_key.sign(&msg);
 
@@ -48,8 +47,8 @@ where
         Self {
             crypto,
             ballot_id: ballot.id,
-            election_id: ballot.election_id,
-            question_id: ballot.question_id,
+            election_id: ballot.ballot.election_id,
+            question_id: ballot.ballot.question_id,
             state: ballot.ballot.state,
             signature,
         }

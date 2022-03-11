@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::model::{
     api::auth::AuthToken,
-    base::{AllowedQuestions, Audited, Confirmed, Unconfirmed},
-    candidate_totals::NewCandidateTotals,
-    db::{Ballot, CandidateTotals, ElectionWithSecrets, Receipt, Signature, Voter},
-    election::ElectionState,
+    base::{AllowedQuestions, ElectionState},
+    db::{
+        Audited, Ballot, CandidateTotals, Confirmed, ElectionWithSecrets, NewCandidateTotals,
+        Receipt, Signature, Unconfirmed, Voter,
+    },
     mongodb::{Coll, Id},
 };
 
@@ -507,9 +508,8 @@ mod tests {
 
     use crate::model::{
         api::sms::Sms,
-        base::{Audited, Confirmed, Unconfirmed},
-        db::Election,
-        election::{NewElection, QuestionSpec},
+        base::QuestionSpec,
+        db::{Audited, Confirmed, Election, NewElection, Unconfirmed},
     };
 
     use super::*;

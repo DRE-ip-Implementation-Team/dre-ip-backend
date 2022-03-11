@@ -1,20 +1,18 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use dre_ip::CandidateTotals;
-use mongodb::bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    election::{CandidateID, DreipGroup},
+    base::{CandidateID, DreipGroup},
+    db::Election,
     mongodb::Id,
 };
 
-use crate::model::base::{Audited, BallotCore, BallotState, Confirmed, Unconfirmed};
-
-use super::Election;
+use super::{Audited, BallotCore, BallotState, Confirmed, Unconfirmed};
 
 /// A ballot from the database, with its unique ID.
 /// Also contains an election and question ID foreign key.
@@ -22,13 +20,6 @@ use super::Election;
 pub struct Ballot<S: BallotState> {
     #[serde(rename = "_id")]
     pub id: Id,
-    /// Foreign Key election ID.
-    pub election_id: Id,
-    /// Foreign Key question ID.
-    pub question_id: Id,
-    /// Ballot creation time, used to automatically expire unconfirmed votes.
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub creation_time: DateTime<Utc>,
     /// Ballot contents.
     #[serde(flatten)]
     pub ballot: BallotCore<S>,
@@ -51,25 +42,19 @@ impl Ballot<Unconfirmed> {
                 .crypto
                 .create_ballot(rng, id.to_bytes(), yes_candidate, no_candidates)?;
         let ballot = BallotCore {
+            election_id,
+            question_id,
+            creation_time,
             crypto,
             state: Unconfirmed,
         };
 
-        Some(Self {
-            id,
-            election_id,
-            question_id,
-            creation_time,
-            ballot,
-        })
+        Some(Self { id, ballot })
     }
 
     pub fn audit(self) -> Ballot<Audited> {
         Ballot {
             id: self.id,
-            election_id: self.election_id,
-            question_id: self.question_id,
-            creation_time: self.creation_time,
             ballot: self.ballot.audit(),
         }
     }
@@ -80,9 +65,6 @@ impl Ballot<Unconfirmed> {
     ) -> Ballot<Confirmed> {
         Ballot {
             id: self.id,
-            election_id: self.election_id,
-            question_id: self.question_id,
-            creation_time: self.creation_time,
             ballot: self.ballot.confirm(totals),
         }
     }
