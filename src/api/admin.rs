@@ -9,9 +9,8 @@ use crate::{
     error::{Error, Result},
     model::{
         api::auth::AuthToken,
-        base::NewAdmin,
-        db::{Admin, CandidateTotals, ElectionNoSecrets, FinishedBallot, Voter},
-        election::{ElectionSpec, ElectionState, NewElection},
+        base::{ElectionSpec, ElectionState, NewAdmin},
+        db::{Admin, CandidateTotals, ElectionNoSecrets, FinishedBallot, NewElection, Voter},
         mongodb::{Coll, Id},
     },
 };
@@ -322,10 +321,8 @@ mod tests {
 
     use crate::model::{
         api::sms::Sms,
-        base::{AllowedQuestions, Audited, Confirmed, NewVoter, Unconfirmed},
-        candidate_totals::NewCandidateTotals,
-        db::Ballot,
-        election::{ElectionMetadata, QuestionSpec},
+        base::{AllowedQuestions, ElectionMetadata, NewVoter, QuestionSpec},
+        db::{Audited, Ballot, Confirmed, NewCandidateTotals, Unconfirmed},
         mongodb::MongoCollection,
     };
     use crate::Config;

@@ -4,7 +4,9 @@ use dre_ip::NoSecrets;
 use mongodb::bson::doc;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{election::ElectionCore, mongodb::Id};
+use crate::model::mongodb::Id;
+
+use super::base::ElectionCore;
 
 /// An election from the database, with its unique ID.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]

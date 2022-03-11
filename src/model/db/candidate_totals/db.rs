@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::mongodb::Id;
 
-use crate::model::candidate_totals::NewCandidateTotals;
+use crate::model::db::candidate_totals::NewCandidateTotals;
 
 /// Candidate totals from the database, with their unique ID.
 #[derive(Debug, Clone, Serialize, Deserialize)]

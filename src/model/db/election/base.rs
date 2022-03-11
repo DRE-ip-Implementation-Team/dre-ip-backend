@@ -2,14 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use dre_ip::{Election as DreipElection, NoSecrets, PrivateKey};
-use mongodb::bson::{self, serde_helpers::chrono_datetime_as_bson_datetime, Bson};
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::{serde_string_map, Id};
-
-use super::electorate::Electorate;
-use super::{CandidateID, DreipGroup, QuestionID};
+use crate::model::{
+    base::{CandidateID, DreipGroup, ElectionMetadata, ElectionState, Electorate, QuestionID},
+    mongodb::{serde_string_map, Id},
+};
 
 /// Core election data, as stored in the database.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,38 +71,6 @@ impl<S> ElectionCore<S> {
     }
 }
 
-/// A view on just the election's top-level metadata.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ElectionMetadata {
-    /// Election name.
-    pub name: String,
-    /// Election state.
-    pub state: ElectionState,
-    /// Election start time.
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub start_time: DateTime<Utc>,
-    /// Election end time.
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub end_time: DateTime<Utc>,
-}
-
-/// States in the Election lifecycle.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ElectionState {
-    /// Under construction, only visible to admins.
-    Draft,
-    /// Ready, in progress, or completed. Visible to all.
-    Published,
-    /// Completed, hidden by default, but retrievable by all.
-    Archived,
-}
-
-impl From<ElectionState> for Bson {
-    fn from(state: ElectionState) -> Self {
-        bson::to_bson(&state).unwrap() // Infallible.
-    }
-}
-
 /// A single question.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Question {
@@ -121,7 +88,7 @@ pub struct Question {
 mod tests {
     use chrono::Duration;
 
-    use crate::model::election::ElectionSpec;
+    use crate::model::base::ElectionSpec;
 
     use super::*;
 

@@ -3,11 +3,11 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::Id;
-
-use super::election_core::{ElectionMetadata, ElectionState, Question};
-use super::electorate::Electorate;
-use super::NewElection;
+use crate::model::{
+    base::{ElectionMetadata, ElectionState, Electorate},
+    db::{NewElection, Question},
+    mongodb::Id,
+};
 
 /// An election specification.
 #[derive(Debug, Serialize, Deserialize)]
