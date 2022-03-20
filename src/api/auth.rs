@@ -93,6 +93,7 @@ pub async fn verify(
     new_voters: Coll<NewVoter>,
     config: &State<Config>,
 ) -> Result<()> {
+    #[cfg(feature = "otp")]
     if challenge.code != *code {
         // Submitted code is invalid and so the verification fails
         return Err(Error::Status(

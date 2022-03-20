@@ -8,4 +8,4 @@ RUN cargo install cargo-watch
 
 ENV ROCKET_ADDRESS=0.0.0.0
 
-CMD ["cargo", "watch", "-x", "run"]
+CMD ["cargo", "watch", "-x", "'run --no-default-features'"]
