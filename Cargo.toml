@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["otp"]
+otp = []
+
 [dependencies]
 serde = "1.0.130"
 phonenumber = "0.3.1"
