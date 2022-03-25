@@ -20,7 +20,6 @@ use crate::{model::base::HmacSha256, Config};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Sms {
-    #[serde(with = "phone_number")]
     inner: PhoneNumber,
 }
 
@@ -38,43 +37,6 @@ impl Sms {
             .expect("HMAC can take key of any size");
         hmac.update(self.to_string().as_bytes());
         hmac.finalize().into_bytes()
-    }
-}
-
-/// (De)serialization for phone numbers.
-mod phone_number {
-    use phonenumber::PhoneNumber;
-    use serde::{de::Visitor, Deserializer, Serializer};
-
-    pub fn serialize<S>(phone_number: &PhoneNumber, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&phone_number.to_string())
-    }
-
-    struct StrVisitor;
-
-    impl Visitor<'_> for StrVisitor {
-        type Value = PhoneNumber;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(formatter, "a valid phone number string")
-        }
-
-        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            s.parse::<PhoneNumber>().map_err(|err| E::custom(err))
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<PhoneNumber, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_str(StrVisitor)
     }
 }
 
