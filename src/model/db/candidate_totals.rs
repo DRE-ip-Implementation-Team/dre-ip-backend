@@ -2,9 +2,11 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::mongodb::Id;
+use crate::model::{common::candidate_totals::CandidateTotalsCore, mongodb::Id};
 
-use crate::model::db::candidate_totals::NewCandidateTotals;
+/// A new [`CandidateTotals`] ready for DB insertion is just [`CandidateTotals`]
+/// without an ID, i.e. `CandidateTotalsCore`.
+pub type NewCandidateTotals = CandidateTotalsCore;
 
 /// Candidate totals from the database, with their unique ID.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,11 +14,11 @@ pub struct CandidateTotals {
     #[serde(rename = "_id")]
     pub id: Id,
     #[serde(flatten)]
-    pub totals: NewCandidateTotals,
+    pub totals: CandidateTotalsCore,
 }
 
 impl Deref for CandidateTotals {
-    type Target = NewCandidateTotals;
+    type Target = CandidateTotalsCore;
 
     fn deref(&self) -> &Self::Target {
         &self.totals

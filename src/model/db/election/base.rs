@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use dre_ip::{Election as DreipElection, NoSecrets, PrivateKey};
@@ -6,9 +6,11 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    base::{CandidateId, DreipGroup, ElectionMetadata, ElectionState, Electorate, QuestionId},
-    mongodb::{serde_string_map, Id},
+    common::election::{DreipGroup, ElectionState, Electorate, Question, QuestionId},
+    mongodb::serde_string_map,
 };
+
+use super::metadata::ElectionMetadata;
 
 /// Core election data, as stored in the database.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,24 +73,11 @@ impl<S> ElectionCore<S> {
     }
 }
 
-/// A single question.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Question {
-    /// Question unique ID.
-    pub id: Id,
-    /// Question text.
-    pub description: String,
-    /// A voter must be in at least one of these electorate groups to vote on this question.
-    pub constraints: HashMap<String, HashSet<String>>,
-    /// Candidates / possible answers for this question.
-    pub candidates: Vec<CandidateId>,
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
 
-    use crate::model::base::ElectionSpec;
+    use crate::model::api::election::ElectionSpec;
 
     use super::*;
 

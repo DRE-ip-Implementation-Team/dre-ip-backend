@@ -1,18 +1,22 @@
-use argon2::Config;
 use chrono::Utc;
 use mongodb::{bson::doc, Client};
-use rand::Rng;
 use rocket::{http::Status, serde::json::Json, Route, State};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{Error, Result},
     model::{
-        api::auth::AuthToken,
-        base::{ElectionSpec, ElectionState, NewAdmin},
+        api::{
+            admin::AdminCredentials,
+            auth::AuthToken,
+            election::{ElectionDescription, ElectionSpec},
+        },
+        common::election::ElectionState,
         db::{
-            Admin, Audited, Ballot, CandidateTotals, ElectionNoSecrets, FinishedBallot,
-            NewElection, Unconfirmed, Voter,
+            admin::{Admin, NewAdmin},
+            ballot::{Audited, Ballot, FinishedBallot, Unconfirmed},
+            candidate_totals::CandidateTotals,
+            election::{ElectionNoSecrets, NewElection},
+            voter::Voter,
         },
         mongodb::{Coll, Id},
     },
@@ -29,64 +33,6 @@ pub fn routes() -> Vec<Route> {
         archive_election,
         delete_election,
     ]
-}
-
-/// Raw admin credentials, received from a user. These are never stored directly,
-/// since the password is in plaintext.
-#[derive(Clone, Deserialize, Serialize)]
-pub struct AdminCredentials {
-    pub username: String,
-    pub password: String,
-}
-
-impl From<AdminCredentials> for NewAdmin {
-    /// Convert [`AdminCredentials`] to a new [`Admin`] by hashing the password.
-    fn from(cred: AdminCredentials) -> Self {
-        // 16 bytes is recommended for password hashing:
-        //  https://en.wikipedia.org/wiki/Argon2
-        // Also useful:
-        //  https://www.twelve21.io/how-to-choose-the-right-parameters-for-argon2/
-        let mut salt = [0_u8; 16];
-        rand::thread_rng().fill(&mut salt);
-        let password_hash = argon2::hash_encoded(
-            cred.password.as_bytes(),
-            &salt,
-            &Config::default(), // TODO: see if a custom config is useful.
-        )
-        .unwrap(); // Safe because the default `Config` is valid.
-        Self {
-            username: cred.username,
-            password_hash,
-        }
-    }
-}
-
-#[cfg(test)]
-mod examples {
-    use super::*;
-
-    impl AdminCredentials {
-        pub fn example() -> Self {
-            Self {
-                username: "coordinator".into(),
-                password: "coordinator".into(),
-            }
-        }
-
-        pub fn example2() -> Self {
-            Self {
-                username: "coordinator2".into(),
-                password: "coordinator2".into(),
-            }
-        }
-
-        pub fn empty() -> Self {
-            Self {
-                username: "".into(),
-                password: "".into(),
-            }
-        }
-    }
 }
 
 #[post("/admins", data = "<new_admin>", format = "json")]
@@ -133,7 +79,7 @@ async fn create_election(
     spec: Json<ElectionSpec>,
     new_elections: Coll<NewElection>,
     elections: Coll<ElectionNoSecrets>,
-) -> Result<Json<ElectionNoSecrets>> {
+) -> Result<Json<ElectionDescription>> {
     let election: NewElection = spec.0.into();
     let new_id: Id = new_elections
         .insert_one(&election, None)
@@ -143,7 +89,7 @@ async fn create_election(
         .unwrap() // Valid because the ID comes directly from the DB
         .into();
     let db_election = elections.find_one(new_id.as_doc(), None).await?.unwrap();
-    Ok(Json(db_election.erase_secrets()))
+    Ok(Json(db_election.into()))
 }
 
 #[put("/elections/<election_id>", data = "<spec>", format = "json")]
@@ -153,7 +99,7 @@ async fn modify_election(
     spec: Json<ElectionSpec>,
     new_elections: Coll<NewElection>,
     elections: Coll<ElectionNoSecrets>,
-) -> Result<Json<ElectionNoSecrets>> {
+) -> Result<Json<ElectionDescription>> {
     // Get the existing election.
     let election = elections
         .find_one(election_id.as_doc(), None)
@@ -183,7 +129,7 @@ async fn modify_election(
         .find_one(election_id.as_doc(), None)
         .await?
         .unwrap();
-    Ok(Json(db_election.erase_secrets()))
+    Ok(Json(db_election.into()))
 }
 
 #[post("/elections/<election_id>/publish")]
@@ -347,9 +293,17 @@ mod tests {
     };
 
     use crate::model::{
-        api::sms::Sms,
-        base::{AllowedQuestions, ElectionMetadata, NewVoter, QuestionSpec},
-        db::{Audited, Ballot, Confirmed, NewCandidateTotals, Unconfirmed},
+        api::{
+            election::{ElectionSpec, QuestionSpec},
+            sms::Sms,
+        },
+        common::allowed_questions::AllowedQuestions,
+        db::{
+            ballot::{Audited, Ballot, Confirmed, Unconfirmed},
+            candidate_totals::NewCandidateTotals,
+            election::ElectionMetadata,
+            voter::NewVoter,
+        },
         mongodb::MongoCollection,
     };
     use crate::Config;
@@ -474,11 +428,11 @@ mod tests {
         // Modify it.
         spec.name = "New Name".to_string();
         let modified = modify_election_with_spec(&client, election.id, &spec).await;
-        assert_eq!(modified, get_election_by_id(&db, election.id).await);
-        assert_eq!(modified.metadata.name, spec.name);
-        assert_eq!(modified.metadata.state, election.metadata.state);
-        assert_eq!(modified.metadata.start_time, election.metadata.start_time);
-        assert_eq!(modified.metadata.end_time, election.metadata.end_time);
+        assert_eq!(modified, get_election_by_id(&db, election.id).await.into());
+        assert_eq!(modified.name, spec.name);
+        assert_eq!(modified.state, election.state);
+        assert_eq!(modified.start_time, election.start_time);
+        assert_eq!(modified.end_time, election.end_time);
         assert_eq!(modified.electorates, election.electorates);
 
         // Publish it.
@@ -487,11 +441,11 @@ mod tests {
         // Modify it again.
         spec.start_time = Utc::now();
         let modified = modify_election_with_spec(&client, election.id, &spec).await;
-        assert_eq!(modified, get_election_by_id(&db, election.id).await);
-        assert_eq!(modified.metadata.name, spec.name);
-        assert_eq!(modified.metadata.state, ElectionState::Draft);
-        assert!(modified.metadata.start_time - spec.start_time < Duration::seconds(1));
-        assert_eq!(modified.metadata.end_time, election.metadata.end_time);
+        assert_eq!(modified, get_election_by_id(&db, election.id).await.into());
+        assert_eq!(modified.name, spec.name);
+        assert_eq!(modified.state, ElectionState::Draft);
+        assert!(modified.start_time - spec.start_time < Duration::seconds(1));
+        assert_eq!(modified.end_time, election.end_time);
         assert_eq!(modified.electorates, election.electorates);
 
         // Re-publish.
@@ -682,7 +636,7 @@ mod tests {
         assert_eq!(matches, 0);
     }
 
-    async fn create_election_for_spec(client: &Client, spec: &ElectionSpec) -> ElectionNoSecrets {
+    async fn create_election_for_spec(client: &Client, spec: &ElectionSpec) -> ElectionDescription {
         let response = client
             .post(uri!(create_election))
             .header(ContentType::JSON)
@@ -698,7 +652,7 @@ mod tests {
         client: &Client,
         id: Id,
         spec: &ElectionSpec,
-    ) -> ElectionNoSecrets {
+    ) -> ElectionDescription {
         let response = modify_expect_status(client, id, spec, Status::Ok).await;
         serde_json::from_str(&response.into_string().await.unwrap()).unwrap()
     }
