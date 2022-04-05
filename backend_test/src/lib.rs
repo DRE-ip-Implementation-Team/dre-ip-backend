@@ -82,7 +82,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                 let db_client = crate::db_client().await;
                 let db_name = crate::database();
                 let notifier = aws_sdk_sns::Client::new(&aws_config::load_from_env().await);
-                let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_and_notifier(db_client.clone(), &db_name, notifier))
+                let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_and_notifier(db_client.clone(), &db_name, notifier).await)
                     .await
                     .unwrap();
                 let db = db_client.database(&db_name);

@@ -537,7 +537,7 @@ mod tests {
         let mut voter = voters
             .find_one(
                 doc! {
-                    "sms_hmac": to_bson(&Sms::example_hmac(&client)).unwrap(),
+                    "sms_hmac": to_bson(&Sms::example_hmac(client)).unwrap(),
                 },
                 None,
             )

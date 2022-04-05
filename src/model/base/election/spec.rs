@@ -113,6 +113,18 @@ mod examples {
                 questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
             }
         }
+
+        pub fn past_example() -> Self {
+            let start_time = Utc::today().and_hms(0, 0, 0) - Duration::days(30);
+            let end_time = start_time + Duration::days(7);
+            Self {
+                name: "Test Election 3".to_string(),
+                start_time,
+                end_time,
+                electorates: vec![Electorate::example1()],
+                questions: vec![QuestionSpec::example1(), QuestionSpec::example2()],
+            }
+        }
     }
 
     impl QuestionSpec {

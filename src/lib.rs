@@ -5,18 +5,23 @@ extern crate rocket;
 #[macro_use]
 extern crate backend_test;
 
+use std::sync::Arc;
+
 use aws_sdk_sns::Client as SnsClient;
 use chrono::Duration;
 use mongodb::Client;
-use rocket::{fairing::AdHoc, Build, Rocket};
+use rocket::{fairing::AdHoc, tokio::sync::Mutex, Build, Rocket};
 use serde::Deserialize;
 
 pub mod api;
 pub mod error;
 pub mod model;
+pub mod scheduled_task;
+
+use crate::model::db::ElectionFinalizers as RawElectionFinalizers;
 
 pub async fn build() -> Rocket<Build> {
-    rocket_for_db_and_notifier(db_client().await, &database(), notifier().await)
+    rocket_for_db_and_notifier(db_client().await, &database(), notifier().await).await
 }
 
 pub(crate) async fn db_client() -> Client {
@@ -43,12 +48,17 @@ fn database() -> String {
 }
 
 /// Used in both the application entry point and the `backend_test` macro
-pub(crate) fn rocket_for_db_and_notifier(
+pub(crate) async fn rocket_for_db_and_notifier(
     client: Client,
     db: &str,
     notifier: SnsClient,
 ) -> Rocket<Build> {
     let db = client.database(db);
+    let mut election_finalizers = RawElectionFinalizers::new();
+    election_finalizers
+        .schedule_elections(&db)
+        .await
+        .expect("Failed to contact database during init");
 
     rocket::build()
         .mount("/", api::routes())
@@ -56,7 +66,11 @@ pub(crate) fn rocket_for_db_and_notifier(
         .manage(client)
         .manage(db)
         .manage(notifier)
+        .manage(Arc::new(Mutex::new(election_finalizers)))
 }
+
+/// Convenient synonym for accessing state.
+pub type ElectionFinalizers = Arc<Mutex<RawElectionFinalizers>>;
 
 #[derive(Deserialize)]
 pub struct Config {

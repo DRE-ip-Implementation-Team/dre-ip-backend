@@ -23,6 +23,13 @@ pub trait MongoCollection {
 /// A database collection of the given type.
 pub struct Coll<T>(Collection<T>);
 
+// `Derive(Clone)` would only derive if `T: Clone`, but we don't need that bound.
+impl<T> Clone for Coll<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 impl<T> Coll<T>
 where
     T: MongoCollection,

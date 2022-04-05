@@ -17,3 +17,6 @@ pub use base::Question;
 
 /// An [`crate::model::db::Election`] without an ID.
 pub type NewElection = base::ElectionCore<PrivateKey<DreipGroup>>;
+
+mod finalizer;
+pub use finalizer::ElectionFinalizers;
