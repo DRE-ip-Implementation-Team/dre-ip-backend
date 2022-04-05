@@ -10,9 +10,13 @@ use crate::{
     model::{
         api::auth::AuthToken,
         base::{ElectionSpec, ElectionState, NewAdmin},
-        db::{Admin, CandidateTotals, ElectionNoSecrets, FinishedBallot, NewElection, Voter},
+        db::{
+            Admin, Audited, Ballot, CandidateTotals, ElectionNoSecrets, FinishedBallot,
+            NewElection, Unconfirmed, Voter,
+        },
         mongodb::{Coll, Id},
     },
+    ElectionFinalizers,
 };
 
 pub fn routes() -> Vec<Route> {
@@ -187,6 +191,9 @@ async fn publish_election(
     _token: AuthToken<Admin>,
     election_id: Id,
     elections: Coll<ElectionNoSecrets>,
+    unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
+    audited_ballots: Coll<Ballot<Audited>>,
+    election_finalizers: &State<ElectionFinalizers>,
 ) -> Result<()> {
     // Update the state.
     let filter = doc! {
@@ -209,6 +216,17 @@ async fn publish_election(
         ));
     }
 
+    // Schedule the election finalizer.
+    let election = elections
+        .find_one(election_id.as_doc(), None)
+        .await?
+        .unwrap(); // Presence already checked.
+    election_finalizers.lock().await.schedule_election(
+        unconfirmed_ballots,
+        audited_ballots,
+        &election,
+    );
+
     Ok(())
 }
 
@@ -217,6 +235,7 @@ async fn archive_election(
     _token: AuthToken<Admin>,
     election_id: Id,
     elections: Coll<ElectionNoSecrets>,
+    election_finalizers: &State<ElectionFinalizers>,
 ) -> Result<()> {
     // Update the state.
     let filter = doc! {
@@ -238,6 +257,13 @@ async fn archive_election(
             ),
         ));
     }
+
+    // Run the election finalizer.
+    election_finalizers
+        .lock()
+        .await
+        .finalize_election(election_id)
+        .await?;
 
     Ok(())
 }
@@ -317,6 +343,7 @@ mod tests {
         http::{ContentType, Status},
         local::asynchronous::{Client, LocalResponse},
         serde::json::serde_json,
+        tokio,
     };
 
     use crate::model::{
@@ -549,8 +576,9 @@ mod tests {
             "election_id": *election.id,
         };
         assert_no_matches::<ElectionNoSecrets>(&db, election.id.as_doc()).await;
+        // Since the filter doesn't specify a state, using the FinishedBallot
+        // collection here actually includes unconfirmed ballots as well.
         assert_no_matches::<FinishedBallot>(&db, filter.clone()).await;
-        assert_no_matches::<Ballot<Unconfirmed>>(&db, filter.clone()).await;
         assert_no_matches::<CandidateTotals>(&db, filter).await;
         let field_name = format!("allowed_questions.{}", election.id);
         let filter = doc! {
@@ -568,6 +596,72 @@ mod tests {
         assert!(!other_voter.allowed_questions.is_empty());
     }
 
+    #[backend_test(admin)]
+    async fn finalize_on_archive(client: Client, db: Database) {
+        // Create an election, publish it, and add votes.
+        let spec = ElectionSpec::current_example();
+        let election = create_election_for_spec(&client, &spec).await;
+        publish(&client, election.id).await;
+        insert_ballots(&db, election.id).await;
+
+        // Check there are unconfirmed ballots.
+        let unconfirmed_filter = doc! {
+            "election_id": election.id,
+            "state": Unconfirmed,
+        };
+        let unconfirmed =
+            count_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
+        assert_ne!(unconfirmed, 0);
+        let audited_filter = doc! {
+            "election_id": election.id,
+            "state": Audited,
+        };
+        let audited = count_matches::<Ballot<Audited>>(&db, audited_filter.clone()).await;
+
+        // Check a finalizer has been scheduled.
+        let finalizers = client.rocket().state::<ElectionFinalizers>().unwrap();
+        assert!(finalizers.lock().await.0.contains_key(&election.id));
+
+        // Archive the election.
+        archive(&client, election.id).await;
+        // Check the unconfirmed ballots have been audited, i.e. the finalizer was triggered.
+        assert_no_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
+        let final_audited = count_matches::<Ballot<Audited>>(&db, audited_filter).await;
+        assert_eq!(final_audited, audited + unconfirmed);
+    }
+
+    #[backend_test(admin)]
+    async fn finalize_on_end_time(client: Client, db: Database) {
+        // Create an election in the past and add some votes.
+        let spec = ElectionSpec::past_example();
+        let election = create_election_for_spec(&client, &spec).await;
+        insert_ballots(&db, election.id).await;
+
+        // Check there are unconfirmed ballots.
+        let unconfirmed_filter = doc! {
+            "election_id": election.id,
+            "state": Unconfirmed,
+        };
+        let unconfirmed =
+            count_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
+        assert_ne!(unconfirmed, 0);
+        let audited_filter = doc! {
+            "election_id": election.id,
+            "state": Audited,
+        };
+        let audited = count_matches::<Ballot<Audited>>(&db, audited_filter.clone()).await;
+
+        // Publish it, causing a finalizer to be scheduled that should immediately trigger.
+        publish(&client, election.id).await;
+        // (hopefully not flaky) sleep to make sure the finalizers have gone through.
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Check the unconfirmed ballots have been audited, i.e. the finalizer was triggered.
+        assert_no_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
+        let final_audited = count_matches::<Ballot<Audited>>(&db, audited_filter).await;
+        assert_eq!(final_audited, audited + unconfirmed);
+    }
+
     async fn get_election_by_id(db: &Database, id: Id) -> ElectionNoSecrets {
         Coll::<ElectionNoSecrets>::from_db(db)
             .find_one(id.as_doc(), None)
@@ -576,11 +670,15 @@ mod tests {
             .unwrap()
     }
 
-    async fn assert_no_matches<T: MongoCollection>(db: &Database, filter: Document) {
-        let matches = Coll::<T>::from_db(db)
+    async fn count_matches<T: MongoCollection>(db: &Database, filter: Document) -> u64 {
+        Coll::<T>::from_db(db)
             .count_documents(filter, None)
             .await
-            .unwrap();
+            .unwrap()
+    }
+
+    async fn assert_no_matches<T: MongoCollection>(db: &Database, filter: Document) {
+        let matches = count_matches::<T>(db, filter).await;
         assert_eq!(matches, 0);
     }
 
@@ -750,7 +848,7 @@ mod tests {
 
     async fn insert_allowed_questions(client: &Client, db: &Database, election_id: Id) -> Vec<Id> {
         let config = client.rocket().state::<Config>().unwrap();
-        let election = get_election_by_id(&db, election_id).await;
+        let election = get_election_by_id(db, election_id).await;
         let q1 = election
             .questions
             .values()

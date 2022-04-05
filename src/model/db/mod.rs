@@ -16,7 +16,9 @@ mod candidate_totals;
 pub use candidate_totals::{CandidateTotals, NewCandidateTotals};
 
 mod election;
-pub use election::{Election, ElectionNoSecrets, ElectionWithSecrets, NewElection, Question};
+pub use election::{
+    Election, ElectionFinalizers, ElectionNoSecrets, ElectionWithSecrets, NewElection, Question,
+};
 
 mod voter;
 pub use voter::Voter;

@@ -772,7 +772,7 @@ mod tests {
     }
 
     async fn insert_elections(db: &Database) {
-        Coll::<NewElection>::from_db(&db)
+        Coll::<NewElection>::from_db(db)
             .insert_many(
                 [
                     NewElection::published_example(),
@@ -886,7 +886,7 @@ mod tests {
     }
 
     async fn get_election_for_spec(db: &Database, election: ElectionSpec) -> ElectionWithSecrets {
-        Coll::<ElectionWithSecrets>::from_db(&db)
+        Coll::<ElectionWithSecrets>::from_db(db)
             .find_one(doc! { "name": &election.name }, None)
             .await
             .unwrap()
