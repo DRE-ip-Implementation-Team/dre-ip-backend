@@ -18,7 +18,7 @@ pub mod error;
 pub mod model;
 pub mod scheduled_task;
 
-use crate::model::db::ElectionFinalizers as RawElectionFinalizers;
+use crate::model::db::election::ElectionFinalizers as RawElectionFinalizers;
 
 pub async fn build() -> Rocket<Build> {
     rocket_for_db_and_notifier(db_client().await, &database(), notifier().await).await

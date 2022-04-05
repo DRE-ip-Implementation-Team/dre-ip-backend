@@ -3,15 +3,20 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use mongodb::{bson::doc, options::ReplaceOptions, Client};
 use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
-use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::model::{
-    api::auth::AuthToken,
-    base::{AllowedQuestions, ElectionState},
+    api::{
+        auth::AuthToken,
+        ballot::{BallotRecall, BallotSpec},
+        receipt::Receipt,
+    },
+    common::{allowed_questions::AllowedQuestions, election::ElectionState},
     db::{
-        Audited, Ballot, CandidateTotals, Confirmed, ElectionWithSecrets, NewCandidateTotals,
-        Receipt, Signature, Unconfirmed, Voter,
+        ballot::{Audited, Ballot, Confirmed, Unconfirmed},
+        candidate_totals::{CandidateTotals, NewCandidateTotals},
+        election::ElectionWithSecrets,
+        voter::Voter,
     },
     mongodb::{Coll, Id},
 };
@@ -28,18 +33,24 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[get("/elections/<election_id>/join")]
-fn has_joined(voter: Voter, election_id: Id) -> Json<bool> {
-    Json(voter.allowed_questions.contains_key(&election_id))
+async fn has_joined(
+    token: AuthToken<Voter>,
+    election_id: Id,
+    voters: Coll<Voter>,
+) -> Result<Json<bool>> {
+    let voter = voter_by_id(token.id, &voters).await?;
+    Ok(Json(voter.allowed_questions.contains_key(&election_id)))
 }
 
 #[post("/elections/<election_id>/join", data = "<joins>", format = "json")]
 async fn join_election(
-    voter: Voter,
+    token: AuthToken<Voter>,
     election_id: Id,
     joins: Json<HashMap<String, HashSet<String>>>,
     elections: Coll<ElectionWithSecrets>,
     voters: Coll<Voter>,
 ) -> Result<()> {
+    let voter = voter_by_id(token.id, &voters).await?;
     // Reject if voter has already joined the election
     if voter.allowed_questions.contains_key(&election_id) {
         return Err(Error::Status(
@@ -122,7 +133,12 @@ async fn join_election(
 }
 
 #[get("/elections/<election_id>/questions/allowed")]
-fn get_allowed(voter: Voter, election_id: Id) -> Json<AllowedQuestions> {
+async fn get_allowed(
+    token: AuthToken<Voter>,
+    election_id: Id,
+    voters: Coll<Voter>,
+) -> Result<Json<AllowedQuestions>> {
+    let voter = voter_by_id(token.id, &voters).await?;
     // Find what questions they can still vote for.
     let allowed = voter
         .allowed_questions
@@ -130,7 +146,7 @@ fn get_allowed(voter: Voter, election_id: Id) -> Json<AllowedQuestions> {
         .cloned()
         .unwrap_or_default();
 
-    Json(allowed)
+    Ok(Json(allowed))
 }
 
 #[post(
@@ -280,7 +296,7 @@ async fn audit_ballots(
 )]
 #[allow(clippy::too_many_arguments)]
 async fn confirm_ballots(
-    mut voter: Voter,
+    token: AuthToken<Voter>,
     election_id: Id,
     ballot_recalls: Json<Vec<BallotRecall>>,
     voters: Coll<Voter>,
@@ -290,6 +306,7 @@ async fn confirm_ballots(
     candidate_totals: Coll<CandidateTotals>,
     db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Confirmed>>>> {
+    let mut voter = voter_by_id(token.id, &voters).await?;
     // Get the election and ballots.
     let election = active_election_by_id(election_id, &elections).await?;
     let recalled_ballots =
@@ -423,6 +440,13 @@ async fn confirm_ballots(
     Ok(Json(receipts))
 }
 
+async fn voter_by_id(voter_id: Id, voters: &Coll<Voter>) -> Result<Voter> {
+    voters
+        .find_one(voter_id.as_doc(), None)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("Voter with ID {}", voter_id)))
+}
+
 /// Return an active Election from the database via ID lookup.
 /// An active election is finalised and within its start and end times.
 async fn active_election_by_id(
@@ -474,25 +498,6 @@ async fn recall_ballots(
     Ok(ballots)
 }
 
-/// A ballot that the voter wishes to cast, representing a specific candidate
-/// for a specific question.
-#[derive(Debug, Serialize, Deserialize)]
-struct BallotSpec {
-    pub question: Id,
-    pub candidate: String,
-}
-
-/// A ballot that the voter wishes to recall in order to audit or confirm.
-/// The ballot is identified by its ID and question ID, and ownership of this
-/// ballot is verified by the signature, which only the owning voter will have.
-#[derive(Debug, Serialize, Deserialize)]
-struct BallotRecall {
-    pub ballot_id: Id,
-    pub question_id: Id,
-    #[serde(with = "dre_ip::group::serde_bytestring")]
-    pub signature: Signature,
-}
-
 #[cfg(test)]
 mod tests {
     use backend_test::backend_test;
@@ -507,9 +512,11 @@ mod tests {
     };
 
     use crate::model::{
-        api::sms::Sms,
-        base::QuestionSpec,
-        db::{Audited, Confirmed, Election, NewElection, Unconfirmed},
+        api::{election::QuestionSpec, receipt::Signature, sms::Sms},
+        db::{
+            ballot::{Audited, Confirmed, Unconfirmed},
+            election::{Election, NewElection},
+        },
     };
 
     use super::*;

@@ -1,7 +1,7 @@
 use dre_ip::CandidateTotals as DreipTotals;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{base::DreipGroup, mongodb::Id};
+use crate::model::{common::election::DreipGroup, mongodb::Id};
 
 /// Core candidate totals data, linked to a specific election->question->candidate.
 #[derive(Debug, Clone, Serialize, Deserialize)]

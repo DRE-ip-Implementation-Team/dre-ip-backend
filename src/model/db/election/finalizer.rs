@@ -6,8 +6,11 @@ use rocket::http::Status;
 
 use crate::error::{Error, Result};
 use crate::model::{
-    base::ElectionState,
-    db::{Audited, Ballot, ElectionNoSecrets, Unconfirmed},
+    common::election::ElectionState,
+    db::{
+        ballot::{Audited, Ballot, Unconfirmed},
+        election::ElectionNoSecrets,
+    },
     mongodb::{Coll, Id},
 };
 use crate::scheduled_task::ScheduledTask;

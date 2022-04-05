@@ -6,12 +6,12 @@ use rocket::{
     State,
 };
 
-use crate::model::{
-    base::{ElectionMetadata, NewAdmin, NewVoter},
-    db::{
-        Admin, Ballot, BallotState, CandidateTotals, Election, FinishedBallot, NewCandidateTotals,
-        NewElection, Voter,
-    },
+use crate::model::db::{
+    admin::{Admin, NewAdmin},
+    ballot::{Ballot, BallotState, FinishedBallot},
+    candidate_totals::{CandidateTotals, NewCandidateTotals},
+    election::{Election, ElectionMetadata, NewElection},
+    voter::{NewVoter, Voter},
 };
 
 /// A type that can be directly inserted/read to/from the database.
@@ -23,13 +23,6 @@ pub trait MongoCollection {
 /// A database collection of the given type.
 pub struct Coll<T>(Collection<T>);
 
-// `Derive(Clone)` would only derive if `T: Clone`, but we don't need that bound.
-impl<T> Clone for Coll<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
 impl<T> Coll<T>
 where
     T: MongoCollection,
@@ -37,6 +30,13 @@ where
     /// Get a handle on this collection in the given database.
     pub fn from_db(db: &Database) -> Self {
         Self(db.collection(T::NAME))
+    }
+}
+
+// `Derive(Clone)` would only derive if `T: Clone`, but we don't need that bound.
+impl<T> Clone for Coll<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 

@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    base::{ElectionMetadata, ElectionState, Electorate},
-    db::{NewElection, Question},
+    common::election::{ElectionState, Electorate, Question},
+    db::election::{ElectionMetadata, NewElection},
     mongodb::Id,
 };
 

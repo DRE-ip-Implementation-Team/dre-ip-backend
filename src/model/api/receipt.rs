@@ -1,9 +1,14 @@
 use dre_ip::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{base::DreipGroup, db::ElectionWithSecrets, mongodb::Id};
-
-use crate::model::db::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot};
+use crate::model::{
+    common::election::DreipGroup,
+    db::{
+        ballot::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot},
+        election::ElectionWithSecrets,
+    },
+    mongodb::Id,
+};
 
 pub type Signature = <DreipGroup as DreipGroupTrait>::Signature;
 

@@ -7,8 +7,8 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    base::{CandidateId, DreipGroup},
-    db::Election,
+    common::election::{CandidateId, DreipGroup},
+    db::election::Election,
     mongodb::Id,
 };
 
