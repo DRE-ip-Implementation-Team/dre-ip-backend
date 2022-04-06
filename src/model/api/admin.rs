@@ -35,17 +35,24 @@ mod examples {
     use super::*;
 
     impl AdminCredentials {
-        pub fn example() -> Self {
+        pub fn example1() -> Self {
             Self {
-                username: "coordinator".into(),
-                password: "coordinator".into(),
+                username: "alice112".into(),
+                password: "dreip4lyfe".into(),
             }
         }
 
         pub fn example2() -> Self {
             Self {
-                username: "coordinator2".into(),
-                password: "coordinator2".into(),
+                username: "bobthesuperadmin".into(),
+                password: "totallysecurepassword".into(),
+            }
+        }
+
+        pub fn example3() -> Self {
+            Self {
+                username: "monsieur-foo".into(),
+                password: "foobarbaz".into(),
             }
         }
 

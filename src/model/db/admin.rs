@@ -54,15 +54,15 @@ mod examples {
     impl AdminCore {
         pub fn example() -> Self {
             Self {
-                username: "coordinator".to_string(),
-                password_hash: "$argon2i$v=19$m=4096,t=2,p=1$VzJlNzBsa0ZUeGFCNVVucA$01vYAqN0vTeqhZEzW7q9PWmrZlXtzQ/Ns7NkCNE2mA0".to_string(),
+                username: "alice112".to_string(),
+                password_hash: "$argon2i$v=19$m=4096,t=2,p=1$T1pCQllCT2hGRTR0M2N0MQ$WEW073jjInrJFZ6h2kLX6hxqBCDFGh/NNJhbhWP/Dlo".to_string(),
             }
         }
 
         pub fn example2() -> Self {
             Self {
-                username: "coordinator2".to_string(),
-                password_hash: "$argon2i$v=19$m=4096,t=3,p=1$QW1mQXRkU2h5NGpMYW52dw$/8gyud7gTZlB1ythrBFhVCWTR374g27cO9A+Ri0t/bQ".to_string(),
+                username: "bobthesuperadmin".to_string(),
+                password_hash: "$argon2i$v=19$m=4096,t=2,p=1$T1pCQllCT2hGRTR0M2N0MQ$ixygmz+0rD8rpITYQ5tZYHtBhR7UJrCSx/8MzYg8NqM".to_string(),
             }
         }
     }

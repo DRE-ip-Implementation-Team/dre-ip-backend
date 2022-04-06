@@ -1,6 +1,6 @@
 use chrono::Utc;
 use mongodb::{bson::doc, Client};
-use rocket::{http::Status, serde::json::Json, Route, State};
+use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
 
 use crate::{
     error::{Error, Result},
@@ -25,6 +25,7 @@ use crate::{
 
 pub fn routes() -> Vec<Route> {
     routes![
+        get_admins,
         create_admin,
         delete_admin,
         create_election,
@@ -33,6 +34,16 @@ pub fn routes() -> Vec<Route> {
         archive_election,
         delete_election,
     ]
+}
+
+#[get("/admins")]
+async fn get_admins(_token: AuthToken<Admin>, admins: Coll<Admin>) -> Result<Json<Vec<String>>> {
+    let admin_list: Vec<Admin> = admins.find(None, None).await?.try_collect().await?;
+    let admin_names = admin_list
+        .into_iter()
+        .map(|admin| admin.admin.username)
+        .collect();
+    Ok(Json(admin_names))
 }
 
 #[post("/admins", data = "<new_admin>", format = "json")]
@@ -313,13 +324,7 @@ mod tests {
     #[backend_test(admin)]
     async fn create_delete_admin(client: Client, db: Database) {
         // Create admin
-        let response = client
-            .post(uri!(create_admin))
-            .header(ContentType::JSON)
-            .body(serde_json::to_string(&AdminCredentials::example2()).unwrap())
-            .dispatch()
-            .await;
-        assert_eq!(Status::Ok, response.status());
+        create_admin(&client, &AdminCredentials::example2()).await;
 
         // Ensure the admin has been inserted
         let admins = Coll::<Admin>::from_db(&db);
@@ -346,7 +351,28 @@ mod tests {
         let count = admins.count_documents(None, None).await.unwrap();
         assert_eq!(count, 1);
         let admin = admins.find_one(None, None).await.unwrap().unwrap();
-        assert_eq!(admin.username, AdminCredentials::example().username);
+        assert_eq!(admin.username, AdminCredentials::example1().username);
+    }
+
+    #[backend_test(admin)]
+    async fn get_admins(client: Client) {
+        // Create some admins.
+        create_admin(&client, &AdminCredentials::example2()).await;
+        create_admin(&client, &AdminCredentials::example3()).await;
+
+        // Check that all admins are listed.
+        let response = client.get(uri!(get_admins)).dispatch().await;
+        assert_eq!(Status::Ok, response.status());
+        assert!(response.body().is_some());
+
+        let admins: Vec<String> =
+            serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
+        let expected = vec![
+            "alice112".to_string(),
+            "bobthesuperadmin".to_string(),
+            "monsieur-foo".to_string(),
+        ];
+        assert_eq!(admins, expected);
     }
 
     #[backend_test(admin)]
@@ -646,6 +672,20 @@ mod tests {
         assert_eq!(response.status(), Status::Ok);
 
         serde_json::from_str(&response.into_string().await.unwrap()).unwrap()
+    }
+
+    async fn create_admin(client: &Client, spec: &AdminCredentials) {
+        create_admin_expect_status(client, spec, Status::Ok).await
+    }
+
+    async fn create_admin_expect_status(client: &Client, spec: &AdminCredentials, status: Status) {
+        let response = client
+            .post(uri!(create_admin))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(spec).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(status, response.status());
     }
 
     async fn modify_election_with_spec(

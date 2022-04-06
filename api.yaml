@@ -116,6 +116,22 @@ paths:
         200:
           description: Logout successful, authentication token removed.
   /admins:
+    get:
+      summary: Get a list of all admin usernames.
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully returned all admins.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+                - "alice112"
+                - "bobthesuperadmin"
     post:
       summary: Create a new admin user.
       tags:
