@@ -731,7 +731,7 @@ mod tests {
 
     /// This isn't really a test, but a way of generating test data for end-to-end tests.
     #[backend_test(admin)]
-    async fn generate_test_data(db: Database) {
+    async fn generate_test_data(client: Client, db: Database) {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
@@ -767,6 +767,14 @@ mod tests {
                 let totals_json = serde_json::to_string(&total).unwrap();
                 println!("{totals_json},");
             }
+            println!("\nFull dump:");
+            let response = client
+                .get(uri!(question_dump(election.id, question.id)))
+                .dispatch()
+                .await;
+            assert_eq!(response.status(), Status::Ok);
+            let dump = response.into_string().await.unwrap();
+            println!("{}", dump);
             println!("\n\n\n");
         }
     }

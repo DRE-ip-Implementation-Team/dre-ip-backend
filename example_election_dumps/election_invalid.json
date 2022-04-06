@@ -1,0 +1,273 @@
+{
+  "election": {
+    "g1": "A2sX0fLhLEJH-Lzm5WOkQPJ3A32BLeszoPShOUXYmMKW",
+    "g2": "A9Tha7uI5EdNTwIaagCf1LuZ5VkCH7j7EF9j1lOc0zx8",
+    "public_key": "AwT3URn6NKbtwyWkChB89kQEzp15hnzee1Sb4Q1JmEJw"
+  },
+  "audited": {
+    "624ddc1ca379a596ce10986d": {
+      "votes": {
+        "Parry Hotter": {
+          "r": "2mSIPwB3yDp_221XGR0rKpiPRGFYW5RIxjgOTzZZPfA",
+          "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
+          "R": "AiKXrW2UV7b69CpafCiJeaTFlw3_0Dg8GVqyxwsugZjE",
+          "Z": "AuVAmE2AiG8ycbVcciT8R0k01tzaqi5L5vsv0KE0gsTl",
+          "pwf": {
+            "c1": "G5NgFhozwzxEvqWdOJBnZQZxePRw1bqxDdE3USBdoh0",
+            "c2": "CXguBApB-AOVivMnDAi3-mG0SG6xvOdfYAltmzvbcQE",
+            "r1": "acud349JqxKW8VKInYuIXbOp0CdTjtjMR-HibJhDodw",
+            "r2": "fQgLBwYtHJfSabHg3xazeq1D-6iUgYYX70wmxImMQx4"
+          }
+        },
+        "Chris Riches": {
+          "r": "TCcOI0q-w-He2UIRSbN4ZSGsGWTuTp54DSytWdtiQHY",
+          "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "R": "AqsOig9qQlXAVzuwAyxJ-VU2wEcJMS1BGWD3hhP54r-e",
+          "Z": "A9b-l4RPUnEv4PWdmxTWUlr4x4cO6qSkbKH6wTr8MgxS",
+          "pwf": {
+            "c1": "nlzva2dMNTQKgH0j5RFvzcqCqgcvn_m1wGT0JTRqS80",
+            "c2": "KoSFZk_v7zCzbDg1X5o4Cj0Ij7AYnQzYfqtwjgHawSY",
+            "r1": "GqG29eh5RLE2W12tGOmfUmDvzUFegwISfcKaydViS-o",
+            "r2": "C2lbSCATOjgvs7ccL6KLmfJkFU5Gaz18iXxzD0llhSg"
+          }
+        }
+      },
+      "pwf": {
+        "a": "AuHhS9kd7CEqxlqxJf2MFNgWGB_6OAKazg5PUdhhslRi",
+        "b": "Ah-wS8kFi4mdkpQKbrm_VIeP4rFngFopz-4eKGsH6kOl",
+        "r": "rnmHgRlt2Y5ZuLalv7sdufp0Ec0vZvjFV1Adq6OB-XQ"
+      },
+      "ballot_id": "624ddc1ca379a596ce10986d",
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "state": "Audited",
+      "signature": "uUz5sPMh7ZK5wMp9B7KA-Xy-oiXZQAQ1E4palWPGFk7Un0AtsY8Wbmru5DOVZeT8RRgNhvB5FzmAPNqafYn1NA"
+    },
+    "624ddc1ca379a596ce10986c": {
+      "votes": {
+        "Chris Riches": {
+          "r": "r0x05Fdg1t_wl4nPu8tc5OksTWPyXYjfx_mPi1RdSHU",
+          "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
+          "R": "Al79Si_9bBjS1YYsPxOIY3v3ezip2R_I1w3Z0zuGmmPG",
+          "Z": "A0eGyi9pfCAO9HFkNhcCehMP3irZOPUax75EUeoTmElT",
+          "pwf": {
+            "c1": "F_bRalYVwUUHrDn90hcJmr3vVE0ElEGpJSHUOVqQX_Q",
+            "c2": "_Is1BEUcfYdO_xMbfVVVAlsK-y7bqmqdzva7VAnWHBk",
+            "r1": "gsseQ2hbD3p2_y7wZDBa0WDPfUgSGUmvszUA9oV08qc",
+            "r2": "P2v2neLGtuMgW2ULW9d_1PAHHDAHov-IfvvzNR5ANkk"
+          }
+        },
+        "Parry Hotter": {
+          "r": "1J-jEjwl9W-a_LAHCWYozIGbz4CQU-miAE1VME0eGUY",
+          "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "R": "A-c-zea-Vip4T50EuK0R9Ex5QxNSMb2UCrp9D-mMi55Y",
+          "Z": "Av4l-gshFVn4WV81G9f0In2XKHEARtkwv5eE7NcAPYM-",
+          "pwf": {
+            "c1": "gfyp-1oYsQFAr_2v-YQM5ru6AUd49gq1ollvDolIjUs",
+            "c2": "rZNu6DMMv9Lnj7oQf4wISFF6C_4WPk4a5ge3F-9VwrQ",
+            "r1": "6XPh7YBr-PV13wEfIFqYIZG54BQGFmYMki28q_u5Swc",
+            "r2": "OfEqd_zwEzY1WteEwIe4Kauc1E3jvDVu7lAYUFICOFg"
+          }
+        }
+      },
+      "pwf": {
+        "a": "An3NbFR0i_lw7kT-sZcvzf-zmt-lxtnfJmwJFSHAjIti",
+        "b": "Ah-IKCTWckECP28v1xrJPVCinekNSUlnQC1V6K6tkHWS",
+        "r": "-muvxbMb2LCZZrExCGz_uezUbITkY2w2u07FhrTl0lI"
+      },
+      "ballot_id": "624ddc1ca379a596ce10986c",
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "state": "Audited",
+      "signature": "Ncn54fjElXYgbQdQM19XkIT2Xwl0mStl-JrQ_FI2a32PNORWf1FuOfydiU1G7gu5kh7XO_fXSt42Uxlk65gloQ"
+    }
+  },
+  "confirmed": {
+    "624ddc1ba379a596ce109865": {
+      "votes": {
+        "Chris Riches": {
+          "R": "A2Ec9S2mLR-bPVHQgBvrI3iyiX48tvIALkYv5rtnTiZq",
+          "Z": "Ah9GBdWU8BCPvq8RPICMCNQl8JDeoJxdK5h_cv9YYWLD",
+          "pwf": {
+            "c1": "eXp56Ykg_ZKMGwu3s-FmNltW_gDIQzCtOvi__D-w9YQ",
+            "c2": "jb_ngFIhkJipBIdcnw_NPmC7C6UZUnZ0oZTMGdJqtlE",
+            "r1": "C0041jhcpD9OFPEIDK6W51BRG8LQeNRHEx8mrJQZkmI",
+            "r2": "q7zKhYrBLxBHmE8ysZXQC-XDHXqEr8mD0ZDKyq9j2xQ"
+          }
+        },
+        "Parry Hotter": {
+          "R": "AhAswPqCGGVIYp6-j1nXwOt4F339KbwS58uhROZ0MHbL",
+          "Z": "AgtX8_-Q0V5XPRv2tKZ2KzFlb968vfmkbdaw5G38Tzwf",
+          "pwf": {
+            "c1": "PRMyDmccjWPQYXi708KIw8fFVETwkUkRBNM4f32WhAY",
+            "c2": "tc7IubGOUQnyfrgRe8E77Tk_hGoS3PG4EfzgEb0q4Z4",
+            "r1": "lbtUgBIV91lCniRUfq7FUfebO-JbH4Ur42zixIfUdsU",
+            "r2": "S8h8l3FiQ_qHGvms_L62oCoo5hbSmwVj7vaA4BoK1Eg"
+          }
+        }
+      },
+      "pwf": {
+        "a": "AziNLyXZiISBZymHjsMrrZCez0-Gt68U_C2U_1aR_rLO",
+        "b": "A0L386DDlSHe_66YUT4KpLheH0It_vpr2LBvKP0-tZXh",
+        "r": "GxQHBWZ3VLj7cXBCpQRhRF1bxV59_0AbOLpZMLtJTqA"
+      },
+      "ballot_id": "624ddc1ba379a596ce109865",
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "state": "Confirmed",
+      "signature": "bwTlOdkMMtjgdFkJ3SeLTpjU4TC_CXMJ6KU7a8Cojv8T4LCFqT5zI1w--T4tmZI8PWiPQbY43h05eHo3wP8dNw"
+    },
+    "624ddc1ca379a596ce109868": {
+      "votes": {
+        "Chris Riches": {
+          "R": "Ag_KpC6sSm1LG5Uh2QXr2yj1oukt6u7uEdACQrl9rIr-",
+          "Z": "Akzp1P8sCfn6BzmKs0sHgt8OzpvO3YDzQ1UoxC8zDMos",
+          "pwf": {
+            "c1": "q7s4fQlw3hykk7ng2kKM5OhipUQlgvGAsNYvgipviVg",
+            "c2": "85StDPyeE38Gf8uEXmnb7_fdfaDVjyyUUpnGMVkO56E",
+            "r1": "jdmP2WILeZpEynm4ZR395l4n8WbUXpdmYJMdWQmwhOU",
+            "r2": "P_s0fq9FRmniuPPYzWAD9QV0XqqhoebPtdvlW327kJw"
+          }
+        },
+        "Parry Hotter": {
+          "R": "AohsyTqhAPk2pkim8nlL2oJOuozaYbK6n7DQ3Y4fEMgj",
+          "Z": "A_9J5XtmQCcrUJc9PkO2gGvxJ2LEmbySGXUXqofLqwc4",
+          "pwf": {
+            "c1": "Fbj60IkKjC5Zzm1t3nHvdZYu_oW2ct-vcwqNix2Azwc",
+            "c2": "8WXZmJxBn_YFak93B1DHSFtkQvCVZ21XwFBQ07sXG-M",
+            "r1": "5DVDTHk4V_o-2zgg8n28BSkiH7D_wwYYIK1u4fdj4s8",
+            "r2": "uVzGuon2eD-sPQ3iGfkYUOgsgaWpuGhnqZOBvzFlOZM"
+          }
+        }
+      },
+      "pwf": {
+        "a": "Amuraw1-w5n2GJ8iplxfr8O-m8JkVi2JW0Hlph0hERwi",
+        "b": "AwgDuKUfC51QvnYC3nTQpnnpav-QOVPcSTVYfj3buNKF",
+        "r": "Nri5-uY2Qxt-ou6svXzddiiZa6faWhN29bTqsNbQJR4"
+      },
+      "ballot_id": "624ddc1ca379a596ce109868",
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "state": "Confirmed",
+      "signature": "In059s7VlpJr4mNwsKlmeEPbxDTWWYIIxdPiqzgzfypY8SkUDZ2dkbpSHWwpAfE90l05swdhiDFkSkm-LYg_Zg"
+    },
+    "624ddc1ca379a596ce109867": {
+      "votes": {
+        "Chris Riches": {
+          "R": "AxzcnrQI-fhEijHpLXqJ0lNUOSrnKrbNSoYyfX3CKlpK",
+          "Z": "A9TG_zaPl0v-EkZSaOADg5cmPuBi1nkq2voKxqCy3Rul",
+          "pwf": {
+            "c1": "S1Y8wOaxdHWr9SyM0SoW2gV6_qLW9xMVtYZz1VW8kEI",
+            "c2": "zuIwblI0_AdXSdwKlvJXqa8tCRxfNT9wzxUn91T9TsQ",
+            "r1": "0u1OhZU7nOwVNQqUz7i6sh0SOD8ARTo7joNF6n81c2s",
+            "r2": "G1PJEmXCUUFPlwYmhXPKUqkytpflrWhzud5DXwGngBo"
+          }
+        },
+        "Parry Hotter": {
+          "R": "AwQzB_muNySKYx1GLRw0lYCepuQsaVb8UCPE-Qs_55L_",
+          "Z": "A21vE7Z5K5rNGgTaUh6skIuRid36C_KmDWMrXmKCZNjx",
+          "pwf": {
+            "c1": "EquQCfI0wbwa08Yje_SfRWOBmxyk8YzRHlO1OH6t1Xg",
+            "c2": "-0UIe-G4yfzgJdHSAvVmuf9dWgveLPmBsdm7Wpq2DoA",
+            "r1": "da-wOcs_bS2wRDwFZe5gur1KBsP4Y83tWbzYm24Eh3I",
+            "r2": "xS11A_K7OfEEBX4xyvLq51P6c3ml9cS3eCZwQp2e8mk"
+          }
+        }
+      },
+      "pwf": {
+        "a": "Aws9vJlDnnz0o8WAN3rwp3MusNqOx86IbDr4rrBrO_Bk",
+        "b": "AzFjr-TmmU7c6_5NBp-zUXM6ce9GU-MBz1egI6bmfFpm",
+        "r": "C9rx4zvApveKJAD1aIULhwWUtt_Vm1mF4CYLH1DaW1g"
+      },
+      "ballot_id": "624ddc1ca379a596ce109867",
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "state": "Confirmed",
+      "signature": "1gVr2X2sKpIVzj3hzCmuq5LmMf-vUoRQAeWzdDIJWaK0D7xkmtNC96b5y6N81qcsCjGV8rBrLcFFCqUOGG6LFw"
+    },
+    "624ddc1ba379a596ce109864": {
+      "votes": {
+        "Chris Riches": {
+          "R": "AtWiUDA2aeNCK1gGbrjPICq4YmrMxmQE3qwr4xhMxqV9",
+          "Z": "Aye_c1sm_wiqHgu3JWTIUvEwqmnrRHrKNOOrIRqBsCHq",
+          "pwf": {
+            "c1": "B5YmXVQZgryZAhtz2YfMt2I2YBXBH_dxK6IiaVAAhUM",
+            "c2": "RczJJVPJwWLLh8MMarQgs3WoueoV-8hm6-GMEqF9l04",
+            "r1": "ytWHmSaSkmTjPUrlZpga3OZmBtwU1QlAD-1td4zrKW4",
+            "r2": "8xOiUVCRDK9zeItTwU6Hx0xsMSaFgXghP4FHUYzpifQ"
+          }
+        },
+        "Parry Hotter": {
+          "R": "A6yLjYsr56S3CJTWlRiA5zcWbwlo1K-0l16lhuUGFTRR",
+          "Z": "A5PKat3s1j-WFTOmp0l7MXMPLI4MuPl-X3IZuaXdR2pg",
+          "pwf": {
+            "c1": "UwCDWtryNQ-AMipv8utHYBZ9R7XQZA6mm44UgoYlPQo",
+            "c2": "VsoAEPzxyt79Ob6O3GeUem4CHXlnHKzMb6AxFwRtO20",
+            "r1": "G8BWo2B2DNxlyE5FWkyapoQVQ27C5kp0JAObztPh5j8",
+            "r2": "eZ7Yi2RhVEdpSSqleNAT1WBGK-KMHZlKP4c40PMXjfE"
+          }
+        }
+      },
+      "pwf": {
+        "a": "Ai7u-KcD-83i_b_WCJgHlg3bz3YtAxc6z1NkmUcuqmfO",
+        "b": "AgfUIOngGxRIcQVuCeVhWN94ipBvmsmJw1kDONNfFNpp",
+        "r": "Kb0BH61FLcf_jCk9yCeQ5vsGspyUwfiOgpWJek3xAls"
+      },
+      "ballot_id": "624ddc1ba379a596ce109864",
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "state": "Confirmed",
+      "signature": "1IwxLU497p2hs6Vh0Nr9x3xaHAHdW-mzu-73UCguMXNyjje8Yd-UOyWUGYVOErheA3StQl6xBuYXmFF9SILH2w"
+    },
+    "624ddc1ca379a596ce109866": {
+      "votes": {
+        "Chris Riches": {
+          "R": "A6lilLa73O4vIpjipd-uX7ZtkPrAqbxZjj39Y_zm8Wx6",
+          "Z": "AzN7NGjU7Wp-4LeS0sBRIuv49-9UaYmnj1f4jgTfR1D1",
+          "pwf": {
+            "c1": "gSEG08w879A-X3NbXqz6lA8L3Rsxt9EB6Xpj66sGQUc",
+            "c2": "REXkNa4rsMMwAvFjENlGiKzoStjm-vqtnCvlQR6Wgf8",
+            "r1": "TmmXplNHMiY_aeC3zJVeaKMg_mhhxZVvUchhhbMnLio",
+            "r2": "NISlOFYVDVeLPsn8rTq-pQRTM-sfeTLHPtZ5HZoz700"
+          }
+        },
+        "Parry Hotter": {
+          "R": "AgykgpvZ7XUMNivCAulQc-Tus_pJN2fpprPHb14CbU3o",
+          "Z": "A_89YII-9vzI9RPjh1alZwFTVuJSBGIjQCV8gstktpH-",
+          "pwf": {
+            "c1": "mmr1qFW3CrXJU6eLUeHwZVfJxkP3RofiIjbOzLxO5wU",
+            "c2": "eEAXxuE8x6ZJeE_7sBLtRXYBdNqpK_uG2ljJ020hu0o",
+            "r1": "07FmBcQsqkK6cej1kcJKdxYRTcXHTj9C37s8-3IZ6qg",
+            "r2": "0iA-hx5l_0Z7n75ezmgPEA9A7O3rhvBgksTuJ117yrA"
+          }
+        }
+      },
+      "pwf": {
+        "a": "A25zCm9t6nDEJxaOqTRragB6lP8rT-FnrB2rE0oAZUHH",
+        "b": "Auz-OGCiLF4jHREDA3oM9vMO-nYfeN0HMqdVHuPjbH-S",
+        "r": "SGVs53-hDb9hAi84_QBJL_NC7WZ90QyiBjEk7i1s3K0"
+      },
+      "ballot_id": "624ddc1ca379a596ce109866",
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "state": "Confirmed",
+      "signature": "lHL1oB16YOedSDyXP79gFIoKb2B540dgev1SRS-7HpmrloRbgIMKAqXUsop9Axii5E4zIkpErnaQs6uwZ0c_uQ"
+    }
+  },
+  "totals": {
+    "Chris Riches": {
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "candidate_name": "Chris Riches",
+      "tally": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM",
+      "r_sum": "AflYL8os34MOZl6xqDyVXrahUey0e1J5AybYRKr-jgw"
+    },
+    "Parry Hotter": {
+      "election_id": "624ddc1ba379a596ce109861",
+      "question_id": "624ddc1ba379a596ce109859",
+      "candidate_name": "Parry Hotter",
+      "tally": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM",
+      "r_sum": "CElAnsNWuFX499e352ZUe0ioLtVvu3g6_NsCvoYFtQk"
+    }
+  }
+}
