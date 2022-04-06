@@ -385,28 +385,28 @@ mod tests {
         let election = create_election_for_spec(&client, &spec).await;
 
         // Archive it.
-        archive(&client, election.id).await;
-        let archived = get_election_by_id(&db, election.id).await;
+        archive(&client, *election.id).await;
+        let archived = get_election_by_id(&db, *election.id).await;
         assert_eq!(archived.metadata.state, ElectionState::Archived);
 
         // Check we can't publish it or archive it again.
-        publish_expect_status(&client, election.id, Status::BadRequest).await;
-        archive_expect_status(&client, election.id, Status::BadRequest).await;
+        publish_expect_status(&client, *election.id, Status::BadRequest).await;
+        archive_expect_status(&client, *election.id, Status::BadRequest).await;
 
         // Create a new election.
         let election = create_election_for_spec(&client, &spec).await;
 
         // Publish it.
-        publish(&client, election.id).await;
-        let published = get_election_by_id(&db, election.id).await;
+        publish(&client, *election.id).await;
+        let published = get_election_by_id(&db, *election.id).await;
         assert_eq!(published.metadata.state, ElectionState::Published);
 
         // Check we can't publish it again.
-        publish_expect_status(&client, election.id, Status::BadRequest).await;
+        publish_expect_status(&client, *election.id, Status::BadRequest).await;
 
         // Archive it.
-        archive(&client, election.id).await;
-        let archived = get_election_by_id(&db, election.id).await;
+        archive(&client, *election.id).await;
+        let archived = get_election_by_id(&db, *election.id).await;
         assert_eq!(archived.metadata.state, ElectionState::Archived);
     }
 
@@ -427,8 +427,8 @@ mod tests {
 
         // Modify it.
         spec.name = "New Name".to_string();
-        let modified = modify_election_with_spec(&client, election.id, &spec).await;
-        assert_eq!(modified, get_election_by_id(&db, election.id).await.into());
+        let modified = modify_election_with_spec(&client, *election.id, &spec).await;
+        assert_eq!(modified, get_election_by_id(&db, *election.id).await.into());
         assert_eq!(modified.name, spec.name);
         assert_eq!(modified.state, election.state);
         assert_eq!(modified.start_time, election.start_time);
@@ -436,12 +436,12 @@ mod tests {
         assert_eq!(modified.electorates, election.electorates);
 
         // Publish it.
-        publish(&client, election.id).await;
+        publish(&client, *election.id).await;
 
         // Modify it again.
         spec.start_time = Utc::now();
-        let modified = modify_election_with_spec(&client, election.id, &spec).await;
-        assert_eq!(modified, get_election_by_id(&db, election.id).await.into());
+        let modified = modify_election_with_spec(&client, *election.id, &spec).await;
+        assert_eq!(modified, get_election_by_id(&db, *election.id).await.into());
         assert_eq!(modified.name, spec.name);
         assert_eq!(modified.state, ElectionState::Draft);
         assert!(modified.start_time - spec.start_time < Duration::seconds(1));
@@ -449,24 +449,24 @@ mod tests {
         assert_eq!(modified.electorates, election.electorates);
 
         // Re-publish.
-        publish(&client, election.id).await;
+        publish(&client, *election.id).await;
 
         // Ensure we can't modify due to the new start date.
         modify_expect_status(
             &client,
-            election.id,
+            *election.id,
             &ElectionSpec::current_example(),
             Status::BadRequest,
         )
         .await;
 
         // Archive it.
-        archive(&client, election.id).await;
+        archive(&client, *election.id).await;
 
         // Ensure we can't modify an archived election.
         modify_expect_status(
             &client,
-            election.id,
+            *election.id,
             &ElectionSpec::current_example(),
             Status::BadRequest,
         )
@@ -475,10 +475,10 @@ mod tests {
         // Ensure we can't modify an election that went straight from draft to archived
         // while still being before the start time.
         let election = create_election_for_spec(&client, &ElectionSpec::future_example()).await;
-        archive(&client, election.id).await;
+        archive(&client, *election.id).await;
         modify_expect_status(
             &client,
-            election.id,
+            *election.id,
             &ElectionSpec::current_example(),
             Status::BadRequest,
         )
@@ -495,37 +495,37 @@ mod tests {
         let election = create_election_for_spec(&client, &spec).await;
 
         // Delete it.
-        delete(&client, election.id).await;
+        delete(&client, *election.id).await;
         assert_no_matches::<ElectionNoSecrets>(&db, election.id.as_doc()).await;
 
         // Create a new election.
         let election = create_election_for_spec(&client, &spec).await;
 
         // Publish it.
-        publish(&client, election.id).await;
+        publish(&client, *election.id).await;
 
         // Check it can't be deleted.
-        delete_expect_status(&client, election.id, Status::BadRequest).await;
-        get_election_by_id(&db, election.id).await;
+        delete_expect_status(&client, *election.id, Status::BadRequest).await;
+        get_election_by_id(&db, *election.id).await;
 
         // Archive it.
-        archive(&client, election.id).await;
+        archive(&client, *election.id).await;
 
         // Delete it.
-        delete(&client, election.id).await;
+        delete(&client, *election.id).await;
         assert_no_matches::<ElectionNoSecrets>(&db, election.id.as_doc()).await;
 
         // Create an active election.
         let election = create_election_for_spec(&client, &spec).await;
-        publish(&client, election.id).await;
+        publish(&client, *election.id).await;
 
         // Cast, audit, and confirm various votes.
-        insert_ballots(&db, election.id).await;
-        let voters = insert_allowed_questions(&client, &db, election.id).await;
+        insert_ballots(&db, *election.id).await;
+        let voters = insert_allowed_questions(&client, &db, *election.id).await;
 
         // Delete it.
-        archive(&client, election.id).await;
-        delete(&client, election.id).await;
+        archive(&client, *election.id).await;
+        delete(&client, *election.id).await;
         let filter = doc! {
             "election_id": *election.id,
         };
@@ -555,19 +555,19 @@ mod tests {
         // Create an election, publish it, and add votes.
         let spec = ElectionSpec::current_example();
         let election = create_election_for_spec(&client, &spec).await;
-        publish(&client, election.id).await;
-        insert_ballots(&db, election.id).await;
+        publish(&client, *election.id).await;
+        insert_ballots(&db, *election.id).await;
 
         // Check there are unconfirmed ballots.
         let unconfirmed_filter = doc! {
-            "election_id": election.id,
+            "election_id": *election.id,
             "state": Unconfirmed,
         };
         let unconfirmed =
             count_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
         assert_ne!(unconfirmed, 0);
         let audited_filter = doc! {
-            "election_id": election.id,
+            "election_id": *election.id,
             "state": Audited,
         };
         let audited = count_matches::<Ballot<Audited>>(&db, audited_filter.clone()).await;
@@ -577,7 +577,7 @@ mod tests {
         assert!(finalizers.lock().await.0.contains_key(&election.id));
 
         // Archive the election.
-        archive(&client, election.id).await;
+        archive(&client, *election.id).await;
         // Check the unconfirmed ballots have been audited, i.e. the finalizer was triggered.
         assert_no_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
         let final_audited = count_matches::<Ballot<Audited>>(&db, audited_filter).await;
@@ -589,24 +589,24 @@ mod tests {
         // Create an election in the past and add some votes.
         let spec = ElectionSpec::past_example();
         let election = create_election_for_spec(&client, &spec).await;
-        insert_ballots(&db, election.id).await;
+        insert_ballots(&db, *election.id).await;
 
         // Check there are unconfirmed ballots.
         let unconfirmed_filter = doc! {
-            "election_id": election.id,
+            "election_id": *election.id,
             "state": Unconfirmed,
         };
         let unconfirmed =
             count_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
         assert_ne!(unconfirmed, 0);
         let audited_filter = doc! {
-            "election_id": election.id,
+            "election_id": *election.id,
             "state": Audited,
         };
         let audited = count_matches::<Ballot<Audited>>(&db, audited_filter.clone()).await;
 
         // Publish it, causing a finalizer to be scheduled that should immediately trigger.
-        publish(&client, election.id).await;
+        publish(&client, *election.id).await;
         // (hopefully not flaky) sleep to make sure the finalizers have gone through.
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 

@@ -2,12 +2,12 @@ use dre_ip::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
+    api::id::ApiId,
     common::election::DreipGroup,
     db::{
         ballot::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot},
         election::ElectionWithSecrets,
     },
-    mongodb::Id,
 };
 
 pub type Signature = <DreipGroup as DreipGroupTrait>::Signature;
@@ -19,11 +19,11 @@ pub struct Receipt<S: BallotState> {
     #[serde(flatten)]
     pub crypto: BallotCrypto<S::ExposedSecrets>,
     /// Ballot ID.
-    pub ballot_id: Id,
+    pub ballot_id: ApiId,
     /// Election ID.
-    pub election_id: Id,
+    pub election_id: ApiId,
     /// Question ID.
-    pub question_id: Id,
+    pub question_id: ApiId,
     /// The current state of the ballot.
     pub state: S,
     /// The signature.
@@ -51,9 +51,9 @@ where
         // Construct the result.
         Self {
             crypto,
-            ballot_id: ballot.id,
-            election_id: ballot.ballot.election_id,
-            question_id: ballot.ballot.question_id,
+            ballot_id: ballot.id.into(),
+            election_id: ballot.ballot.election_id.into(),
+            question_id: ballot.ballot.question_id.into(),
             state: ballot.ballot.state,
             signature,
         }

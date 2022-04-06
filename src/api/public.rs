@@ -526,7 +526,7 @@ mod tests {
         }
 
         // Try getting a specific archived election.
-        let election_id = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
+        let election_id = *serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
             .unwrap()
             .into_iter()
             .next()

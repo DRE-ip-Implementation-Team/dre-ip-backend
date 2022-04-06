@@ -10,6 +10,7 @@ pub mod auth;
 pub mod ballot;
 pub mod candidate_totals;
 pub mod election;
+pub mod id;
 pub mod otp;
 pub mod pagination;
 pub mod receipt;
