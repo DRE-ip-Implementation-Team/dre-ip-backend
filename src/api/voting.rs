@@ -1003,7 +1003,7 @@ mod tests {
 
         // Audit the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1106,7 +1106,7 @@ mod tests {
 
         // Confirm the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1377,7 +1377,7 @@ mod tests {
 
         // Try to confirm the wrong question ID.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id: Id::new(),
             signature: first_receipt.signature,
         }];
@@ -1393,7 +1393,7 @@ mod tests {
         let mut signature = first_receipt.signature.to_bytes();
         signature[0] = signature[0].wrapping_add(1);
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: Signature::from_bytes(&signature).unwrap(),
         }];
@@ -1407,7 +1407,7 @@ mod tests {
 
         // Correctly confirm.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1468,7 +1468,7 @@ mod tests {
         // Confirm a vote.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: receipt.ballot_id,
+            ballot_id: *receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];
@@ -1483,7 +1483,7 @@ mod tests {
         // Cast an identical vote, and audit it.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: receipt.ballot_id,
+            ballot_id: *receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];
@@ -1498,7 +1498,7 @@ mod tests {
         // Ensure we can't confirm a second vote though.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: receipt.ballot_id,
+            ballot_id: *receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];

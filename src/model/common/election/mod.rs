@@ -1,9 +1,7 @@
 mod electorate;
-mod question;
 mod state;
 
 pub use electorate::Electorate;
-pub use question::Question;
 pub use state::ElectionState;
 
 /// We implement our DRE-ip over the P-256 elliptic curve.

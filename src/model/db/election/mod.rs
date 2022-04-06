@@ -7,6 +7,7 @@ mod db;
 mod finalizer;
 mod metadata;
 
+pub use base::Question;
 pub use db::Election;
 pub use finalizer::ElectionFinalizers;
 pub use metadata::ElectionMetadata;
