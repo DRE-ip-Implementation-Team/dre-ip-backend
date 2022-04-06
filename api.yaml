@@ -134,6 +134,9 @@ paths:
                 - "bobthesuperadmin"
     post:
       summary: Create a new admin user.
+      description:
+        The username must be non-empty, and the password must be at least 8
+        characters long.
       tags:
         - Administration Endpoints
       requestBody:
@@ -146,6 +149,8 @@ paths:
       responses:
         200:
           description: Successfully created.
+        400:
+          description: Illegal credentials.
     delete:
       summary: Delete an admin user.
       tags:

@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::db::admin::NewAdmin;
 
+pub const MIN_PASSWORD_LENGTH: usize = 8;
+
 /// Raw admin credentials, received from a user. These are never stored directly,
 /// since the password is in plaintext.
 #[derive(Clone, Deserialize, Serialize)]
@@ -12,9 +14,17 @@ pub struct AdminCredentials {
     pub password: String,
 }
 
-impl From<AdminCredentials> for NewAdmin {
+impl TryFrom<AdminCredentials> for NewAdmin {
+    type Error = ();
+
     /// Convert [`AdminCredentials`] to a new [`Admin`] by hashing the password.
-    fn from(cred: AdminCredentials) -> Self {
+    /// This enforces that the username is non-empty, and the password meets minimum length.
+    fn try_from(cred: AdminCredentials) -> Result<Self, Self::Error> {
+        // Check credentials are acceptable.
+        if cred.username.is_empty() || cred.password.len() < MIN_PASSWORD_LENGTH {
+            return Err(());
+        }
+
         // 16 bytes is recommended for password hashing:
         //  https://en.wikipedia.org/wiki/Argon2
         // Also useful:
@@ -23,10 +33,10 @@ impl From<AdminCredentials> for NewAdmin {
         rand::thread_rng().fill(&mut salt);
         let password_hash =
             argon2::hash_encoded(cred.password.as_bytes(), &salt, &Config::default()).unwrap(); // Safe because the default `Config` is valid.
-        Self {
+        Ok(Self {
             username: cred.username,
             password_hash,
-        }
+        })
     }
 }
 

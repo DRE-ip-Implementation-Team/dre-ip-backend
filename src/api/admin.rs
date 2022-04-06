@@ -52,8 +52,23 @@ async fn create_admin(
     new_admin: Json<AdminCredentials>,
     admins: Coll<NewAdmin>,
 ) -> Result<()> {
-    // Username uniqueness is enforced by the unique index on the username field.
-    let admin: NewAdmin = new_admin.0.into();
+    // Check username uniqueness.
+    let filter = doc! {
+        "username": &new_admin.username,
+    };
+    let existing = admins.find_one(filter, None).await?;
+    if existing.is_some() {
+        return Err(Error::Status(
+            Status::BadRequest,
+            format!("Admin username already in use: {}", new_admin.username),
+        ));
+    }
+
+    // Create and insert the admin.
+    let admin: NewAdmin = new_admin
+        .0
+        .try_into()
+        .map_err(|_| Error::Status(Status::BadRequest, "Illegal admin credentials".to_string()))?;
     admins.insert_one(admin, None).await?;
     Ok(())
 }
@@ -352,6 +367,34 @@ mod tests {
         assert_eq!(count, 1);
         let admin = admins.find_one(None, None).await.unwrap().unwrap();
         assert_eq!(admin.username, AdminCredentials::example1().username);
+    }
+
+    #[backend_test(admin)]
+    async fn bad_create_admin(client: Client, db: Database) {
+        // Try empty username.
+        let credentials = AdminCredentials {
+            username: "".to_string(),
+            password: "foo".to_string(),
+        };
+        create_admin_expect_status(&client, &credentials, Status::BadRequest).await;
+
+        // Try empty password.
+        let credentials = AdminCredentials {
+            username: "foo".to_string(),
+            password: "".to_string(),
+        };
+        create_admin_expect_status(&client, &credentials, Status::BadRequest).await;
+
+        // Try empty both.
+        create_admin_expect_status(&client, &AdminCredentials::empty(), Status::BadRequest).await;
+
+        // Try duplicate username.
+        create_admin_expect_status(&client, &AdminCredentials::example1(), Status::BadRequest)
+            .await;
+
+        // Ensure no admins were created.
+        let num_admins = count_matches::<Admin>(&db, doc! {}).await;
+        assert_eq!(num_admins, 1);
     }
 
     #[backend_test(admin)]
