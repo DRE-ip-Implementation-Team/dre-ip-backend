@@ -9,7 +9,7 @@ use crate::model::{
     common::election::ElectionState,
     db::{
         ballot::{Audited, Ballot, Unconfirmed},
-        election::ElectionNoSecrets,
+        election::Election,
     },
     mongodb::{Coll, Id},
 };
@@ -30,7 +30,7 @@ impl ElectionFinalizers {
         let filter = doc! {
             "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
         };
-        let all_elections: Vec<_> = Coll::<ElectionNoSecrets>::from_db(db)
+        let all_elections: Vec<_> = Coll::<Election>::from_db(db)
             .find(filter, None)
             .await?
             .try_collect()
@@ -50,7 +50,7 @@ impl ElectionFinalizers {
         &mut self,
         unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
         audited_ballots: Coll<Ballot<Audited>>,
-        election: &ElectionNoSecrets,
+        election: &Election,
     ) {
         let finalizer = Self::finalizer(election.id, unconfirmed_ballots, audited_ballots);
         // Schedule the finalizer and keep track of it.

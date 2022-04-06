@@ -15,7 +15,7 @@ use crate::{
             admin::{Admin, NewAdmin},
             ballot::{Audited, Ballot, FinishedBallot, Unconfirmed},
             candidate_totals::CandidateTotals,
-            election::{ElectionNoSecrets, NewElection},
+            election::{Election, NewElection},
             voter::Voter,
         },
         mongodb::{Coll, Id},
@@ -78,7 +78,7 @@ async fn create_election(
     _token: AuthToken<Admin>,
     spec: Json<ElectionSpec>,
     new_elections: Coll<NewElection>,
-    elections: Coll<ElectionNoSecrets>,
+    elections: Coll<Election>,
 ) -> Result<Json<ElectionDescription>> {
     let election: NewElection = spec.0.into();
     let new_id: Id = new_elections
@@ -98,7 +98,7 @@ async fn modify_election(
     election_id: Id,
     spec: Json<ElectionSpec>,
     new_elections: Coll<NewElection>,
-    elections: Coll<ElectionNoSecrets>,
+    elections: Coll<Election>,
 ) -> Result<Json<ElectionDescription>> {
     // Get the existing election.
     let election = elections
@@ -136,7 +136,7 @@ async fn modify_election(
 async fn publish_election(
     _token: AuthToken<Admin>,
     election_id: Id,
-    elections: Coll<ElectionNoSecrets>,
+    elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     audited_ballots: Coll<Ballot<Audited>>,
     election_finalizers: &State<ElectionFinalizers>,
@@ -180,7 +180,7 @@ async fn publish_election(
 async fn archive_election(
     _token: AuthToken<Admin>,
     election_id: Id,
-    elections: Coll<ElectionNoSecrets>,
+    elections: Coll<Election>,
     election_finalizers: &State<ElectionFinalizers>,
 ) -> Result<()> {
     // Update the state.
@@ -218,7 +218,7 @@ async fn archive_election(
 async fn delete_election(
     _token: AuthToken<Admin>,
     election_id: Id,
-    elections: Coll<ElectionNoSecrets>,
+    elections: Coll<Election>,
     ballots: Coll<FinishedBallot>,
     totals: Coll<CandidateTotals>,
     voters: Coll<Voter>,
@@ -496,7 +496,7 @@ mod tests {
 
         // Delete it.
         delete(&client, *election.id).await;
-        assert_no_matches::<ElectionNoSecrets>(&db, election.id.as_doc()).await;
+        assert_no_matches::<Election>(&db, election.id.as_doc()).await;
 
         // Create a new election.
         let election = create_election_for_spec(&client, &spec).await;
@@ -513,7 +513,7 @@ mod tests {
 
         // Delete it.
         delete(&client, *election.id).await;
-        assert_no_matches::<ElectionNoSecrets>(&db, election.id.as_doc()).await;
+        assert_no_matches::<Election>(&db, election.id.as_doc()).await;
 
         // Create an active election.
         let election = create_election_for_spec(&client, &spec).await;
@@ -529,7 +529,7 @@ mod tests {
         let filter = doc! {
             "election_id": *election.id,
         };
-        assert_no_matches::<ElectionNoSecrets>(&db, election.id.as_doc()).await;
+        assert_no_matches::<Election>(&db, election.id.as_doc()).await;
         // Since the filter doesn't specify a state, using the FinishedBallot
         // collection here actually includes unconfirmed ballots as well.
         assert_no_matches::<FinishedBallot>(&db, filter.clone()).await;
@@ -616,8 +616,8 @@ mod tests {
         assert_eq!(final_audited, audited + unconfirmed);
     }
 
-    async fn get_election_by_id(db: &Database, id: Id) -> ElectionNoSecrets {
-        Coll::<ElectionNoSecrets>::from_db(db)
+    async fn get_election_by_id(db: &Database, id: Id) -> Election {
+        Coll::<Election>::from_db(db)
             .find_one(id.as_doc(), None)
             .await
             .unwrap()

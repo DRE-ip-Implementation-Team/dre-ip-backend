@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
 use chrono::Utc;
-use dre_ip::CandidateTotals;
+use dre_ip::{Ballot as DreipBallot, CandidateTotals};
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -27,20 +27,24 @@ pub struct Ballot<S: BallotState> {
 
 impl Ballot<Unconfirmed> {
     /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
-    pub fn new<S>(
+    pub fn new(
         question_id: Id,
         yes_candidate: CandidateId,
         no_candidates: impl IntoIterator<Item = CandidateId>,
-        election: &Election<S>,
+        election: &Election,
         rng: impl RngCore + CryptoRng,
     ) -> Option<Self> {
         let id = Id::new();
         let election_id = election.id;
         let creation_time = Utc::now();
-        let crypto =
-            election
-                .crypto
-                .create_ballot(rng, id.to_bytes(), yes_candidate, no_candidates)?;
+        let crypto = DreipBallot::new(
+            rng,
+            election.crypto.g1,
+            election.crypto.g2,
+            id.to_bytes(),
+            yes_candidate,
+            no_candidates,
+        )?;
         let ballot = BallotCore {
             election_id,
             question_id,
