@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
-use dre_ip::{Election as DreipElection, NoSecrets, PrivateKey};
+use dre_ip::Election as DreipElection;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -14,8 +14,7 @@ use super::metadata::ElectionMetadata;
 
 /// Core election data, as stored in the database.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound(serialize = "S: Serialize", deserialize = "for<'a> S: Deserialize<'a>"))]
-pub struct ElectionCore<S> {
+pub struct ElectionCore {
     /// Top-level metadata.
     #[serde(flatten)]
     pub metadata: ElectionMetadata,
@@ -25,10 +24,10 @@ pub struct ElectionCore<S> {
     #[serde(with = "serde_string_map")]
     pub questions: HashMap<QuestionId, Question>,
     /// Election cryptographic configuration.
-    pub crypto: DreipElection<DreipGroup, S>,
+    pub crypto: DreipElection<DreipGroup>,
 }
 
-impl ElectionCore<PrivateKey<DreipGroup>> {
+impl ElectionCore {
     /// Create a new election.
     pub fn new(
         name: String,
@@ -61,18 +60,6 @@ impl ElectionCore<PrivateKey<DreipGroup>> {
     }
 }
 
-impl<S> ElectionCore<S> {
-    /// Erase the secrets from this election.
-    pub fn erase_secrets(self) -> ElectionCore<NoSecrets> {
-        ElectionCore {
-            metadata: self.metadata,
-            electorates: self.electorates,
-            questions: self.questions,
-            crypto: self.crypto.erase_secrets(),
-        }
-    }
-}
-
 /// A single question.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Question {
@@ -94,7 +81,7 @@ mod tests {
 
     use super::*;
 
-    impl ElectionCore<PrivateKey<DreipGroup>> {
+    impl ElectionCore {
         pub fn draft_example() -> Self {
             ElectionSpec::future_example().into()
         }

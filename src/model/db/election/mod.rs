@@ -1,7 +1,3 @@
-use dre_ip::{NoSecrets, PrivateKey};
-
-use crate::model::common::election::DreipGroup;
-
 mod base;
 mod db;
 mod finalizer;
@@ -12,12 +8,5 @@ pub use db::Election;
 pub use finalizer::ElectionFinalizers;
 pub use metadata::ElectionMetadata;
 
-/// Convenience wrapper. This should NEVER appear in an endpoint return type, or otherwise
-/// be exposed to the outside world.
-pub type ElectionWithSecrets = db::Election<PrivateKey<DreipGroup>>;
-
-/// Convenience wrapper. Safe to expose to the outside world.
-pub type ElectionNoSecrets = db::Election<NoSecrets>;
-
 /// An [`crate::model::db::Election`] without an ID.
-pub type NewElection = base::ElectionCore<PrivateKey<DreipGroup>>;
+pub type NewElection = base::ElectionCore;

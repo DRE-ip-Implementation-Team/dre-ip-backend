@@ -6,7 +6,7 @@ use crate::model::{
     common::election::DreipGroup,
     db::{
         ballot::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot},
-        election::ElectionWithSecrets,
+        election::Election,
     },
 };
 
@@ -36,7 +36,7 @@ where
     for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
 {
     /// Construct a receipt from the given ballot.
-    pub fn from_ballot(ballot: Ballot<S>, election: &ElectionWithSecrets) -> Self {
+    pub fn from_ballot(ballot: Ballot<S>, election: &Election) -> Self {
         // Convert the ballot from internal to receipt representation.
         let crypto = S::internal_to_receipt(ballot.ballot.crypto);
 
@@ -71,7 +71,7 @@ pub enum FinishedReceipt {
 }
 
 impl FinishedReceipt {
-    pub fn from_finished_ballot(ballot: FinishedBallot, election: &ElectionWithSecrets) -> Self {
+    pub fn from_finished_ballot(ballot: FinishedBallot, election: &Election) -> Self {
         match ballot {
             FinishedBallot::Audited(ballot) => {
                 FinishedReceipt::Audited(Receipt::from_ballot(ballot, election))

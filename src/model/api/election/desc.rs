@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
-use dre_ip::Serializable;
+use dre_ip::DreipGroup as DreipGroupTrait;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
     api::id::ApiId,
-    common::election::{ElectionState, Electorate},
+    common::election::{DreipGroup, ElectionState, Electorate},
     db::election::{Election, Question},
 };
 
@@ -34,15 +34,18 @@ pub struct ElectionDescription {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ElectionCrypto {
     /// First generator.
-    pub g1: String,
+    #[serde(with = "dre_ip::group::serde_bytestring")]
+    pub g1: <DreipGroup as DreipGroupTrait>::Point,
     /// Second generator.
-    pub g2: String,
+    #[serde(with = "dre_ip::group::serde_bytestring")]
+    pub g2: <DreipGroup as DreipGroupTrait>::Point,
     /// Verification key.
-    pub public_key: String,
+    #[serde(with = "dre_ip::group::serde_bytestring")]
+    pub public_key: <DreipGroup as DreipGroupTrait>::PublicKey,
 }
 
-impl<S> From<Election<S>> for ElectionDescription {
-    fn from(election: Election<S>) -> Self {
+impl From<Election> for ElectionDescription {
+    fn from(election: Election) -> Self {
         let questions = election
             .election
             .questions
@@ -59,9 +62,9 @@ impl<S> From<Election<S>> for ElectionDescription {
             electorates: election.election.electorates,
             questions,
             crypto: ElectionCrypto {
-                g1: election.election.crypto.g1.to_bytestring(),
-                g2: election.election.crypto.g2.to_bytestring(),
-                public_key: election.election.crypto.public_key.to_bytestring(),
+                g1: election.election.crypto.g1,
+                g2: election.election.crypto.g2,
+                public_key: election.election.crypto.public_key,
             },
         }
     }
@@ -82,8 +85,8 @@ pub struct ElectionSummary {
     pub end_time: DateTime<Utc>,
 }
 
-impl<S> From<Election<S>> for ElectionSummary {
-    fn from(election: Election<S>) -> Self {
+impl From<Election> for ElectionSummary {
+    fn from(election: Election) -> Self {
         Self {
             id: election.id.into(),
             name: election.election.metadata.name,
