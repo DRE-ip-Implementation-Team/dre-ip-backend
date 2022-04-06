@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use dre_ip::{
-    CandidateTotals, DreipPublicKey, VerificationError as InternalError,
-};
+use dre_ip::{CandidateTotals, DreipPublicKey, VerificationError as InternalError};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -96,12 +94,7 @@ impl ElectionResults {
                 )
             })
             .collect::<HashMap<_, _>>();
-        dre_ip::verify_election(
-            self.election.g1,
-            self.election.g2,
-            &confirmed,
-            &totals,
-        )?;
+        dre_ip::verify_election(self.election.g1, self.election.g2, &confirmed, &totals)?;
 
         // Verify the signatures of confirmed receipts.
         for receipt in self.confirmed.values() {
@@ -110,11 +103,7 @@ impl ElectionResults {
             msg.extend(receipt.election_id.to_bytes());
             msg.extend(receipt.question_id.to_bytes());
             msg.extend(receipt.state.as_ref());
-            if !self
-                .election
-                .public_key
-                .verify(&msg, &receipt.signature)
-            {
+            if !self.election.public_key.verify(&msg, &receipt.signature) {
                 return Err(VerificationError::Receipt {
                     ballot_id: receipt.ballot_id,
                 });
@@ -137,11 +126,7 @@ impl ElectionResults {
             msg.extend(receipt.election_id.to_bytes());
             msg.extend(receipt.question_id.to_bytes());
             msg.extend(receipt.state.as_ref());
-            if !self
-                .election
-                .public_key
-                .verify(&msg, &receipt.signature)
-            {
+            if !self.election.public_key.verify(&msg, &receipt.signature) {
                 return Err(VerificationError::Receipt {
                     ballot_id: receipt.ballot_id,
                 });

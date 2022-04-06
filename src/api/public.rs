@@ -722,10 +722,7 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
         let results: ElectionResults = serde_json::from_str(&raw_response).unwrap();
-        assert_eq!(
-            results.election,
-            ElectionDescription::from(election).crypto
-        );
+        assert_eq!(results.election, ElectionDescription::from(election).crypto);
         assert!(results.verify().is_ok());
     }
 

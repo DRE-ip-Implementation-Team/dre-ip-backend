@@ -9,7 +9,9 @@ use std::path::Path;
 use clap::Parser;
 use rocket::serde::json::serde_json;
 
-use dreip_backend::model::api::election::{BallotError, ElectionResults, VerificationError, VoteError};
+use dreip_backend::model::api::election::{
+    BallotError, ElectionResults, VerificationError, VoteError,
+};
 
 /// Shown in the help message.
 const ABOUT_TEXT: &str = "Verify the integrity of a DRE-ip election using the P256 elliptic curve.
@@ -67,9 +69,9 @@ fn run(args: &Args) -> u8 {
             let msg = match err {
                 VerificationError::Ballot(err) => match err {
                     BallotError::Vote(VoteError {
-                                          ballot_id,
-                                          candidate_id,
-                                      }) => {
+                        ballot_id,
+                        candidate_id,
+                    }) => {
                         format!(
                             "Ballot {} has an invalid vote for candidate {}.",
                             ballot_id, candidate_id
@@ -90,7 +92,10 @@ fn run(args: &Args) -> u8 {
                     not match those found in the ballots.",
                 ),
                 VerificationError::Receipt { ballot_id } => {
-                    format!("The receipt for ballot {} has an invalid signature.", ballot_id)
+                    format!(
+                        "The receipt for ballot {} has an invalid signature.",
+                        ballot_id
+                    )
                 }
             };
             println!("Election failed to verify: {}", msg);
@@ -126,11 +131,17 @@ mod tests {
         let args: Args = Args::try_parse_from(cli).unwrap();
         assert_eq!(run(&args), 0);
 
-        let cli = ["verify-election", "example_election_dumps/election_invalid.json"];
+        let cli = [
+            "verify-election",
+            "example_election_dumps/election_invalid.json",
+        ];
         let args: Args = Args::try_parse_from(cli).unwrap();
         assert_eq!(run(&args), 255);
 
-        let cli = ["verify-election", "example_election_dumps/election_malformed.json"];
+        let cli = [
+            "verify-election",
+            "example_election_dumps/election_malformed.json",
+        ];
         let args: Args = Args::try_parse_from(cli).unwrap();
         assert_eq!(run(&args), 1);
 
