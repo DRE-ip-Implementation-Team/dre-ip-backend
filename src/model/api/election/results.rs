@@ -63,13 +63,13 @@ impl From<InternalError<BallotId, CandidateId>> for VerificationError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ElectionResults {
     /// Election cryptographic data needed for verification.
-    pub election_crypto: ElectionCrypto,
+    pub election: ElectionCrypto,
     /// All audited receipts.
-    pub audited_receipts: Vec<Receipt<Audited>>,
+    pub audited: HashMap<ApiId, Receipt<Audited>>,
     /// All confirmed receipts.
-    pub confirmed_receipts: Vec<Receipt<Confirmed>>,
+    pub confirmed: HashMap<ApiId, Receipt<Confirmed>>,
     /// Claimed candidate totals.
-    pub candidate_totals: HashMap<CandidateId, CandidateTotalsDesc>,
+    pub totals: HashMap<CandidateId, CandidateTotalsDesc>,
 }
 
 impl ElectionResults {
@@ -77,12 +77,12 @@ impl ElectionResults {
     pub fn verify(&self) -> Result<(), VerificationError> {
         // Verify the confirmed ballots and candidate totals.
         let confirmed = self
-            .confirmed_receipts
+            .confirmed
             .iter()
-            .map(|r| (r.ballot_id.to_bytes(), r.crypto.clone()))
+            .map(|(id, r)| (id.to_bytes(), r.crypto.clone()))
             .collect::<HashMap<_, _>>();
         let totals = self
-            .candidate_totals
+            .totals
             .iter()
             .map(|(id, tot)| {
                 (
@@ -95,21 +95,21 @@ impl ElectionResults {
             })
             .collect::<HashMap<_, _>>();
         dre_ip::verify_election(
-            self.election_crypto.g1,
-            self.election_crypto.g2,
+            self.election.g1,
+            self.election.g2,
             &confirmed,
             &totals,
         )?;
 
         // Verify the signatures of confirmed receipts.
-        for receipt in self.confirmed_receipts.iter() {
+        for receipt in self.confirmed.values() {
             let mut msg = receipt.crypto.to_bytes();
             msg.extend(receipt.ballot_id.to_bytes());
             msg.extend(receipt.election_id.to_bytes());
             msg.extend(receipt.question_id.to_bytes());
             msg.extend(receipt.state.as_ref());
             if !self
-                .election_crypto
+                .election
                 .public_key
                 .verify(&msg, &receipt.signature)
             {
@@ -120,12 +120,12 @@ impl ElectionResults {
         }
 
         // Verify all the audited receipts.
-        for receipt in self.audited_receipts.iter() {
+        for receipt in self.audited.values() {
             receipt
                 .crypto
                 .verify(
-                    self.election_crypto.g1,
-                    self.election_crypto.g2,
+                    self.election.g1,
+                    self.election.g2,
                     receipt.ballot_id.to_bytes(),
                 )
                 .map_err(InternalError::Ballot)?;
@@ -136,7 +136,7 @@ impl ElectionResults {
             msg.extend(receipt.question_id.to_bytes());
             msg.extend(receipt.state.as_ref());
             if !self
-                .election_crypto
+                .election
                 .public_key
                 .verify(&msg, &receipt.signature)
             {
