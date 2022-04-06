@@ -199,8 +199,8 @@ async fn question_dump(
     // Ensure we read a consistent snapshot of the election data.
     let election;
     let mut candidate_totals = HashMap::new();
-    let mut audited_receipts = Vec::new();
-    let mut confirmed_receipts = Vec::new();
+    let mut audited_receipts = HashMap::new();
+    let mut confirmed_receipts = HashMap::new();
     {
         let session_options = SessionOptions::builder().snapshot(true).build();
         let mut session = db_client.start_session(Some(session_options)).await?;
@@ -237,20 +237,20 @@ async fn question_dump(
         while let Some(ballot) = election_ballots.next(&mut session).await {
             match ballot? {
                 FinishedBallot::Audited(b) => {
-                    audited_receipts.push(Receipt::from_ballot(b, &election));
+                    audited_receipts.insert(b.id.into(), Receipt::from_ballot(b, &election));
                 }
                 FinishedBallot::Confirmed(b) => {
-                    confirmed_receipts.push(Receipt::from_ballot(b, &election));
+                    confirmed_receipts.insert(b.id.into(), Receipt::from_ballot(b, &election));
                 }
             }
         }
     }
 
     let dump = ElectionResults {
-        election_crypto: ElectionDescription::from(election).crypto,
-        audited_receipts,
-        confirmed_receipts,
-        candidate_totals,
+        election: ElectionDescription::from(election).crypto,
+        audited: audited_receipts,
+        confirmed: confirmed_receipts,
+        totals: candidate_totals,
     };
 
     Ok(Json(dump))
@@ -723,7 +723,7 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
         let results: ElectionResults = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(
-            results.election_crypto,
+            results.election,
             ElectionDescription::from(election).crypto
         );
         assert!(results.verify().is_ok());

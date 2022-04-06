@@ -1173,16 +1173,17 @@ mod tests {
                 assert_eq!(total.crypto.tally, DreipScalar::zero());
             }
         }
-        let ballots = vec![second_receipt];
+        let mut ballots = HashMap::new();
+        ballots.insert(second_receipt.ballot_id, second_receipt);
         let mut totals = HashMap::new();
         for total in candidate_totals {
             totals.insert(total.candidate_name.clone(), total.into());
         }
         let results = ElectionResults {
-            election_crypto: ElectionDescription::from(election).crypto,
-            audited_receipts: Vec::new(),
-            confirmed_receipts: ballots,
-            candidate_totals: totals,
+            election: ElectionDescription::from(election).crypto,
+            audited: HashMap::new(),
+            confirmed: ballots,
+            totals,
         };
 
         assert!(results.verify().is_ok());
