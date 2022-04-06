@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use dre_ip::{
-    BallotError, CandidateTotals, DreipPublicKey, VerificationError as InternalError, VoteError,
+    CandidateTotals, DreipPublicKey, VerificationError as InternalError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,8 +15,10 @@ use crate::model::{
     mongodb::Id,
 };
 
+pub use dre_ip::{BallotError, VoteError};
+
 /// `Id` itself can't implement `AsRef<[u8]>`, so we convert to `Vec<u8>` first.
-type BallotId = Vec<u8>;
+pub type EffectiveBallotId = Vec<u8>;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum VerificationError {
@@ -31,8 +33,8 @@ pub enum VerificationError {
     WrongCandidates,
 }
 
-impl From<InternalError<BallotId, CandidateId>> for VerificationError {
-    fn from(err: InternalError<BallotId, CandidateId>) -> Self {
+impl From<InternalError<EffectiveBallotId, CandidateId>> for VerificationError {
+    fn from(err: InternalError<EffectiveBallotId, CandidateId>) -> Self {
         match err {
             InternalError::Ballot(ballot_err) => {
                 VerificationError::Ballot(match ballot_err {
