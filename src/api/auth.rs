@@ -162,7 +162,7 @@ mod tests {
         let response = client
             .post(uri!(authenticate))
             .header(ContentType::JSON)
-            .body(json!(AdminCredentials::example()).to_string())
+            .body(json!(AdminCredentials::example1()).to_string())
             .dispatch()
             .await;
 

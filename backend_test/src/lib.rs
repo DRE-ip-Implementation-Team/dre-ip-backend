@@ -41,7 +41,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                     rocket_client
                         .post(uri!(crate::api::auth::authenticate))
                         .header(rocket::http::ContentType::JSON)
-                        .body(rocket::serde::json::json!(crate::model::api::admin::AdminCredentials::example()).to_string())
+                        .body(rocket::serde::json::json!(crate::model::api::admin::AdminCredentials::example1()).to_string())
                         .dispatch()
                         .await;
                 })
