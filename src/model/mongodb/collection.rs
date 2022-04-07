@@ -6,12 +6,12 @@ use rocket::{
     State,
 };
 
-use crate::model::{
-    base::{ElectionMetadata, NewAdmin, NewVoter},
-    db::{
-        Admin, Ballot, BallotState, CandidateTotals, Election, FinishedBallot, NewCandidateTotals,
-        NewElection, Voter,
-    },
+use crate::model::db::{
+    admin::{Admin, NewAdmin},
+    ballot::{Ballot, BallotState, FinishedBallot},
+    candidate_totals::{CandidateTotals, NewCandidateTotals},
+    election::{Election, ElectionMetadata, NewElection},
+    voter::{NewVoter, Voter},
 };
 
 /// A type that can be directly inserted/read to/from the database.
@@ -30,6 +30,13 @@ where
     /// Get a handle on this collection in the given database.
     pub fn from_db(db: &Database) -> Self {
         Self(db.collection(T::NAME))
+    }
+}
+
+// `Derive(Clone)` would only derive if `T: Clone`, but we don't need that bound.
+impl<T> Clone for Coll<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 
@@ -77,7 +84,7 @@ impl MongoCollection for NewVoter {
 
 // Election collections
 const ELECTIONS: &str = "elections";
-impl<S> MongoCollection for Election<S> {
+impl MongoCollection for Election {
     const NAME: &'static str = ELECTIONS;
 }
 impl MongoCollection for ElectionMetadata {

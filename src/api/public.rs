@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use dre_ip::ElectionResults;
 use mongodb::{
     bson::doc,
     options::{FindOptions, SessionOptions},
@@ -11,22 +10,24 @@ use rocket::{
     serde::json::Json,
     Route, State,
 };
-use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::{Error, Result},
-    model::{
-        api::{
-            auth::AuthToken,
-            pagination::{Paginated, PaginationRequest},
-        },
-        base::{CandidateId, DreipGroup, ElectionMetadata, ElectionState},
-        db::{
-            Admin, Audited, CandidateTotals, Confirmed, ElectionNoSecrets, ElectionWithSecrets,
-            FinishedBallot, FinishedReceipt,
-        },
-        mongodb::{Coll, Id},
+use crate::error::{Error, Result};
+use crate::model::{
+    api::{
+        auth::AuthToken,
+        candidate_totals::CandidateTotalsDesc,
+        election::{ElectionDescription, ElectionResults, ElectionSummary},
+        pagination::{Paginated, PaginationRequest},
+        receipt::{FinishedReceipt, Receipt},
     },
+    common::election::{CandidateId, ElectionState},
+    db::{
+        admin::Admin,
+        ballot::{Audited, Confirmed, FinishedBallot},
+        candidate_totals::CandidateTotals,
+        election::Election,
+    },
+    mongodb::{Coll, Id},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -46,8 +47,8 @@ pub fn routes() -> Vec<Route> {
 async fn elections_admin(
     _token: AuthToken<Admin>,
     archived: Option<bool>,
-    elections: Coll<ElectionNoSecrets>,
-) -> Result<Json<Vec<MetadataWithId>>> {
+    elections: Coll<Election>,
+) -> Result<Json<Vec<ElectionSummary>>> {
     let archived = archived.unwrap_or(false);
     metadata_for_elections(elections, true, archived).await
 }
@@ -55,8 +56,8 @@ async fn elections_admin(
 #[get("/elections?<archived>", rank = 2)]
 async fn elections_non_admin(
     archived: Option<bool>,
-    elections: Coll<ElectionNoSecrets>,
-) -> Result<Json<Vec<MetadataWithId>>> {
+    elections: Coll<Election>,
+) -> Result<Json<Vec<ElectionSummary>>> {
     let archived = archived.unwrap_or(false);
     metadata_for_elections(elections, false, archived).await
 }
@@ -65,20 +66,20 @@ async fn elections_non_admin(
 async fn election_admin(
     _token: AuthToken<Admin>,
     election_id: Id,
-    elections: Coll<ElectionNoSecrets>,
-) -> Result<Json<ElectionNoSecrets>> {
+    elections: Coll<Election>,
+) -> Result<Json<ElectionDescription>> {
     let election = elections
         .find_one(election_id.as_doc(), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
-    Ok(Json(election))
+    Ok(Json(election.into()))
 }
 
 #[get("/elections/<election_id>", rank = 2)]
 async fn election_non_admin(
     election_id: Id,
-    elections: Coll<ElectionNoSecrets>,
-) -> Result<Json<ElectionNoSecrets>> {
+    elections: Coll<Election>,
+) -> Result<Json<ElectionDescription>> {
     let filter = doc! {
         "_id": (election_id),
         "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
@@ -89,7 +90,7 @@ async fn election_non_admin(
         .await?
         .ok_or_else(|| Error::not_found(format!("Non-admin election with ID '{}'", election_id)))?;
 
-    Ok(Json(election))
+    Ok(Json(election.into()))
 }
 
 #[get("/elections/<election_id>/<question_id>/ballots?<pagination..>")]
@@ -97,7 +98,7 @@ async fn election_question_ballots(
     election_id: Id,
     question_id: Id,
     pagination: PaginationRequest,
-    elections: Coll<ElectionWithSecrets>,
+    elections: Coll<Election>,
     ballots: Coll<FinishedBallot>,
 ) -> Result<Json<Paginated<FinishedReceipt>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
@@ -135,7 +136,7 @@ async fn election_question_ballot(
     election_id: Id,
     question_id: Id,
     ballot_id: Id,
-    elections: Coll<ElectionWithSecrets>,
+    elections: Coll<Election>,
     ballots: Coll<FinishedBallot>,
 ) -> Result<Json<FinishedReceipt>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
@@ -170,7 +171,7 @@ async fn candidate_totals(
     election_id: Id,
     question_id: Id,
     totals: Coll<CandidateTotals>,
-) -> Result<Json<HashMap<CandidateId, CandidateTotals>>> {
+) -> Result<Json<HashMap<CandidateId, CandidateTotalsDesc>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have totals.
     let question_totals_filter = doc! {
         "election_id": (election_id),
@@ -179,7 +180,7 @@ async fn candidate_totals(
     let question_totals = totals
         .find(question_totals_filter, None)
         .await?
-        .map_ok(|tot| (tot.candidate_name.clone(), tot))
+        .map_ok(|tot| (tot.candidate_name.clone(), tot.into()))
         .try_collect::<HashMap<_, _>>()
         .await?;
 
@@ -190,16 +191,16 @@ async fn candidate_totals(
 async fn question_dump(
     election_id: Id,
     question_id: Id,
-    elections: Coll<ElectionNoSecrets>,
+    elections: Coll<Election>,
     totals: Coll<CandidateTotals>,
     ballots: Coll<FinishedBallot>,
     db_client: &State<Client>,
-) -> Result<Json<ElectionResults<String, String, DreipGroup>>> {
+) -> Result<Json<ElectionResults>> {
     // Ensure we read a consistent snapshot of the election data.
     let election;
-    let mut election_totals = HashMap::new();
-    let mut audited_ballots = HashMap::new();
-    let mut confirmed_ballots = HashMap::new();
+    let mut candidate_totals = HashMap::new();
+    let mut audited_receipts = HashMap::new();
+    let mut confirmed_receipts = HashMap::new();
     {
         let session_options = SessionOptions::builder().snapshot(true).build();
         let mut session = db_client.start_session(Some(session_options)).await?;
@@ -222,7 +223,7 @@ async fn question_dump(
             .await?;
         while let Some(total) = totals_cursor.next(&mut session).await {
             let total = total?;
-            election_totals.insert(total.candidate_name.clone(), total.totals.crypto);
+            candidate_totals.insert(total.candidate_name.clone(), total.into());
         }
 
         let ballots_filter = doc! {
@@ -236,20 +237,20 @@ async fn question_dump(
         while let Some(ballot) = election_ballots.next(&mut session).await {
             match ballot? {
                 FinishedBallot::Audited(b) => {
-                    audited_ballots.insert(b.id.to_string(), b.ballot.crypto);
+                    audited_receipts.insert(b.id.into(), Receipt::from_ballot(b, &election));
                 }
                 FinishedBallot::Confirmed(b) => {
-                    confirmed_ballots.insert(b.id.to_string(), b.ballot.crypto);
+                    confirmed_receipts.insert(b.id.into(), Receipt::from_ballot(b, &election));
                 }
             }
         }
     }
 
     let dump = ElectionResults {
-        election: election.election.crypto,
-        audited: audited_ballots,
-        confirmed: confirmed_ballots,
-        totals: election_totals,
+        election: ElectionDescription::from(election).crypto,
+        audited: audited_receipts,
+        confirmed: confirmed_receipts,
+        totals: candidate_totals,
     };
 
     Ok(Json(dump))
@@ -259,10 +260,10 @@ async fn question_dump(
 /// If `admin` is false, admin-only elections will be hidden.
 /// If `archived` is true, archived elections will be returned instead of non-archived ones.
 async fn metadata_for_elections(
-    elections: Coll<ElectionNoSecrets>,
+    elections: Coll<Election>,
     admin: bool,
     archived: bool,
-) -> Result<Json<Vec<MetadataWithId>>> {
+) -> Result<Json<Vec<ElectionSummary>>> {
     let filter = if archived {
         doc! {
             "state": ElectionState::Archived,
@@ -283,23 +284,9 @@ async fn metadata_for_elections(
         .try_collect::<Vec<_>>()
         .await?;
 
-    let metadata = elections
-        .into_iter()
-        .map(|e| MetadataWithId {
-            id: e.id,
-            meta: e.election.metadata,
-        })
-        .collect();
+    let metadata = elections.into_iter().map(Into::into).collect();
 
     Ok(Json(metadata))
-}
-
-/// A simple struct that tacks an ID onto the election metadata.
-#[derive(Debug, Serialize, Deserialize)]
-struct MetadataWithId {
-    pub id: Id,
-    #[serde(flatten)]
-    pub meta: ElectionMetadata,
 }
 
 #[cfg(test)]
@@ -309,8 +296,12 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::model::{
-        base::{ElectionSpec, QuestionSpec},
-        db::{Ballot, NewCandidateTotals, NewElection, Unconfirmed},
+        api::election::{ElectionSpec, QuestionSpec},
+        db::{
+            ballot::{Ballot, Unconfirmed},
+            candidate_totals::NewCandidateTotals,
+            election::NewElection,
+        },
     };
 
     use super::*;
@@ -328,18 +319,21 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let fetched_elections = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+        let fetched_elections = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
             .unwrap()
             .into_iter()
-            .map(|m| m.meta)
             .collect::<Vec<_>>();
 
         let expected = vec![
             NewElection::published_example().metadata,
             NewElection::draft_example().metadata,
         ];
-
-        assert_eq!(expected, fetched_elections);
+        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
+            assert_eq!(actual.name, expected.name);
+            assert_eq!(actual.state, expected.state);
+            assert_eq!(actual.start_time, expected.start_time);
+            assert_eq!(actual.end_time, expected.end_time);
+        }
     }
 
     #[backend_test]
@@ -356,15 +350,18 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
 
-        let fetched_elections = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+        let fetched_elections = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
             .unwrap()
             .into_iter()
-            .map(|m| m.meta)
             .collect::<Vec<_>>();
 
-        let elections = vec![NewElection::published_example().metadata];
-
-        assert_eq!(elections, fetched_elections);
+        let expected = vec![NewElection::published_example().metadata];
+        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
+            assert_eq!(actual.name, expected.name);
+            assert_eq!(actual.state, expected.state);
+            assert_eq!(actual.start_time, expected.start_time);
+            assert_eq!(actual.end_time, expected.end_time);
+        }
     }
 
     #[backend_test(admin)]
@@ -384,14 +381,17 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
 
         // Ensure we didn't expose any secrets.
-        let error = serde_json::from_str::<ElectionWithSecrets>(&raw_response);
+        let error = serde_json::from_str::<Election>(&raw_response);
         assert!(error.is_err());
-        let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
+        let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::published_example().erase_secrets();
+        let expected = NewElection::published_example();
 
-        assert_eq!(expected.metadata, fetched_election.metadata);
+        assert_eq!(expected.metadata.name, fetched_election.name);
+        assert_eq!(expected.metadata.state, fetched_election.state);
+        assert_eq!(expected.metadata.start_time, fetched_election.start_time);
+        assert_eq!(expected.metadata.end_time, fetched_election.end_time);
         assert_eq!(expected.electorates, fetched_election.electorates);
         for question in expected.questions.values() {
             let matching = fetched_election.questions.values().find(|q| {
@@ -421,14 +421,17 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
 
         // Ensure we didn't expose any secrets.
-        let error = serde_json::from_str::<ElectionWithSecrets>(&raw_response);
+        let error = serde_json::from_str::<Election>(&raw_response);
         assert!(error.is_err());
-        let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
+        let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::draft_example().erase_secrets();
+        let expected = NewElection::draft_example();
 
-        assert_eq!(expected.metadata, fetched_election.metadata);
+        assert_eq!(expected.metadata.name, fetched_election.name);
+        assert_eq!(expected.metadata.state, fetched_election.state);
+        assert_eq!(expected.metadata.start_time, fetched_election.start_time);
+        assert_eq!(expected.metadata.end_time, fetched_election.end_time);
         assert_eq!(expected.electorates, fetched_election.electorates);
         for question in expected.questions.values() {
             let matching = fetched_election.questions.values().find(|q| {
@@ -458,14 +461,17 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
 
         // Ensure we didn't expose any secrets.
-        let error = serde_json::from_str::<ElectionWithSecrets>(&raw_response);
+        let error = serde_json::from_str::<Election>(&raw_response);
         assert!(error.is_err());
-        let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
+        let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::published_example().erase_secrets();
+        let expected = NewElection::published_example();
 
-        assert_eq!(expected.metadata, fetched_election.metadata);
+        assert_eq!(expected.metadata.name, fetched_election.name);
+        assert_eq!(expected.metadata.state, fetched_election.state);
+        assert_eq!(expected.metadata.start_time, fetched_election.start_time);
+        assert_eq!(expected.metadata.end_time, fetched_election.end_time);
         assert_eq!(expected.electorates, fetched_election.electorates);
         for question in expected.questions.values() {
             let matching = fetched_election.questions.values().find(|q| {
@@ -505,17 +511,21 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let fetched_elections = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+        let fetched_elections = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
             .unwrap()
             .into_iter()
-            .map(|m| m.meta)
             .collect::<Vec<_>>();
 
         let expected = vec![NewElection::archived_example().metadata];
-        assert_eq!(expected, fetched_elections);
+        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
+            assert_eq!(actual.name, expected.name);
+            assert_eq!(actual.state, expected.state);
+            assert_eq!(actual.start_time, expected.start_time);
+            assert_eq!(actual.end_time, expected.end_time);
+        }
 
         // Try getting a specific archived election.
-        let election_id = serde_json::from_str::<Vec<MetadataWithId>>(&raw_response)
+        let election_id = *serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
             .unwrap()
             .into_iter()
             .next()
@@ -531,14 +541,17 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
 
         // Ensure we didn't expose any secrets.
-        let error = serde_json::from_str::<ElectionWithSecrets>(&raw_response);
+        let error = serde_json::from_str::<Election>(&raw_response);
         assert!(error.is_err());
-        let fetched_election = serde_json::from_str::<ElectionNoSecrets>(&raw_response).unwrap();
+        let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::archived_example().erase_secrets();
+        let expected = NewElection::archived_example();
 
-        assert_eq!(expected.metadata, fetched_election.metadata);
+        assert_eq!(expected.metadata.name, fetched_election.name);
+        assert_eq!(expected.metadata.state, fetched_election.state);
+        assert_eq!(expected.metadata.start_time, fetched_election.start_time);
+        assert_eq!(expected.metadata.end_time, fetched_election.end_time);
         assert_eq!(expected.electorates, fetched_election.electorates);
         for question in expected.questions.values() {
             let matching = fetched_election.questions.values().find(|q| {
@@ -682,7 +695,7 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let totals: HashMap<CandidateId, CandidateTotals> =
+        let totals: HashMap<CandidateId, CandidateTotalsDesc> =
             serde_json::from_str(&raw_response).unwrap();
         assert_eq!(totals.len(), QuestionSpec::example1().candidates.len());
     }
@@ -701,37 +714,21 @@ mod tests {
             .unwrap();
 
         let response = client
-            .get(uri!(question_dump(election.id, q1.id,)))
+            .get(uri!(question_dump(election.id, q1.id)))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let results: ElectionResults<Id, CandidateId, DreipGroup> =
-            serde_json::from_str(&raw_response).unwrap();
-        // Id does not and cannot implement AsRef<[u8]>, hence the awkward workaround.
-        let results = ElectionResults {
-            election: results.election,
-            audited: results
-                .audited
-                .into_iter()
-                .map(|(id, b)| (id.to_bytes(), b))
-                .collect(),
-            confirmed: results
-                .confirmed
-                .into_iter()
-                .map(|(id, b)| (id.to_bytes(), b))
-                .collect(),
-            totals: results.totals,
-        };
-        assert_eq!(results.election, election.erase_secrets().crypto);
+        let results: ElectionResults = serde_json::from_str(&raw_response).unwrap();
+        assert_eq!(results.election, ElectionDescription::from(election).crypto);
         assert!(results.verify().is_ok());
     }
 
     /// This isn't really a test, but a way of generating test data for end-to-end tests.
     #[backend_test(admin)]
-    async fn generate_test_data(db: Database) {
+    async fn generate_test_data(client: Client, db: Database) {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
@@ -767,12 +764,20 @@ mod tests {
                 let totals_json = serde_json::to_string(&total).unwrap();
                 println!("{totals_json},");
             }
+            println!("\nFull dump:");
+            let response = client
+                .get(uri!(question_dump(election.id, question.id)))
+                .dispatch()
+                .await;
+            assert_eq!(response.status(), Status::Ok);
+            let dump = response.into_string().await.unwrap();
+            println!("{}", dump);
             println!("\n\n\n");
         }
     }
 
     async fn insert_elections(db: &Database) {
-        Coll::<NewElection>::from_db(&db)
+        Coll::<NewElection>::from_db(db)
             .insert_many(
                 [
                     NewElection::published_example(),
@@ -885,8 +890,8 @@ mod tests {
             .unwrap();
     }
 
-    async fn get_election_for_spec(db: &Database, election: ElectionSpec) -> ElectionWithSecrets {
-        Coll::<ElectionWithSecrets>::from_db(&db)
+    async fn get_election_for_spec(db: &Database, election: ElectionSpec) -> Election {
+        Coll::<Election>::from_db(db)
             .find_one(doc! { "name": &election.name }, None)
             .await
             .unwrap()
@@ -897,7 +902,7 @@ mod tests {
     #[allow(dead_code)]
     async fn dump_db_state(db: &Database) {
         println!("\nElections:");
-        let mut elections = Coll::<ElectionWithSecrets>::from_db(db)
+        let mut elections = Coll::<Election>::from_db(db)
             .find(None, None)
             .await
             .unwrap();
