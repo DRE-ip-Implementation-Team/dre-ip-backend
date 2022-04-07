@@ -30,6 +30,12 @@ impl Id {
         self.0.bytes().to_vec()
     }
 
+    /// Create from raw bytes.
+    pub fn from_bytes(bytes: impl AsRef<[u8]>) -> Option<Self> {
+        let bytes: [u8; 12] = bytes.as_ref().try_into().ok()?;
+        Some(Self(ObjectId::from_bytes(bytes)))
+    }
+
     /// Conversion to a `MongoDB` query
     pub fn as_doc(&self) -> Document {
         doc! { "_id": self.0 }

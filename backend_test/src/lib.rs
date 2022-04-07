@@ -33,15 +33,15 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         .and_then(|arg| {
             if arg == "admin" {
                 Some(quote! {
-                    crate::model::mongodb::Coll::<crate::model::base::NewAdmin>::from_db(&db)
-                        .insert_one(crate::model::base::NewAdmin::example(), None)
+                    crate::model::mongodb::Coll::<crate::model::db::admin::NewAdmin>::from_db(&db)
+                        .insert_one(crate::model::db::admin::NewAdmin::example(), None)
                         .await
                         .unwrap();
 
                     rocket_client
                         .post(uri!(crate::api::auth::authenticate))
                         .header(rocket::http::ContentType::JSON)
-                        .body(rocket::serde::json::json!(crate::api::admin::AdminCredentials::example()).to_string())
+                        .body(rocket::serde::json::json!(crate::model::api::admin::AdminCredentials::example1()).to_string())
                         .dispatch()
                         .await;
                 })
@@ -82,7 +82,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                 let db_client = crate::db_client().await;
                 let db_name = crate::database();
                 let notifier = aws_sdk_sns::Client::new(&aws_config::load_from_env().await);
-                let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_and_notifier(db_client.clone(), &db_name, notifier))
+                let rocket_client = rocket::local::asynchronous::Client::tracked(crate::rocket_for_db_and_notifier(db_client.clone(), &db_name, notifier).await)
                     .await
                     .unwrap();
                 let db = db_client.database(&db_name);

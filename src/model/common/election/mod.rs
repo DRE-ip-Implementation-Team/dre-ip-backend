@@ -1,10 +1,8 @@
 mod electorate;
-mod metadata;
-mod spec;
+mod state;
 
 pub use electorate::Electorate;
-pub use metadata::{ElectionMetadata, ElectionState};
-pub use spec::{ElectionSpec, QuestionSpec};
+pub use state::ElectionState;
 
 /// We implement our DRE-ip over the P-256 elliptic curve.
 pub type DreipGroup = dre_ip::group::p256::NistP256;

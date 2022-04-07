@@ -10,18 +10,19 @@ use crate::{
     error::{Error, Result},
     model::{
         api::{
+            admin::AdminCredentials,
             auth::{AuthToken, AUTH_TOKEN_COOKIE},
             otp::{Challenge, Code, CHALLENGE_COOKIE},
             sms::Sms,
         },
-        base::NewVoter,
-        db::{Admin, Voter},
+        db::{
+            admin::Admin,
+            voter::{NewVoter, Voter},
+        },
         mongodb::{Coll, Id},
     },
     Config,
 };
-
-use super::admin::AdminCredentials;
 
 pub fn routes() -> Vec<Route> {
     routes![authenticate, challenge, verify, logout]
@@ -147,7 +148,7 @@ mod tests {
 
     use crate::model::{
         api::otp::{Challenge, CODE_LENGTH},
-        base::NewAdmin,
+        db::admin::NewAdmin,
     };
 
     use super::*;
@@ -161,7 +162,7 @@ mod tests {
         let response = client
             .post(uri!(authenticate))
             .header(ContentType::JSON)
-            .body(json!(AdminCredentials::example()).to_string())
+            .body(json!(AdminCredentials::example1()).to_string())
             .dispatch()
             .await;
 

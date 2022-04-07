@@ -13,7 +13,7 @@ use time;
 
 use crate::error::Error;
 use crate::model::{
-    db::{Admin, Voter},
+    db::{admin::Admin, voter::Voter},
     mongodb::{Coll, Id},
 };
 use crate::Config;

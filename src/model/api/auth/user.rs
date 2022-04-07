@@ -3,7 +3,7 @@ use std::fmt::Display;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::model::{
-    db::{Admin, Voter},
+    db::{admin::Admin, voter::Voter},
     mongodb::Id,
 };
 

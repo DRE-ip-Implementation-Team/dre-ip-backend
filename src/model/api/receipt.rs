@@ -1,9 +1,14 @@
 use dre_ip::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{base::DreipGroup, db::ElectionWithSecrets, mongodb::Id};
-
-use crate::model::db::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot};
+use crate::model::{
+    api::id::ApiId,
+    common::election::DreipGroup,
+    db::{
+        ballot::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot},
+        election::Election,
+    },
+};
 
 pub type Signature = <DreipGroup as DreipGroupTrait>::Signature;
 
@@ -14,11 +19,11 @@ pub struct Receipt<S: BallotState> {
     #[serde(flatten)]
     pub crypto: BallotCrypto<S::ExposedSecrets>,
     /// Ballot ID.
-    pub ballot_id: Id,
+    pub ballot_id: ApiId,
     /// Election ID.
-    pub election_id: Id,
+    pub election_id: ApiId,
     /// Question ID.
-    pub question_id: Id,
+    pub question_id: ApiId,
     /// The current state of the ballot.
     pub state: S,
     /// The signature.
@@ -31,7 +36,7 @@ where
     for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
 {
     /// Construct a receipt from the given ballot.
-    pub fn from_ballot(ballot: Ballot<S>, election: &ElectionWithSecrets) -> Self {
+    pub fn from_ballot(ballot: Ballot<S>, election: &Election) -> Self {
         // Convert the ballot from internal to receipt representation.
         let crypto = S::internal_to_receipt(ballot.ballot.crypto);
 
@@ -46,9 +51,9 @@ where
         // Construct the result.
         Self {
             crypto,
-            ballot_id: ballot.id,
-            election_id: ballot.ballot.election_id,
-            question_id: ballot.ballot.question_id,
+            ballot_id: ballot.id.into(),
+            election_id: ballot.ballot.election_id.into(),
+            question_id: ballot.ballot.question_id.into(),
             state: ballot.ballot.state,
             signature,
         }
@@ -66,7 +71,7 @@ pub enum FinishedReceipt {
 }
 
 impl FinishedReceipt {
-    pub fn from_finished_ballot(ballot: FinishedBallot, election: &ElectionWithSecrets) -> Self {
+    pub fn from_finished_ballot(ballot: FinishedBallot, election: &Election) -> Self {
         match ballot {
             FinishedBallot::Audited(ballot) => {
                 FinishedReceipt::Audited(Receipt::from_ballot(ballot, election))

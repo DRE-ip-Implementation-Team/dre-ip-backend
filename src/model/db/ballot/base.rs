@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
 
 use crate::model::{
-    base::{CandidateId, DreipGroup},
+    common::election::{CandidateId, DreipGroup},
     mongodb::Id,
 };
 

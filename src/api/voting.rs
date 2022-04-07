@@ -3,15 +3,20 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use mongodb::{bson::doc, options::ReplaceOptions, Client};
 use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
-use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::model::{
-    api::auth::AuthToken,
-    base::{AllowedQuestions, ElectionState},
+    api::{
+        auth::AuthToken,
+        ballot::{BallotRecall, BallotSpec},
+        receipt::Receipt,
+    },
+    common::{allowed_questions::AllowedQuestions, election::ElectionState},
     db::{
-        Audited, Ballot, CandidateTotals, Confirmed, ElectionWithSecrets, NewCandidateTotals,
-        Receipt, Signature, Unconfirmed, Voter,
+        ballot::{Audited, Ballot, Confirmed, Unconfirmed},
+        candidate_totals::{CandidateTotals, NewCandidateTotals},
+        election::Election,
+        voter::Voter,
     },
     mongodb::{Coll, Id},
 };
@@ -28,18 +33,24 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[get("/elections/<election_id>/join")]
-fn has_joined(voter: Voter, election_id: Id) -> Json<bool> {
-    Json(voter.allowed_questions.contains_key(&election_id))
+async fn has_joined(
+    token: AuthToken<Voter>,
+    election_id: Id,
+    voters: Coll<Voter>,
+) -> Result<Json<bool>> {
+    let voter = voter_by_id(token.id, &voters).await?;
+    Ok(Json(voter.allowed_questions.contains_key(&election_id)))
 }
 
 #[post("/elections/<election_id>/join", data = "<joins>", format = "json")]
 async fn join_election(
-    voter: Voter,
+    token: AuthToken<Voter>,
     election_id: Id,
     joins: Json<HashMap<String, HashSet<String>>>,
-    elections: Coll<ElectionWithSecrets>,
+    elections: Coll<Election>,
     voters: Coll<Voter>,
 ) -> Result<()> {
+    let voter = voter_by_id(token.id, &voters).await?;
     // Reject if voter has already joined the election
     if voter.allowed_questions.contains_key(&election_id) {
         return Err(Error::Status(
@@ -122,7 +133,12 @@ async fn join_election(
 }
 
 #[get("/elections/<election_id>/questions/allowed")]
-fn get_allowed(voter: Voter, election_id: Id) -> Json<AllowedQuestions> {
+async fn get_allowed(
+    token: AuthToken<Voter>,
+    election_id: Id,
+    voters: Coll<Voter>,
+) -> Result<Json<AllowedQuestions>> {
+    let voter = voter_by_id(token.id, &voters).await?;
     // Find what questions they can still vote for.
     let allowed = voter
         .allowed_questions
@@ -130,7 +146,7 @@ fn get_allowed(voter: Voter, election_id: Id) -> Json<AllowedQuestions> {
         .cloned()
         .unwrap_or_default();
 
-    Json(allowed)
+    Ok(Json(allowed))
 }
 
 #[post(
@@ -142,7 +158,7 @@ async fn cast_ballots(
     _token: AuthToken<Voter>,
     election_id: Id,
     ballot_specs: Json<Vec<BallotSpec>>,
-    elections: Coll<ElectionWithSecrets>,
+    elections: Coll<Election>,
     ballots: Coll<Ballot<Unconfirmed>>,
     db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
@@ -230,7 +246,7 @@ async fn audit_ballots(
     _token: AuthToken<Voter>,
     election_id: Id,
     ballot_recalls: Json<Vec<BallotRecall>>,
-    elections: Coll<ElectionWithSecrets>,
+    elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     audited_ballots: Coll<Ballot<Audited>>,
     db_client: &State<Client>,
@@ -280,16 +296,17 @@ async fn audit_ballots(
 )]
 #[allow(clippy::too_many_arguments)]
 async fn confirm_ballots(
-    mut voter: Voter,
+    token: AuthToken<Voter>,
     election_id: Id,
     ballot_recalls: Json<Vec<BallotRecall>>,
     voters: Coll<Voter>,
-    elections: Coll<ElectionWithSecrets>,
+    elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     confirmed_ballots: Coll<Ballot<Confirmed>>,
     candidate_totals: Coll<CandidateTotals>,
     db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Confirmed>>>> {
+    let mut voter = voter_by_id(token.id, &voters).await?;
     // Get the election and ballots.
     let election = active_election_by_id(election_id, &elections).await?;
     let recalled_ballots =
@@ -423,12 +440,16 @@ async fn confirm_ballots(
     Ok(Json(receipts))
 }
 
+async fn voter_by_id(voter_id: Id, voters: &Coll<Voter>) -> Result<Voter> {
+    voters
+        .find_one(voter_id.as_doc(), None)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("Voter with ID {}", voter_id)))
+}
+
 /// Return an active Election from the database via ID lookup.
 /// An active election is finalised and within its start and end times.
-async fn active_election_by_id(
-    election_id: Id,
-    elections: &Coll<ElectionWithSecrets>,
-) -> Result<ElectionWithSecrets> {
+async fn active_election_by_id(election_id: Id, elections: &Coll<Election>) -> Result<Election> {
     let now = Utc::now();
 
     let is_active = doc! {
@@ -448,7 +469,7 @@ async fn active_election_by_id(
 async fn recall_ballots(
     ballot_recalls: Vec<BallotRecall>,
     unconfirmed_ballots: &Coll<Ballot<Unconfirmed>>,
-    election: &ElectionWithSecrets,
+    election: &Election,
 ) -> Result<Vec<Ballot<Unconfirmed>>> {
     let mut ballots = Vec::with_capacity(ballot_recalls.len());
     for recall in ballot_recalls {
@@ -474,30 +495,11 @@ async fn recall_ballots(
     Ok(ballots)
 }
 
-/// A ballot that the voter wishes to cast, representing a specific candidate
-/// for a specific question.
-#[derive(Debug, Serialize, Deserialize)]
-struct BallotSpec {
-    pub question: Id,
-    pub candidate: String,
-}
-
-/// A ballot that the voter wishes to recall in order to audit or confirm.
-/// The ballot is identified by its ID and question ID, and ownership of this
-/// ballot is verified by the signature, which only the owning voter will have.
-#[derive(Debug, Serialize, Deserialize)]
-struct BallotRecall {
-    pub ballot_id: Id,
-    pub question_id: Id,
-    #[serde(with = "dre_ip::group::serde_bytestring")]
-    pub signature: Signature,
-}
-
 #[cfg(test)]
 mod tests {
     use backend_test::backend_test;
     use chrono::{Duration, Utc};
-    use dre_ip::{DreipPublicKey, DreipScalar, ElectionResults, Serializable};
+    use dre_ip::{DreipPublicKey, DreipScalar, Serializable};
     use mongodb::{bson::to_bson, Database};
     use rocket::{
         futures::{StreamExt, TryStreamExt},
@@ -506,10 +508,17 @@ mod tests {
         serde::json::serde_json,
     };
 
+    use crate::model::api::election::ElectionDescription;
     use crate::model::{
-        api::sms::Sms,
-        base::QuestionSpec,
-        db::{Audited, Confirmed, Election, NewElection, Unconfirmed},
+        api::{
+            election::{ElectionResults, QuestionSpec},
+            receipt::Signature,
+            sms::Sms,
+        },
+        db::{
+            ballot::{Audited, Confirmed, Unconfirmed},
+            election::{Election, NewElection},
+        },
     };
 
     use super::*;
@@ -526,7 +535,7 @@ mod tests {
             id: Id::new(),
             election: NewElection::draft_example(),
         };
-        let elections = Coll::<ElectionWithSecrets>::from_db(db);
+        let elections = Coll::<Election>::from_db(db);
         elections
             .insert_many(vec![&election1, &election2], None)
             .await
@@ -537,7 +546,7 @@ mod tests {
         let mut voter = voters
             .find_one(
                 doc! {
-                    "sms_hmac": to_bson(&Sms::example_hmac(&client)).unwrap(),
+                    "sms_hmac": to_bson(&Sms::example_hmac(client)).unwrap(),
                 },
                 None,
             )
@@ -584,7 +593,7 @@ mod tests {
         }
 
         println!("\nElections:");
-        let mut elections = Coll::<ElectionWithSecrets>::from_db(db)
+        let mut elections = Coll::<Election>::from_db(db)
             .find(None, None)
             .await
             .unwrap();
@@ -908,7 +917,7 @@ mod tests {
             .unwrap();
 
         // Ensure the receipt passes validation.
-        let election = Coll::<ElectionWithSecrets>::from_db(&db)
+        let election = Coll::<Election>::from_db(&db)
             .find_one(doc! {"_id": election_id}, None)
             .await
             .unwrap()
@@ -996,7 +1005,7 @@ mod tests {
 
         // Audit the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1018,7 +1027,7 @@ mod tests {
             .unwrap();
 
         // Ensure the receipts match.
-        let election = Coll::<ElectionWithSecrets>::from_db(&db)
+        let election = Coll::<Election>::from_db(&db)
             .find_one(doc! {"_id": election_id}, None)
             .await
             .unwrap()
@@ -1099,7 +1108,7 @@ mod tests {
 
         // Confirm the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1121,7 +1130,7 @@ mod tests {
             .unwrap();
 
         // Ensure the receipts match.
-        let election = Coll::<ElectionWithSecrets>::from_db(&db)
+        let election = Coll::<Election>::from_db(&db)
             .find_one(doc! {"_id": election_id}, None)
             .await
             .unwrap()
@@ -1165,17 +1174,18 @@ mod tests {
             }
         }
         let mut ballots = HashMap::new();
-        ballots.insert(second_receipt.ballot_id.to_bytes(), second_receipt.crypto);
+        ballots.insert(second_receipt.ballot_id, second_receipt);
         let mut totals = HashMap::new();
         for total in candidate_totals {
-            totals.insert(total.candidate_name.clone(), total.totals.crypto);
+            totals.insert(total.candidate_name.clone(), total.into());
         }
         let results = ElectionResults {
-            election: election.election.crypto.erase_secrets(),
+            election: ElectionDescription::from(election).crypto,
             audited: HashMap::new(),
             confirmed: ballots,
             totals,
         };
+
         assert!(results.verify().is_ok());
 
         // Ensure the question is marked as answered.
@@ -1217,7 +1227,7 @@ mod tests {
         assert_eq!(response.status(), Status::NotFound);
 
         // Try voting on an inactive election.
-        let inactive_election = Coll::<ElectionWithSecrets>::from_db(&db)
+        let inactive_election = Coll::<Election>::from_db(&db)
             .find_one(doc! {"state": ElectionState::Draft}, None)
             .await
             .unwrap()
@@ -1247,7 +1257,7 @@ mod tests {
         let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Vote on an inactive election.
-        let inactive_election = Coll::<ElectionWithSecrets>::from_db(&db)
+        let inactive_election = Coll::<Election>::from_db(&db)
             .find_one(doc! {"_id": {"$ne": election_id}}, None)
             .await
             .unwrap()
@@ -1293,7 +1303,7 @@ mod tests {
         assert_eq!(response.status(), Status::NotFound);
 
         // Vote on the question we are not allowed to.
-        let not_allowed_question = *Coll::<ElectionWithSecrets>::from_db(&db)
+        let not_allowed_question = *Coll::<Election>::from_db(&db)
             .find_one(election_id.as_doc(), None)
             .await
             .unwrap()
@@ -1370,7 +1380,7 @@ mod tests {
 
         // Try to confirm the wrong question ID.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id: Id::new(),
             signature: first_receipt.signature,
         }];
@@ -1386,7 +1396,7 @@ mod tests {
         let mut signature = first_receipt.signature.to_bytes();
         signature[0] = signature[0].wrapping_add(1);
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: Signature::from_bytes(&signature).unwrap(),
         }];
@@ -1400,7 +1410,7 @@ mod tests {
 
         // Correctly confirm.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: first_receipt.ballot_id,
+            ballot_id: *first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1461,7 +1471,7 @@ mod tests {
         // Confirm a vote.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: receipt.ballot_id,
+            ballot_id: *receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];
@@ -1476,7 +1486,7 @@ mod tests {
         // Cast an identical vote, and audit it.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: receipt.ballot_id,
+            ballot_id: *receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];
@@ -1491,7 +1501,7 @@ mod tests {
         // Ensure we can't confirm a second vote though.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: receipt.ballot_id,
+            ballot_id: *receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];

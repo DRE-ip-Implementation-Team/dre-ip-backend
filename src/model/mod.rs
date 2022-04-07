@@ -1,4 +1,4 @@
 pub mod api;
-pub mod base;
+pub mod common;
 pub mod db;
 pub mod mongodb;

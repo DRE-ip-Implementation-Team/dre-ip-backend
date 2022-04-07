@@ -116,8 +116,27 @@ paths:
         200:
           description: Logout successful, authentication token removed.
   /admins:
+    get:
+      summary: Get a list of all admin usernames.
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully returned all admins.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+                - "alice112"
+                - "bobthesuperadmin"
     post:
       summary: Create a new admin user.
+      description:
+        The username must be non-empty, and the password must be at least 8
+        characters long.
       tags:
         - Administration Endpoints
       requestBody:
@@ -130,6 +149,8 @@ paths:
       responses:
         200:
           description: Successfully created.
+        400:
+          description: Illegal credentials.
     delete:
       summary: Delete an admin user.
       tags:
