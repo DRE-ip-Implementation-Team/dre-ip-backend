@@ -1,3 +1,4 @@
+use dreip;
 // Create an admin account.
 db.admins.insertOne({
   username: "admin",

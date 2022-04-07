@@ -1,3 +1,4 @@
+use dreip;
 db.dropDatabase();
 
 // Voter collection
