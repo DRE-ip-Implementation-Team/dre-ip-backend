@@ -1,56 +1,37 @@
 openapi: 3.0.3
 info:
   title: DRE-ip Server API
+  description:
+    Assume any endpoint can return status 500 in the case of an unexpected error;
+    particularly database errors.
+    Listed 4xx errors cannot be assumed to be exhaustive either; the client must
+    be able to handle any returned error code.
   version: 1.0.0
 servers:
   - description: Backend Server
     url: Self-Hosted
-  - description: localhost
-    url: http://127.0.0.1:8000
 security:
   - AuthToken: [ ]  # Require AuthToken by default.
 
 tags:
-  - name: Authentication
-  - name: Administration
-    description: Requires an admin `auth_token` cookie.
-  - name: Public
-  - name: Voting
-    description: Requires a voter `auth_token` cookie.
+  - name: Authentication Endpoints
+    description: Adds/removes admin/voter `auth_token` cookie.
+  - name: Administration Endpoints
+    description: Admin user and election management. Requires *__admin__* `auth_token` cookie.
+  - name: Voting Endpoints
+    description: Joining election groups and casting votes. Requires *__voter__* `auth_token` cookie.
+  - name: Public Endpoints
+    description: Retrieving public data about elections. Draft elections can only be seen with an *__admin__* `auth_token` cookie.
 
 paths:
-  /admins:
-    post:
-      summary: Create an administrator.
-      tags:
-        - Administration
-      requestBody:
-        description: Administrator credentials.
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AdminCredentials'
-      responses:
-        201:
-          description: Administrator created successfully.
-  /auth:
-    delete:
-      summary: Remove proof of authentication.
-      description: Removes the `auth_token` JWT cookie.
-      security: [ ] # No token needed to logout
-      tags:
-        - Authentication
-      responses:
-        200:
-          description: Logout successful, authentication token removed.
   /auth/admin:
     post:
-      summary: Authenticate as an admin via valid credentials.
+      summary: Authenticate as an admin.
       security: [ ]  # No token needed before login.
       tags:
-        - Authentication
+        - Authentication Endpoints
       requestBody:
-        description: Admin password.
+        description: Admin user credentials.
         required: true
         content:
           application/json:
@@ -59,289 +40,427 @@ paths:
       responses:
         200:
           $ref: "#/components/responses/AuthToken"
-        400:
-          $ref: "#/components/responses/BadFormat"
         401:
-          description: Incorrect password.
-  /auth/voter:
+          description: Invalid credentials.
+  /auth/voter/challenge:
     get:
-      summary: Request an SMS OTP for voter authentication.
+      summary: Request an SMS OTP challenge for voter authentication.
       description:
         Sets an encrypted JWT cookie claiming a randomly generated OTP and the given SMS number to which it is sent.
         The JWT and cookie expire simultaneously after a configurable duration.
       parameters:
         - in: query
           name: sms
+          required: true
           schema:
             type: string
             pattern: '^\+?[1-9]\d{1,14}$'
             example: "+441234567890"
       security: [ ]  # No token needed before login.
       tags:
-        - Authentication
+        - Authentication Endpoints
       responses:
         200:
-          description: OTP successfully sent.
+          description: Successfully sent OTP.
           headers:
             Set-Cookie:
               description:
+                New `challenge` cookie.
                 Encrypted JWT claiming an SMS number and OTP.
                 Cookie expires when JWT does.
               schema:
-                type: string
-                example: "challenge=PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
-        400:
-          $ref: "#/components/responses/BadFormat"
+                $ref: "#/components/schemas/Challenge"
+  /auth/voter/verify:
     post:
-      summary: Authenticate as a voter via a OTP.
+      summary: Verify SMS OTP challenge to authenticate as a voter.
       description:
-        Saves a voter with the claimed SMS number if the submitted OTP matches the claimed OTP.
+        Authenticates as a voter with the claimed SMS number if the submitted OTP matches the claimed OTP.
         Sets a voter `auth_token` that expires after a configurable duration.
       parameters:
         - in: cookie
           name: challenge
           schema:
-            type: string
-            example: "PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
+            $ref: "#/components/schemas/Challenge"
       security: [ ]  # No token needed before login.
       tags:
-        - Authentication
+        - Authentication Endpoints
       requestBody:
         description: Submitted OTP.
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/VoterOTP"
+              type: object
+              properties:
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+              required:
+                - otp
+              example:
+                otp: "123456"
       responses:
         200:
           $ref: "#/components/responses/AuthToken"
-        400:
-          $ref: "#/components/responses/BadFormat"
         401:
           description: Incorrect OTP.
-  /elections:
-    get:
-      summary: Fetch elections, excluding non-finalised if not authenticated as an admin.
+  /auth:
+    delete:
+      summary: Remove authentication; log out.
+      description: Removes the `auth_token` cookie.
+      security: [ ] # No token needed to logout
       tags:
-        - Public
+        - Authentication Endpoints
       responses:
         200:
-          description: Array of elections.
+          description: Logout successful, authentication token removed.
+  /admins:
+    get:
+      summary: Get a list of all admin usernames.
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully returned all admins.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Election"
+                  type: string
+              example:
+                - "alice112"
+                - "bobthesuperadmin"
     post:
-      summary: Create an election.
+      summary: Create a new admin user.
+      description:
+        The username must be non-empty, and the password must be at least 8
+        characters long.
       tags:
-        - Administration
+        - Administration Endpoints
       requestBody:
-        description:
-          Initial election structure (optional).
-          The ID field is ignored, as one will be allocated.
-        required: false
+        description: Admin credentials.
+        required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Election"
+              $ref: '#/components/schemas/AdminCredentials'
       responses:
-        201:
-          description: Creation successful. Returns the resulting Election object.
+        200:
+          description: Successfully created.
+        400:
+          description: Illegal credentials.
+    delete:
+      summary: Delete an admin user.
+      tags:
+        - Administration Endpoints
+      requestBody:
+        description: Admin username.
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+      responses:
+        200:
+          description: Successfully deleted.
+        404:
+          description: Admin username not found.
+        422:
+          description: Cannot delete the last admin user.
+  /elections:
+    post:
+      summary: Create an election.
+      description:
+        Newly-created elections are in the draft state, and must be published
+        to be visible to voters.
+      tags:
+        - Administration Endpoints
+      requestBody:
+        description: Election specification.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ElectionSpec"
+      responses:
+        200:
+          description: Successfully created election.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+    get:
+      summary: Fetch metadata of all elections.
+      security: [ ]  # No authentication needed.
+      tags:
+        - Public Endpoints
+      parameters:
+        - in: query
+          name: archived
+          required: false
+          description:
+            Archived elections are excluded by default. To see them, pass `?archived=true`;
+            this will show _only_ archived elections.
+          schema:
+            type: boolean
+      responses:
+        200:
+          description: Successfully fetched elections.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ElectionMetadata"
+  /elections/{electionID}:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+    get:
+      summary: Fetch an election.
+      security: [ ]  # No authentication needed.
+      tags:
+        - Public Endpoints
+      responses:
+        200:
+          description: Successfully fetched election.
+          content:
+            application.json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        404:
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Modify an election.
+      description:
+        Only draft elections or published elections before their start time
+        may be modified.
+        Modifying a published election will reset it, sending it back to the
+        draft state.
+      tags:
+        - Administration Endpoints
+      requestBody:
+        description: Election specification.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ElectionSpec"
+      responses:
+        200:
+          description: Successfully modified election.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Election"
         400:
-          $ref: "#/components/responses/BadFormat"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
-  /elections/{electionID}/votes:
+          description: Election is not allowed to be modified.
+    delete:
+      summary: Permanently delete an election.
+      description:
+        Only draft or archived elections may be deleted. This will irrecoverably
+        destroy all election data, including ballots and totals.
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully deleted election.
+        400:
+          description: Election is not allowed to be deleted.
+  /elections/{electionID}/publish:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
-    get:
-      summary: Fetch an election's votes.
+    post:
+      summary: Publish a draft election.
       description:
-        There may be a large number of votes, so this request is paginated.
+        Once published, an election will be visible to voters.
+        If it is within the start and end time, a published election will be
+        votable.
+        After the start time has passed, the election becomes locked and cannot
+        be modified, only archived (and afterwards deleted).
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully published election.
+        400:
+          description: Election was not in the draft state.
+  /elections/{electionID}/archive:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+    post:
+      summary: Archive an election.
+      description:
+        Once archived, an election will be hidden by default, but its data is
+        still publically available.
+        Archiving an in-progress election will immediately stop it.
+      tags:
+        - Administration Endpoints
+      responses:
+        200:
+          description: Successfully archived election.
+        400:
+          description: Election was already archived.
+  /elections/{electionID}/{questionID}/ballots:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+      - $ref: "#/components/parameters/QuestionID"
+    get:
+      summary: Fetch an election question's ballots.
+      description:
+        There may be a large number of ballots, so this request is paginated.
       parameters:
         - $ref: "#/components/parameters/PageNum"
         - $ref: "#/components/parameters/PageSize"
       security: [ ]  # No authentication needed.
       tags:
-        - Public
+        - Public Endpoints
       responses:
         200:
-          description: Votes plus pagination metadata.
+          description: Successfully fetched election question's ballots.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  votes:
-                    type: array
-                    description: List of vote receipts.
-                    items:
-                      $ref: "#/components/schemas/Stage2Receipt"
-                  page_num:
-                    type: integer
-                    description: The actual page index retrieved.
-                  page_size:
-                    type: integer
-                    description: The actual page size used.
-                  total_votes:
-                    type: integer
-                    description: The total number of votes for this election.
-              example:
-                votes:
-                  - id: 51
-                    R: abcdef
-                    Z: 098765
-                    P: fedcba
-                    action: "confirmed"
-                  - id: 52
-                    R: 123abc
-                    Z: def456
-                    P: 1a2b3c
-                    action: "audited"
-                    r: fafafa
-                    v: 0
-                page_num: 2
-                page_size: 50
-                total_votes: 52
+                  items:
+                    description: List of audited and confirmed ballot receipts.
+                  pagination:
+                    type: object
+                    properties:
+                      page_num:
+                        type: integer
+                        description: The actual page index retrieved.
+                      page_size:
+                        type: integer
+                        description: The actual page size used.
+                      total:
+                        type: integer
+                        description: The total number of ballots for this question.
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/votes/{voteID}:
+  /elections/{electionID}/{questionID}/ballots/{ballotID}:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
-      - $ref: "#/components/parameters/VoteID"
+      - $ref: "#/components/parameters/QuestionID"
+      - $ref: "#/components/parameters/BallotID"
     get:
-      summary: Fetch an election vote.
+      summary: Fetch a specific ballot.
       security: [ ]  # No authentication needed.
       tags:
-        - Public
+        - Public Endpoints
       responses:
         200:
-          description: A single vote record.
+          description: Successfully fetched ballot receipt. May be a Confirmed or Audited receipt; the spec shows an Audited receipt.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Stage2Receipt"
+                $ref: "#/components/schemas/AuditedReceipt"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/details:
-    put:
-      summary: Replace a non-finalised election's details.
-      tags:
-        - Administration
-      requestBody:
-        description:
-          New election details.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Election"
-      responses:
-        200:
-          description: Modification successful.
-        400:
-          $ref: "#/components/responses/BadFormat"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
-        404:
-          $ref: "#/components/responses/NotFound"
-  /elections/{electionID}:
+  /elections/{electionID}/{questionID}/totals:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
-    delete:
-      summary: Delete a non-finalised election.
+      - $ref: "#/components/parameters/QuestionID"
+    get:
+      summary: Fetch the candidate totals for this question.
+      security: [ ]  # No authentication needed.
       tags:
-        - Administration
+        - Public Endpoints
       responses:
         200:
-          description: Deletion successful.
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
+          description: Successfully fetched candidate totals.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateTotalsMap"
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/groups:
+  /elections/{electionID}/{questionID}/dump:
+    parameters:
+      - $ref: "#/components/parameters/ElectionID"
+      - $ref: "#/components/parameters/QuestionID"
+    get:
+      summary: Dump the entire election state for this question.
+      security: [ ]  # No authentication needed.
+      tags:
+        - Public Endpoints
+      responses:
+        200:
+          description: Successfully dumped question.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionDump"
+        404:
+          $ref: "#/components/responses/NotFound"
+  /elections/{electionID}/join:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Fetch the voter's groups.
-      description:
-        Access is restricted to the voter because group membership may constitute personal information.
+      summary: Ask if the current voter has already joined this election.
       tags:
-        - Voting
+        - Voting Endpoints
       responses:
         200:
-          description: List of group IDs, or null if groups not yet set.
+          description: Successfully retrieved boolean answer.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IDList"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
+                type: boolean
+                example: false
         404:
           $ref: "#/components/responses/NotFound"
-  /elections/{electionID}/groups/join:
     post:
-      summary: Add the voter to groups.
-      description:
-        Can only be done once per voter per election.
-        Fails if groups do not conform to their exclusion requirements.
+      summary: Join an election for the first time, specifying groups.
       tags:
-        - Voting
+        - Voting Endpoints
       requestBody:
-        description: List of group IDs.
+        description: Groups to join.
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/IDList"
+              $ref: "#/components/schemas/GroupMap"
       responses:
         200:
-          description: Group selection successful.
-        400:
-          $ref: "#/components/responses/BadFormat"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
+          description: Successfully joined groups.
         403:
-          $ref: "#/components/responses/PermissionDenied"
+          description: You have already joined this election.
         404:
           $ref: "#/components/responses/NotFound"
-        409:
-          description: Groups already set.
-  /elections/{electionID}/questions/confirmed:
+        422:
+          description: "Violation of mutual exclusivity constraints in groups."
+  /elections/{electionID}/questions/allowed:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     get:
-      summary: Fetch questions for which the voter has confirmed their candidate decision.
+      summary: Get which questions the current voter is allowed to vote on.
+      description:
+        A voter may *cast and audit* votes on any question. However, they may
+        only *confirm* votes on questions for which they satisfy the group
+        constraints and have not already confirmed a vote.
+        
+        This endpoint returns all questions that the current voter satisfies
+        the group constraints for. Each question ID is mapped to a boolean
+        specifying whether or not this question has already been confirmed.
+        
+        Therefore, the questions that the voter can confirm votes on are those
+        that appear in this map and are mapped to `false`.
       tags:
-        - Voting
+        - Voting Endpoints
       responses:
         200:
-          description: List of question IDs.
+          description: Successfully returned map of question IDs.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IDList"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
-        404:
-          $ref: "#/components/responses/NotFound"
+                type: object
+                example:
+                  "6220e27c5f06ce6366456650": false
+                  "6220e3b1069d947c996b5fb3": true
+                  "6220e3b1069d947c996b5fb9": true
   /elections/{electionID}/votes/cast:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
@@ -349,52 +468,53 @@ paths:
       summary: Submit provisional votes for stage-1 receipts.
       description:
         Register the voter's interest in voting for the given candidates on the given questions.
+        This endpoint is atomic.
       tags:
-        - Voting
+        - Voting Endpoints
       requestBody:
         description: "List of votes: question-candidate ID pairs."
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/VoteList"
+              $ref: "#/components/schemas/BallotSpecList"
       responses:
         200:
-          description: List of Stage-1 receipts.
+          description: Successfully submitted provisional votes.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Stage1ReceiptList"
-        400:
-          $ref: "#/components/responses/BadFormat"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
+                type: array
+                items:
+                  $ref: "#/components/schemas/UnconfirmedReceipt"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/audit:
     parameters:
       - $ref: "#/components/parameters/ElectionID"
     post:
-      summary: Cancel provisional votes for stage-2 receipts.
+      summary: Audit provisional votes for stage-2 receipts.
       description:
         Allows the voter to audit the choices, ensuring it is Cast As Intended.
+        This endpoint is atomic.
       tags:
-        - Voting
+        - Voting Endpoints
+      requestBody:
+        description: "List of ballots to audit: signed ballot-question pairs."
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BallotRecallList"
       responses:
         200:
-          description: List of Stage-2 receipts.
+          description: Successfully audited provisional votes.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Stage2ReceiptList"
-        400:
-          $ref: "#/components/responses/NoPendingVote"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditedReceipt"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/confirm:
@@ -404,27 +524,27 @@ paths:
       summary: Confirm provisional votes for stage-2 receipts.
       description:
         This confirms the provisional votes, locking in the voter's candidate decisions.
+        This endpoint is atomic.
       tags:
-        - Voting
+        - Voting Endpoints
+      requestBody:
+        description: "List of ballots to confirm: signed ballot-question pairs."
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BallotRecallList"
       responses:
         200:
-          description: Stage-2 receipt.
+          description: Successfully confirmed provisional votes.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Stage2Receipt"
-              example:
-                id: 12345
-                R: 329a7f6d7e8c5a5b
-                Z: 8a6db9c9ee90f122
-                P: 1298badfc7896fc7
-                action: "confirmed"
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfirmedReceipt"
         400:
-          $ref: "#/components/responses/NoPendingVote"
-        401:
-          $ref: "#/components/responses/NotLoggedIn"
-        403:
-          $ref: "#/components/responses/PermissionDenied"
+          description: Not allowed to confirm at least one of these ballots.
         404:
           $ref: "#/components/responses/NotFound"
 
@@ -437,6 +557,9 @@ components:
       name: auth_token
   # Payload Schemas
   schemas:
+    ID:
+      type: string
+      example: 6220e27c5f06ce6366456650
     AdminCredentials:
       type: object
       properties:
@@ -450,270 +573,522 @@ components:
       example:
         username: "coordinator"
         password: "CorrectHorseBatteryStaple"
-    VoterSMSNumber:
-      type: object
-      properties:
-        sms:
-          type: string
-      required:
-        - sms
-      example:
-        sms: "+441234567890"
-    VoterOTP:
-      type: object
-      properties:
-        otp:
-          type: string
-      required:
-        - otp
-      example:
-        otp: "123456"
+    Challenge:
+      type: string
+      example:  "challenge=PZdCgJeIc39mLMORSIVLNie9HotLcfbGaBKx6BEMrptxPfOlfbuxO5pa5Pd660aFtAILfv6aAmR2Y8Mgdt4uirqnFAMIYylLMsBP6CnAzak4K6Hm4iOcT4552Qhpbqh1WrekIOnFrTGVi08qv9XDeSjwluMgckxW6HlBZHIFL2Z4OMBODPo4uBHpe9Bt5pciM9rKaxIqmlCXwsLBm+yTExduCRqe7si39OTylgDWJt2dnBUL%2FRcZ; Path=/; HttpOnly; Expires=Fri, 10 Dec 2021 04:32:45 GMT;"
     AuthToken:
       type: string
       example: "auth_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1aWQiOnsiJG9pZCI6IjYxYjJkZDNkYzEwODY3MzAyMjcwNjRhMCJ9LCJhZG0iOmZhbHNlLCJleHAiOjE2MzkxMTkxOTh9.bJqzVrH3ZFJuyKnoI9UAoYjqMsaQ51Fon43WUs5bGmQ; Path=/; HttpOnly;"
-    Candidate:
+    GroupMap:
+      type: object
+      description: Object map from electorate names to group names.
+      example:
+        electorate1:
+          - foo
+          - bar
+          - baz
+        electorate2:
+          - fizz
+          - buzz
+    QuestionSpec:
       type: object
       properties:
-        id:
+        description:
           type: string
-        name:
-          type: string
+        constraints:
+          description:
+            A disjunction of groups that the user must be in to vote on this question.
+            Same format as `GroupMap`.
+        candidates:
+          type: array
+          items:
+            type: string
       required:
-        - id
-        - name
+        - description
+        - constraints
+        - candidates
+      example:
+        description: Course Representative (Computer Science)
+        constraints:
+          Courses:
+            - CompSci
+            - Discrete Maths
+        candidates:
+          - Alice
+          - Bob
     Question:
       type: object
       properties:
         id:
+          $ref: "#/components/schemas/ID"
+        description:
           type: string
-        desc:
-          type: string
-        groupConstraints:
+        constraints:
+          description:
+            A disjunction of groups that the user must be in to vote on this question.
+            Same format as `GroupMap`.
+        candidates:
           type: array
           items:
             type: string
-        candidates:
-          type: array
-          items:
-            $ref: "#/components/schemas/Candidate"
       required:
         - id
-        - desc
-        - groupConstraints
+        - description
+        - constraints
         - candidates
       example:
-        id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
-        desc: Course Representative (Computer Science)
-        groupConstraints: [07b185d2-7f75-4409-ad47-9dc8bb95cb4d]
+        id: 6220e3b1069d947c996b5f7a
+        description: Course Representative (Computer Science)
+        constraints:
+          Courses:
+            - CompSci
+            - Discrete Maths
         candidates:
-          - id: 398fc139-c26c-44ea-8af9-c09009091442
-            name: Alice
-          - id: cc75eb78-dd87-472b-b80c-4eeb55a69e2c
-            name: Bob
-    Group:
+          - Alice
+          - Bob
+    Electorate:
+      type: object
+      properties:
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+        is_mutex:
+          type: boolean
+      required:
+        - name
+        - groups
+        - is_mutex
+      example:
+        name: Courses
+        groups:
+          - CompSci
+          - Maths
+          - Discrete Maths
+          - Physics
+        is_mutex: true
+    ElectionMetadata:
       type: object
       properties:
         id:
-          type: string
+          $ref: '#/components/schemas/ID'
         name:
           type: string
-        mutexSet:
+        state:
+          type: string
+        start_time:
+          type: string
+        end_time:
           type: string
       required:
-        - id
         - name
+        - state
+        - start_time
+        - end_time
       example:
-        id: 07b185d2-7f75-4409-ad47-9dc8bb95cb4d
-        name: Computer Science Students
-        mutexSet: courses
+        id: 6220e3b1069d947c996b5f7a
+        name: Course Representatives
+        state: Published
+        start_time: "2022-03-10T00:00:00Z"
+        end_time: "2022-03-17T00:00::00Z"
+    ElectionSpec:
+      type: object
+      properties:
+        name:
+          type: string
+        start_time:
+          type: string
+        end_time:
+          type: string
+        electorates:
+          type: array
+          items:
+            $ref: "#/components/schemas/Electorate"
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionSpec"
+      required:
+        - name
+        - start_time
+        - end_time
+        - electorates
+        - questions
+      example:
+        name: Course Representatives
+        start_time: "2022-03-10T00:00:00Z"
+        end_time: "2022-03-17T00:00::00Z"
+        electorates:
+          - name: Courses
+            groups:
+              - CompSci
+              - Maths
+              - Discrete Maths
+              - Physics
+            is_mutex: true
+        questions:
+          - description: Course Representative (Computer Science)
+            constraints:
+              Courses:
+                - CompSci
+                - Discrete Maths
+            candidates:
+              - Alice
+              - Bob
     Election:
       type: object
       properties:
         id:
-          type: string
+          $ref: '#/components/schemas/ID'
         name:
           type: string
-        finalised:
-          type: boolean
-        startTime:
+        state:
           type: string
-        endTime:
+        start_time:
           type: string
-        groups:
+        end_time:
+          type: string
+        electorates:
           type: array
           items:
-            $ref: "#/components/schemas/Group"
+            $ref: "#/components/schemas/Electorate"
         questions:
-          type: array
-          items:
-            $ref: "#/components/schemas/Question"
+          type: object
+          description: Object map from question ID to `Question`.
+        crypto:
+          type: object
+          properties:
+            g1:
+              type: string
+            g2:
+              type: string
+            public_key:
+              type: string
       required:
         - id
         - name
-        - finalised
-        - startTime
-        - endTime
-        - groups
+        - state
+        - start_time
+        - end_time
+        - electorates
         - questions
-      example:
-        id: 7b1c5646-4cf8-4507-8ff4-bb8580214622
-        name: SU Election
-        finalised: true
-        startTime: 2021-10-01T00:00:00Z
-        endTime: 2021-10-08T00:00:00Z
-        groups:
-          - id: 07b185d2-7f75-4409-ad47-9dc8bb95cb4d
-            name: Computer Science Students
-        questions:
-          - id: 7b7c0917-060c-45cf-ace8-b8b834765d6f
-            desc: Course Representative (Computer Science)
-            groupConstraints: [ 07b185d2-7f75-4409-ad47-9dc8bb95cb4d ]
-            candidates:
-              - id: 398fc139-c26c-44ea-8af9-c09009091442
-                name: Alice
-              - id: cc75eb78-dd87-472b-b80c-4eeb55a69e2c
-                name: Bob
-    IDList:
-      type: array
-      items:
-        type: string
-      minItems: 1
-      uniqueItems: true
-      example:
-        - e041990c-5edc-4bdc-94ed-406a4b9759c3
-        - 814d342b-acee-4848-b004-857ff77cf29f
-        - ddf94a22-6d6f-4c73-9cba-00d1d83dd537
-    Vote:
+        - crypto
+    BallotSpec:
       type: object
       properties:
         question:
-          type: string
+          $ref: "#/components/schemas/ID"
         candidate:
           type: string
       required:
         - question
         - candidate
       example:
-        question: 7b7c0917-060c-45cf-ace8-b8b834765d6f
-        candidate: 398fc139-c26c-44ea-8af9-c09009091442
-    VoteList:
+        question: 6220e27c5f06ce6366456650
+        candidate: Alice
+    BallotSpecList:
       type: array
       items:
-        $ref: "#/components/schemas/Vote"
+        $ref: "#/components/schemas/BallotSpec"
       minItems: 1
       uniqueItems: true
       example:
-        - question: 7b7c0917-060c-45cf-ace8-b8b834765d6f
-          candidate: 398fc139-c26c-44ea-8af9-c09009091442
-        - question: aa74a53e-e9b6-4f46-b73e-3ec41e583a1c
-          candidate: 9a2ee202-6fb8-4fdb-89ec-c60a14999f7c
-    Stage1Ballot:
+        - question: 6220e27c5f06ce6366456650
+          candidate: Alice
+        - question: 6220e27c5f06ce6366456651
+          candidate: Bob
+    VoteProof:
+      type: object
+      properties:
+        c1:
+          type: string
+        c2:
+          type: string
+        r1:
+          type: string
+        r2:
+          type: string
+      required:
+        - c1
+        - c2
+        - r1
+        - r2
+    VoteReceipt:
       type: object
       properties:
         R:
           type: string
-          description: Public random component.
         Z:
           type: string
-          description: Public vote component.
-        P:
-          type: string  # TODO what is actual format of P?
-          description: Public zero-knowledge proof component.
+        pwf:
+          $ref: "#/components/schemas/VoteProof"
       required:
         - R
         - Z
-        - P
-      example:
-        R: 329a7f6d7e8c5a5b
-        Z: 8a6db9c9ee90f122
-        P: 1298badfc7896fc7
-    Stage2Ballot:
+        - pwf
+    AuditedVoteReceipt:
       type: object
       properties:
-        R:
-          type: string
-          description: Public random component.
-        Z:
-          type: string
-          description: Public vote component.
-        P:
-          type: string
-          description: Public zero-knowledge proof component.
-        action:
-          type: string
-          description: "Either 'confirmed' or 'audited'."
         r:
           type: string
-          description: Secret random component; only present for audited votes.
         v:
-          type: integer
-          description: Secret vote component; only present for audited votes.
+          type: string
+        R:
+          type: string
+        Z:
+          type: string
+        pwf:
+          $ref: "#/components/schemas/VoteProof"
       required:
+        - r
+        - v
         - R
         - Z
-        - P
-        - action
-      example:
-        R: 329a7f6d7e8c5a5b
-        Z: 8a6db9c9ee90f122
-        P: 1298badfc7896fc7
-        action: "audited"
-        r: 1298cd98c28e90a0
-        v: 1
-    Stage1Receipt:
+        - pwf
+    UnconfirmedReceipt:
       type: object
       properties:
-        id:
-          type: integer
-        ballots:
-          type: array
-          items:
-            $ref: "#/components/schemas/Stage1Ballot"
+        ballot_id:
+          $ref: "#/components/schemas/ID"
+        election_id:
+          $ref: "#/components/schemas/ID"
+        question_id:
+          $ref: "#/components/schemas/ID"
+        state:
+          type: string
+          description: Always "Unconfirmed".
+        signature:
+          type: string
+        votes:
+          description: Object map from candidate names to `VoteReceipt` values.
+        pwf:
+          type: object
+          properties:
+            a:
+              type: string
+            b:
+              type: string
+            r:
+              type: string
       required:
-        - id
-        - ballots
+        - ballot_id
+        - election_id
+        - question_id
+        - state
+        - signature
+        - votes
+        - pwf
       example:
-        id: 12345
-        ballots:
-          - R: 329a7f6d7e8c5a5b
-            Z: 8a6db9c9ee90f122
-            P: 1298badfc7896fc7
-    Stage2Receipt:
-      description:
-        A stage 2 receipt contains all the information of a stage 1 receipt, but additionally has been either confirmed or audited.
-        An audited receipt will include the secrets `r` and `v` for verification purposes; a confirmed receipt will not.
+        ballot_id: 6220e27c5f06ce6366456650
+        election_id: 6220e27fbacbe75634ff900
+        question_id: 6220e27fbacbe75634ff901
+        state: "Unconfirmed"
+        signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
+        votes:
+          Alice:
+            R: "AuWgT3Q78-CC7XuA_-v2d39xEISuBtda8vSPm2CHVlrP"
+            Z: "A2x1FlP3TdLAaq3jf18izBvwwDPipVnBDser-htGyO9W"
+            pwf:
+              c1: "hoFCqyRIoDy1-e4Fr6qaQoPiyenNXcQH3fuCSmBkNoY"
+              c2: "Vz9pNecJ47gmoZmrfquIX14RvjPwJgYbLKnkG2vN2D0"
+              r1: "bR-mN0qoXOoGoKTBCSwjnLlKaS60SRdHJsOJeGPAdkw"
+              r2: "JSt46YEvHPWuUVxjTSp-0CYu5mUZNd8BDgqcSrhVbUM"
+          Bob:
+            R: "AuGIf4m32UVL2S8Ezbg1fe11S7YfAfmwji-AnUEJCLNE"
+            Z: "A4dGX1FJtsXaj4gessSOohUODmjOLVbQhUp5pSMLEmX4"
+            pwf:
+              c1: "OvBibLAIQwRlwTg4i5XorQgU3QYZZjYfn5JXs-WZumc"
+              c2: "B4kk7ik3bxdwbvvE5Jl5-8P7am3Tg89NeCdDuVJuEo0"
+              r1: "FY38gTG5IdnGnJ9RkOThCwrAgqSeOf4c8H8qoKii3UE"
+              r2: "4BQZZ1MOvbKQPV4vpK3xIkfov5hmPGLSOKCVFqobRIE"
+        pwf:
+          a: "AzODeWvAXSVPgCSdSWpqjPoEtd5_ah85a0pbfvePEISs"
+          b: "AqZM19nOoJlVT6azS2kBdhk2-vLK3l3Z7aeA_XJKl2vJ"
+          r: "UVX6rxaKqUbiItdMkT67U5BC-z5YCFQhWXEvuFBmCu4"
+    AuditedReceipt:
       type: object
       properties:
-        id:
-          type: integer
-        ballots:
-          type: array
-          items:
-            $ref: "#/components/schemas/Stage2Ballot"
+        ballot_id:
+          $ref: "#/components/schemas/ID"
+        election_id:
+          $ref: "#/components/schemas/ID"
+        question_id:
+          $ref: "#/components/schemas/ID"
+        state:
+          type: string
+          description: Always "Audited".
+        signature:
+          type: string
+        votes:
+          description: Object map from candidate names to `AuditedVoteReceipt` values.
+        pwf:
+          type: object
+          properties:
+            a:
+              type: string
+            b:
+              type: string
+            r:
+              type: string
       required:
-        - id
-        - ballots
+        - ballot_id
+        - election_id
+        - question_id
+        - state
+        - signature
+        - votes
+        - pwf
       example:
-        id: 12345
-        ballots:
-          - R: 329a7f6d7e8c5a5b
-            Z: 8a6db9c9ee90f122
-            P: 1298badfc7896fc7
-            action: "audited"
-            r: 1298cd98c28e90a0
-            v: 1
-    Stage1ReceiptList:
+        ballot_id: 6220e27c5f06ce6366456650
+        election_id: 6220e27fbacbe75634ff900
+        question_id: 6220e27fbacbe75634ff901
+        state: "Audited"
+        signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
+        votes:
+          Alice:
+            r: "vMPSY54TVTLaLjTFv0MskgcwQmg0BUTb6AL9pzQbiT8"
+            v: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            R: "AuWgT3Q78-CC7XuA_-v2d39xEISuBtda8vSPm2CHVlrP"
+            Z: "A2x1FlP3TdLAaq3jf18izBvwwDPipVnBDser-htGyO9W"
+            pwf:
+              c1: "hoFCqyRIoDy1-e4Fr6qaQoPiyenNXcQH3fuCSmBkNoY"
+              c2: "Vz9pNecJ47gmoZmrfquIX14RvjPwJgYbLKnkG2vN2D0"
+              r1: "bR-mN0qoXOoGoKTBCSwjnLlKaS60SRdHJsOJeGPAdkw"
+              r2: "JSt46YEvHPWuUVxjTSp-0CYu5mUZNd8BDgqcSrhVbUM"
+          Bob:
+            r: "ASZwPK8DUe4wrXDJIid39tP7nIuev6UGHtQbUvKskpg"
+            v: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE"
+            R: "AuGIf4m32UVL2S8Ezbg1fe11S7YfAfmwji-AnUEJCLNE"
+            Z: "A4dGX1FJtsXaj4gessSOohUODmjOLVbQhUp5pSMLEmX4"
+            pwf:
+              c1: "OvBibLAIQwRlwTg4i5XorQgU3QYZZjYfn5JXs-WZumc"
+              c2: "B4kk7ik3bxdwbvvE5Jl5-8P7am3Tg89NeCdDuVJuEo0"
+              r1: "FY38gTG5IdnGnJ9RkOThCwrAgqSeOf4c8H8qoKii3UE"
+              r2: "4BQZZ1MOvbKQPV4vpK3xIkfov5hmPGLSOKCVFqobRIE"
+        pwf:
+          a: "AzODeWvAXSVPgCSdSWpqjPoEtd5_ah85a0pbfvePEISs"
+          b: "AqZM19nOoJlVT6azS2kBdhk2-vLK3l3Z7aeA_XJKl2vJ"
+          r: "UVX6rxaKqUbiItdMkT67U5BC-z5YCFQhWXEvuFBmCu4"
+    ConfirmedReceipt:
+      type: object
+      properties:
+        ballot_id:
+          $ref: "#/components/schemas/ID"
+        election_id:
+          $ref: "#/components/schemas/ID"
+        question_id:
+          $ref: "#/components/schemas/ID"
+        state:
+          type: string
+          description: Always "Confirmed".
+        signature:
+          type: string
+        votes:
+          description: Object map from candidate names to `VoteReceipt` values.
+        pwf:
+          type: object
+          properties:
+            a:
+              type: string
+            b:
+              type: string
+            r:
+              type: string
+      required:
+        - ballot_id
+        - election_id
+        - question_id
+        - state
+        - signature
+        - votes
+        - pwf
+      example:
+        ballot_id: 6220e27c5f06ce6366456650
+        election_id: 6220e27fbacbe75634ff900
+        question_id: 6220e27fbacbe75634ff901
+        state: "Confirmed"
+        signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
+        votes:
+          Alice:
+            R: "AuWgT3Q78-CC7XuA_-v2d39xEISuBtda8vSPm2CHVlrP"
+            Z: "A2x1FlP3TdLAaq3jf18izBvwwDPipVnBDser-htGyO9W"
+            pwf:
+              c1: "hoFCqyRIoDy1-e4Fr6qaQoPiyenNXcQH3fuCSmBkNoY"
+              c2: "Vz9pNecJ47gmoZmrfquIX14RvjPwJgYbLKnkG2vN2D0"
+              r1: "bR-mN0qoXOoGoKTBCSwjnLlKaS60SRdHJsOJeGPAdkw"
+              r2: "JSt46YEvHPWuUVxjTSp-0CYu5mUZNd8BDgqcSrhVbUM"
+          Bob:
+            R: "AuGIf4m32UVL2S8Ezbg1fe11S7YfAfmwji-AnUEJCLNE"
+            Z: "A4dGX1FJtsXaj4gessSOohUODmjOLVbQhUp5pSMLEmX4"
+            pwf:
+              c1: "OvBibLAIQwRlwTg4i5XorQgU3QYZZjYfn5JXs-WZumc"
+              c2: "B4kk7ik3bxdwbvvE5Jl5-8P7am3Tg89NeCdDuVJuEo0"
+              r1: "FY38gTG5IdnGnJ9RkOThCwrAgqSeOf4c8H8qoKii3UE"
+              r2: "4BQZZ1MOvbKQPV4vpK3xIkfov5hmPGLSOKCVFqobRIE"
+        pwf:
+          a: "AzODeWvAXSVPgCSdSWpqjPoEtd5_ah85a0pbfvePEISs"
+          b: "AqZM19nOoJlVT6azS2kBdhk2-vLK3l3Z7aeA_XJKl2vJ"
+          r: "UVX6rxaKqUbiItdMkT67U5BC-z5YCFQhWXEvuFBmCu4"
+    CandidateTotalsMap:
+      type: object
+      description: Object map from candidate names to cryptographic totals.
+      example:
+        Alice:
+          election_id: 6220f19eac8b8ef619e64b47
+          question_id: 6220f19eac8b8ef619e64b43
+          candidate_name: Alice
+          tally: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAI
+          r_sum: sMKVUojysFflEY47ebE-9XmrRVtmPjQcpeLm33TUIxk
+        Bob:
+          election_id: 6220f19eac8b8ef619e64b47
+          question_id: 6220f19eac8b8ef619e64b43
+          candidate_name: Bob
+          tally: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM
+          r_sum: qJk5LeSZZcwnuvXKo0nbZ0g8k0a0dVb_Qw05FkmMoXI
+    BallotRecall:
+      type: object
+      properties:
+        ballot_id:
+          $ref: "#/components/schemas/ID"
+        question_id:
+          $ref: "#/components/schemas/ID"
+        signature:
+          type: string
+      required:
+        - ballot_id
+        - question_id
+        - signature
+      example:
+        ballot_id: 6220e27c5f06ce6366456650
+        question_id: 6220e27fbacbe75634ff901
+        signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
+    BallotRecallList:
       type: array
       items:
-        $ref: '#/components/schemas/Stage1Receipt'
-      minItems: 1
-      uniqueItems: true
-    Stage2ReceiptList:
-      type: array
-      items:
-        $ref: '#/components/schemas/Stage2Receipt'
-      minItems: 1
-      uniqueItems: true
+        $ref: "#/components/schemas/BallotRecall"
+    QuestionDump:
+      type: object
+      properties:
+        election:
+          type: object
+          properties:
+            g1:
+              type: string
+            g2:
+              type: string
+            public_key:
+              type: string
+        audited:
+          type: object
+          description: Object map from ballot IDs to audited ballots.
+        confirmed:
+          type: object
+          description: Object map from ballot IDs to confirmed ballots.
+        totals:
+          type: object
+          description: Object map from candidate names to totals.
   # Common parameters
   parameters:
     ElectionID:
@@ -722,19 +1097,26 @@ components:
       required: true
       description: The ID of the election to operate on.
       schema:
-        type: string
-        example: 7b1c5646-4cf8-4507-8ff4-bb8580214622
-    VoteID:
-      name: voteID
+        $ref: "#/components/schemas/ID"
+    QuestionID:
+      name: questionID
       in: path
       required: true
-      description: The ID of the vote to operate on.
+      description: The ID of the election question to operate on.
+      schema:
+        $ref: "#/components/schemas/ID"
+    BallotID:
+      name: ballotID
+      in: path
+      required: true
+      description: The ID of the ballot to operate on.
       schema:
         type: integer
         example: 12345
     PageNum:
       name: page_num
       in: query
+      required: true
       description: The page index into paginated data, starting at 1.
       schema:
         type: integer
@@ -743,6 +1125,7 @@ components:
     PageSize:
       name: page_size
       in: query
+      required: true
       description:
         The requested size of a single paginated batch.
         The API may impose a maximum or minimum on this parameter.
@@ -754,18 +1137,16 @@ components:
   # Common Responses
   responses:
     AuthToken:
-      description: Authenticated successfully.
+      description: Successfully authenticated.
       headers:
         Set-Cookie:
           schema:
             $ref: "#/components/schemas/AuthToken"
-    BadFormat:
-      description: Bad request format.
-    NotLoggedIn:
-      description: No AUTHTOKEN cookie present.
-    PermissionDenied:
-      description: AUTHTOKEN cookie is invalid or does not give you the required permissions.
+    BadRequest:
+      description: Request was malformed.
     NotFound:
-      description: Not Found.
-    NoPendingVote:
-      description: No in-progress provisional vote.
+      description:
+        Requested resource was not found. This can also be produced by
+        authorisation errors, e.g. a missing or invalid `auth_token`.
+    InternalServerError:
+      description: The server encountered an error.
