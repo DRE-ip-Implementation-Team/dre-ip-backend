@@ -9,7 +9,7 @@ use crate::model::{
         receipt::Receipt,
     },
     common::election::CandidateId,
-    db::ballot::{Audited, Confirmed},
+    db::ballot::{Audited, BallotState, Confirmed},
     mongodb::Id,
 };
 
@@ -98,41 +98,56 @@ impl ElectionResults {
 
         // Verify the signatures of confirmed receipts.
         for receipt in self.confirmed.values() {
-            let mut msg = receipt.crypto.to_bytes();
-            msg.extend(receipt.ballot_id.to_bytes());
-            msg.extend(receipt.election_id.to_bytes());
-            msg.extend(receipt.question_id.to_bytes());
-            msg.extend(receipt.state.as_ref());
-            if !self.election.public_key.verify(&msg, &receipt.signature) {
-                return Err(VerificationError::Receipt {
-                    ballot_id: receipt.ballot_id,
-                });
-            }
+            verify_receipt_signature(receipt, &self.election)?;
         }
 
         // Verify all the audited receipts.
         for receipt in self.audited.values() {
-            receipt
-                .crypto
-                .verify(
-                    self.election.g1,
-                    self.election.g2,
-                    receipt.ballot_id.to_bytes(),
-                )
-                .map_err(InternalError::Ballot)?;
-
-            let mut msg = receipt.crypto.to_bytes();
-            msg.extend(receipt.ballot_id.to_bytes());
-            msg.extend(receipt.election_id.to_bytes());
-            msg.extend(receipt.question_id.to_bytes());
-            msg.extend(receipt.state.as_ref());
-            if !self.election.public_key.verify(&msg, &receipt.signature) {
-                return Err(VerificationError::Receipt {
-                    ballot_id: receipt.ballot_id,
-                });
-            }
+            verify_receipt(receipt, &self.election)?;
         }
 
         Ok(())
+    }
+}
+
+/// Verify an individual receipt.
+pub fn verify_receipt<S>(
+    receipt: &Receipt<S>,
+    crypto: &ElectionCrypto,
+) -> Result<(), VerificationError>
+where
+    S: BallotState,
+    for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
+{
+    // Verify PWFs.
+    receipt
+        .crypto
+        .verify(crypto.g1, crypto.g2, receipt.ballot_id.to_bytes())
+        .map_err(InternalError::Ballot)?;
+
+    // Verify signature.
+    verify_receipt_signature(receipt, crypto)
+}
+
+/// Verify just the signature of an individual receipt.
+pub fn verify_receipt_signature<S>(
+    receipt: &Receipt<S>,
+    crypto: &ElectionCrypto,
+) -> Result<(), VerificationError>
+where
+    S: BallotState,
+    for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
+{
+    let mut msg = receipt.crypto.to_bytes();
+    msg.extend(receipt.ballot_id.to_bytes());
+    msg.extend(receipt.election_id.to_bytes());
+    msg.extend(receipt.question_id.to_bytes());
+    msg.extend(receipt.state.as_ref());
+    if crypto.public_key.verify(&msg, &receipt.signature) {
+        Ok(())
+    } else {
+        Err(VerificationError::Receipt {
+            ballot_id: receipt.ballot_id,
+        })
     }
 }
