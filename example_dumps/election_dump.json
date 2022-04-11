@@ -1,0 +1,76 @@
+{
+  "id": "622650f453036aff34eb72a7",
+  "name": "Test Election",
+  "state": "Published",
+  "start_time": "2022-04-05T14:34:31.365Z",
+  "end_time": "2021-01-01T00:00:00Z",
+  "electorates": {
+    "Courses": {
+      "name": "Courses",
+      "groups": [
+        "Physics",
+        "Maths",
+        "CompSci"
+      ],
+      "is_mutex": true
+    },
+    "Societies": {
+      "name": "Societies",
+      "groups": [
+        "Moongolf",
+        "CompSoc",
+        "Quidditch"
+      ],
+      "is_mutex": false
+    }
+  },
+  "questions": {
+    "622650f453036aff34eb72a3": {
+      "id": "622650f453036aff34eb72a3",
+      "description": "Who should be president of Warwick Extreme Moongolf?",
+      "constraints": {
+        "Societies": [
+          "Moongolf"
+        ]
+      },
+      "candidates": [
+        "John Smith",
+        "Jane Doe"
+      ]
+    },
+    "622650f453036aff34eb72a2": {
+      "id": "622650f453036aff34eb72a2",
+      "description": "Who should be captain of the Quidditch team?",
+      "constraints": {
+        "Societies": [
+          "Quidditch"
+        ]
+      },
+      "candidates": [
+        "Chris Riches",
+        "Parry Hotter"
+      ]
+    },
+    "622650f453036aff34eb72a4": {
+      "id": "622650f453036aff34eb72a4",
+      "description": "Should CompSoc host a talk about Quantum Cryptography?",
+      "constraints": {
+        "Courses": [
+          "CompSci"
+        ],
+        "Societies": [
+          "CompSoc"
+        ]
+      },
+      "candidates": [
+        "Yes",
+        "No"
+      ]
+    }
+  },
+  "crypto": {
+    "g1": "A2sX0fLhLEJH-Lzm5WOkQPJ3A32BLeszoPShOUXYmMKW",
+    "g2": "A-syy9dgQJ4rOGKtzS6RK5ByfNbSlpNNZrcLL5hlACBY",
+    "public_key": "AvD2uFnvrMBSVJxAhgzY4NUOWf2xI07sbPe6qkC6MBYK"
+  }
+}

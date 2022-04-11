@@ -1,90 +1,107 @@
 #[macro_use]
 extern crate rocket;
 
-use crate::model::{
-    election::{Ballot, Election},
-    voter::db::DbVoter,
-};
+#[cfg(test)]
+#[macro_use]
+extern crate backend_test;
 
+use std::sync::Arc;
+
+use aws_sdk_sns::Client as SnsClient;
 use chrono::Duration;
-use model::{
-    admin::{db::DbAdmin, Admin},
-    voter::Voter,
-};
 use mongodb::Client;
-use once_cell::sync::OnceCell;
-use rocket::{Build, Rocket};
+use rocket::{fairing::AdHoc, tokio::sync::Mutex, Build, Rocket};
 use serde::Deserialize;
 
 pub mod api;
 pub mod error;
 pub mod model;
+pub mod scheduled_task;
+
+use crate::model::db::election::ElectionFinalizers as RawElectionFinalizers;
 
 pub async fn build() -> Rocket<Build> {
-    let rocket = rocket::build();
-    let figment = rocket.figment();
-
-    let db_host = figment.extract_inner("db_host").unwrap_or("localhost");
-    let db_port = figment.extract_inner("db_port").unwrap_or(27017);
-    let client = Client::with_uri_str(format!("mongodb://{}:{}", db_host, db_port))
-        .await
-        .expect("Could not connect to database");
-    let db = client.database("dreip");
-
-    let get_admins = db.collection::<DbAdmin>("admin");
-    let put_admins = db.collection::<Admin>("admin");
-    let get_users = db.collection::<DbVoter>("voters");
-    let put_users = db.collection::<Voter>("voters");
-    let elections = db.collection::<Election>("elections");
-    let ballots = db.collection::<Ballot>("ballots");
-
-    CONFIG.set(figment.extract::<Config>().unwrap_or_default());
-
-    rocket
-        .mount("/", api::routes())
-        .manage(get_admins)
-        .manage(put_admins)
-        .manage(get_users)
-        .manage(put_users)
-        .manage(elections)
-        .manage(ballots)
+    rocket_for_db_and_notifier(db_client().await, &database(), notifier().await).await
 }
 
-/// Contains the configuration information for the program.
-///
-/// Fields can be extracted from `Config` using the [`conf`] macro.
-pub static CONFIG: OnceCell<Config> = OnceCell::new();
-
-#[derive(Deserialize)]
-pub struct Config {
-    otp_ttl: u64,
-    jwt_secret: &'static [u8],
-    auth_ttl: u64,
+pub(crate) async fn db_client() -> Client {
+    Client::with_uri_str(env!("db_uri")).await.unwrap()
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            otp_ttl: Duration::minutes(5).num_seconds() as u64,
-            jwt_secret: b"$!~B.4uQLt@d*K5w",
-            auth_ttl: Duration::days(1).num_seconds() as u64,
-        }
+pub(crate) async fn notifier() -> SnsClient {
+    SnsClient::new(&aws_config::load_from_env().await)
+}
+
+/// Get the name of the database to use.
+/// This is randomised for tests so different tests do not collide.
+fn database() -> String {
+    #[cfg(not(test))]
+    return "dreip".to_string();
+
+    #[cfg(test)]
+    {
+        let random: u32 = rand::random();
+        let db = format!("test{}", random);
+        println!("Using database {}", db);
+        db
     }
 }
 
-/// Extracts a `var` from the configuration environment
-///
-/// # Usage
-///
-/// `CONFIG` must be a [`OnceCell`] declared at the crate root and must wrap a named struct containing a field with the identifier `var`.
-///
-/// # Safety
-///
-/// `CONFIG` must be initialized once at program start and modified nowhere else.
-#[macro_export]
-macro_rules! conf {
-    ($var:ident) => {
-        // SAFETY: `CONFIG` is initialized once at program start and modified nowhere else
-        unsafe { $crate::CONFIG.get_unchecked() }.$var
-    };
+/// Used in both the application entry point and the `backend_test` macro
+pub(crate) async fn rocket_for_db_and_notifier(
+    client: Client,
+    db: &str,
+    notifier: SnsClient,
+) -> Rocket<Build> {
+    let db = client.database(db);
+    let mut election_finalizers = RawElectionFinalizers::new();
+    election_finalizers
+        .schedule_elections(&db)
+        .await
+        .expect("Failed to contact database during init");
+
+    rocket::build()
+        .mount("/", api::routes())
+        .attach(AdHoc::config::<Config>())
+        .manage(client)
+        .manage(db)
+        .manage(notifier)
+        .manage(Arc::new(Mutex::new(election_finalizers)))
+}
+
+/// Convenient synonym for accessing state.
+pub type ElectionFinalizers = Arc<Mutex<RawElectionFinalizers>>;
+
+#[derive(Deserialize)]
+pub struct Config {
+    otp_ttl: u32,
+    jwt_secret: String,
+    hmac_secret: String,
+    auth_ttl: u32,
+}
+
+impl Config {
+    /// Seconds until the OTP challenge expires.
+    /// Configured via `OTP_TTL`.
+    pub fn otp_ttl(&self) -> Duration {
+        Duration::seconds(self.otp_ttl.into())
+    }
+
+    /// Key used to encrypt JWTs
+    /// Configured via `JWT_SECRET`.
+    pub fn jwt_secret(&self) -> &[u8] {
+        self.jwt_secret.as_bytes()
+    }
+
+    /// Key used to sign HMACs
+    /// Configured via `HMAC_SECRET`.
+    pub fn hmac_secret(&self) -> &[u8] {
+        self.hmac_secret.as_bytes()
+    }
+
+    /// Seconds until the authentication token expires
+    /// Configured via `AUTH_TTL`.
+    pub fn auth_ttl(&self) -> Duration {
+        Duration::seconds(self.auth_ttl.into())
+    }
 }
