@@ -18,7 +18,10 @@ pub mod error;
 pub mod model;
 pub mod scheduled_task;
 
-use crate::model::db::election::ElectionFinalizers as RawElectionFinalizers;
+use crate::model::{
+    db::{admin::ensure_admin_exists, election::ElectionFinalizers as RawElectionFinalizers},
+    mongodb::Coll,
+};
 
 pub async fn build() -> Rocket<Build> {
     rocket_for_db_and_notifier(db_client().await, &database(), notifier().await).await
@@ -53,12 +56,20 @@ pub(crate) async fn rocket_for_db_and_notifier(
     db: &str,
     notifier: SnsClient,
 ) -> Rocket<Build> {
+    // Create the database reference.
     let db = client.database(db);
+
+    // Create an election finalizer for every election that needs one.
     let mut election_finalizers = RawElectionFinalizers::new();
     election_finalizers
         .schedule_elections(&db)
         .await
-        .expect("Failed to contact database during init");
+        .expect("Failed to contact database during election finalizer init");
+
+    // Ensure there is at least one admin user.
+    ensure_admin_exists(&Coll::from_db(&db))
+        .await
+        .expect("Failed to contact database during admin user init");
 
     rocket::build()
         .mount("/", api::routes())
