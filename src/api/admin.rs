@@ -325,6 +325,7 @@ mod tests {
         },
         common::allowed_questions::AllowedQuestions,
         db::{
+            admin::DEFAULT_ADMIN_USERNAME,
             ballot::{Audited, Ballot, Confirmed, Unconfirmed},
             candidate_totals::NewCandidateTotals,
             election::ElectionMetadata,
@@ -353,7 +354,7 @@ mod tests {
 
         // Delete the admin.
         let count = admins.count_documents(None, None).await.unwrap();
-        assert_eq!(count, 2);
+        assert_eq!(count, 3); // Default admin, test admin, new admin.
         let response = client
             .delete(uri!(delete_admin))
             .header(ContentType::JSON)
@@ -364,9 +365,20 @@ mod tests {
 
         // Ensure the admin has been deleted.
         let count = admins.count_documents(None, None).await.unwrap();
-        assert_eq!(count, 1);
-        let admin = admins.find_one(None, None).await.unwrap().unwrap();
-        assert_eq!(admin.username, AdminCredentials::example1().username);
+        assert_eq!(count, 2);
+        let expected = vec![
+            DEFAULT_ADMIN_USERNAME.to_string(),
+            AdminCredentials::example1().username,
+        ];
+        let remaining_admins: Vec<String> = admins
+            .find(None, None)
+            .await
+            .unwrap()
+            .map_ok(|a| a.admin.username)
+            .try_collect()
+            .await
+            .unwrap();
+        assert_eq!(expected, remaining_admins);
     }
 
     #[backend_test(admin)]
@@ -394,7 +406,7 @@ mod tests {
 
         // Ensure no admins were created.
         let num_admins = count_matches::<Admin>(&db, doc! {}).await;
-        assert_eq!(num_admins, 1);
+        assert_eq!(num_admins, 2); // Default admin and test admin.
     }
 
     #[backend_test(admin)]
@@ -411,9 +423,10 @@ mod tests {
         let admins: Vec<String> =
             serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
         let expected = vec![
-            "alice112".to_string(),
-            "bobthesuperadmin".to_string(),
-            "monsieur-foo".to_string(),
+            DEFAULT_ADMIN_USERNAME.to_string(),
+            AdminCredentials::example1().username,
+            AdminCredentials::example2().username,
+            AdminCredentials::example3().username,
         ];
         assert_eq!(admins, expected);
     }
