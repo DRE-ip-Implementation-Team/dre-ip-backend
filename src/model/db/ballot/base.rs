@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use chrono::{DateTime, Utc};
-use dre_ip::{Ballot as DreipBallot, CandidateTotals, NoSecrets, VoteSecrets};
+use dre_ip::{Ballot as DreipBallot, CandidateTotals, NoSecrets, SecretsPresent, VoteSecrets};
 use mongodb::bson::to_bson;
 use mongodb::bson::{serde_helpers::chrono_datetime_as_bson_datetime, Bson};
 use serde::de::DeserializeOwned;
@@ -64,9 +64,9 @@ impl BallotCore<Unconfirmed> {
 /// if and only if the ballot is unconfirmed or audited.
 pub trait BallotState: Copy + AsRef<[u8]> {
     /// Do we store the secrets internally?
-    type InternalSecrets: Serialize + DeserializeOwned + Debug + Clone;
+    type InternalSecrets: Serialize + DeserializeOwned + Debug + Clone + VoteSecrets<DreipGroup>;
     /// Do we reveal the secrets in the receipt?
-    type ExposedSecrets: Serialize + DeserializeOwned + Debug + Clone;
+    type ExposedSecrets: Serialize + DeserializeOwned + Debug + Clone + VoteSecrets<DreipGroup>;
     /// Convert internal representation into receipt representation.
     fn internal_to_receipt(
         internal: BallotCrypto<Self::InternalSecrets>,
@@ -93,7 +93,7 @@ impl From<Unconfirmed> for Bson {
 
 /// Unconfirmed ballots have secrets internally but do not reveal them in receipts.
 impl BallotState for Unconfirmed {
-    type InternalSecrets = VoteSecrets<DreipGroup>;
+    type InternalSecrets = SecretsPresent<DreipGroup>;
     type ExposedSecrets = NoSecrets;
 
     fn internal_to_receipt(
@@ -123,8 +123,8 @@ impl From<Audited> for Bson {
 
 /// Audited ballots have secrets internally and also make them public in receipts.
 impl BallotState for Audited {
-    type InternalSecrets = VoteSecrets<DreipGroup>;
-    type ExposedSecrets = VoteSecrets<DreipGroup>;
+    type InternalSecrets = SecretsPresent<DreipGroup>;
+    type ExposedSecrets = SecretsPresent<DreipGroup>;
 
     fn internal_to_receipt(
         internal: BallotCrypto<Self::InternalSecrets>,

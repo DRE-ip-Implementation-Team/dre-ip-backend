@@ -281,9 +281,12 @@ mod tests {
                 receipt_path: "example_dumps/audited_receipt_invalid.json",
                 crypto_path: "example_dumps/crypto_dump.json"
             }),
-            Err(Error::Verification(VerificationError::Receipt {
-                ballot_id: "622650f453036aff34eb72b1".parse().unwrap(),
-            }))
+            Err(Error::Verification(VerificationError::Ballot(
+                BallotError::Vote(VoteError {
+                    ballot_id: "622650f453036aff34eb72b1".parse().unwrap(),
+                    candidate_id: "Chris Riches".to_string(),
+                })
+            )))
         );
         assert_eq!(
             verify(&VerificationTask::Receipt {
