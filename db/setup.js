@@ -19,10 +19,6 @@ elections = db.getCollection("elections");
 db.createCollection("ballots");
 ballots = db.getCollection("ballots");
 ballots.createIndex({election_id: 1, question_id: 1})
-ballots.createIndex({creation_time: -1}, {
-	expireAfterSeconds: 3600,
-	partialFilterExpression: {state: "Unconfirmed"}
-})
 
 // Candidate totals collection
 db.createCollection("candidate_totals");
