@@ -1,0 +1,74 @@
+[
+  {
+    "votes": {
+      "Chris Riches": {
+        "r": "4E8dhxVhSxh25xphVLAHxyhm8sr62mUHjQa3EOzQ5Lg",
+        "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
+        "R": "AqTochKrzijkDQqPJ9H4C2jkmJ-S5IlnTLcDx-OxEQDj",
+        "Z": "A5uNOjH3ZPst7MaPDwCnIWm3kgv_u1tls1wKHCIKauRl",
+        "pwf": {
+          "c1": "b5AoW9YPOZ-_0Go1lmHB47vhwn_4cj3iT7E52HOuGAA",
+          "c2": "cOizEtuee-M6WvjlqNiNY0mOzBaED7HSs4nC--iJeM8",
+          "r1": "_SpvIc51jOoiNv14HuhCbfoAePLZqG4utY0baTj4HDY",
+          "r2": "vZAclxo_vxScNlqwcvKrsIsANXWYpBOyzpdEVol9E38"
+        }
+      },
+      "Parry Hotter": {
+        "r": "qD8VP9G4EWTQzhPmNbMconIoD4sft6T9vahi5faxJ-k",
+        "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "R": "AjDtgbQYtAyE_vT5zRLciroZtCWSsz59vRDgfp13bmEL",
+        "Z": "A5aRugOlAdFGKfmfQx2lRiX9f5Nnk9joI3R92BJoVgCa",
+        "pwf": {
+          "c1": "1nO51CEfUGvKsDMbDcHOTWpST6j_6kuKEcwUIWKd-tc",
+          "c2": "x26qpX5C06bG-y5U1_q-N39ESCZpNqwF1WNU3rHbGn8",
+          "r1": "SM-uuzqNG4P-G1XYXhAojj_66kzbwMA793Uc2Iwryi8",
+          "r2": "Lqor5DPAuUkBm6a3kpy15FQ0VBDCRCTUHraJ24CpXxA"
+        }
+      }
+    },
+    "pwf": {
+      "a": "A5K5CHC7eDVYnfGg103ZKnN-VV2vbeKsffSdDMIA-mBX",
+      "b": "ApDWRpqJfgS3jwT0LDgJoE0f0fZQuTFq2l_nzHRfa_Du",
+      "r": "OZIrh6Aa3vot0uwKdZDr6Q9zJV5Xu9kZoM8L49KouG8"
+    },
+    "ballot_id": "622650f453036aff34eb72b1",
+    "election_id": "622650f453036aff34eb72a7",
+    "question_id": "622650f453036aff34eb72a2",
+    "state": "Audited",
+    "signature": "T-DfKcdaWOPtqb5TnWiBQRvuPIPzlAtidvqVUQjBkTNLCRkEKLBpD7akjanY24158nighaQIIt4P-994KrT_Ig"
+  },
+  {
+    "votes": {
+      "Parry Hotter": {
+        "R": "AgpauoppZMIRBAS5Cnfai2JTe7YrptN2nJsZIrRam2YX",
+        "Z": "A8wGn_D2ukybshPRiJuV0rZgQMpDXFn38d0HN0gZBiY5",
+        "pwf": {
+          "c1": "VXZ-v3wBZzSOtJvcTpgEdXuTYK5DcNBe_Fx8m9NHnaM",
+          "c2": "lFztjV7wb9DHTOkUq3puBRpiF2Cw7iiubBTtIMblEY8",
+          "r1": "epE-IYEj0ZQQ8BSRNk6cPwWB2u9ZN8d5kgdwuFsNRZ4",
+          "r2": "nOI9Qb_F3rWMi0YAH7m4vX3u-_XO-fZdkEY4jWXrJZM"
+        }
+      },
+      "Chris Riches": {
+        "R": "A1azlRb4sjKmpKXakYVp6SoAJmpxm2rGoeHb9xiFXGqx",
+        "Z": "AtXcOmPYA7eBNY8wvGAVNeNQ5p8Kio9fcyTqUusBYWc8",
+        "pwf": {
+          "c1": "gLzfc9r0R429kOC_N1AbcozjiLK8jgpnUPmVbc_qLDk",
+          "c2": "UwHNfCuymPCoRTlYv6kJSTPL4qvAz5Nics6uTtinn9k",
+          "r1": "_391ykxqa1tYs_8T5evbWWNcs8wwY7EPxTV6oFPoLOw",
+          "r2": "16PdUGLjd3tQ_kTDL2J4zSR6hMP2yPnaokIzowd58_E"
+        }
+      }
+    },
+    "pwf": {
+      "a": "AlUDTWF4vS-eYef4THljiHlLy7Bpx1Y6UMSWClP5JKYL",
+      "b": "A5xK2PF_pyT4hOX5UOdwfmF9PcioNLKIyoUAIjmVg8kG",
+      "r": "KoAzy8g_xRBXGO5gkSgJJRfdng-FI__oWEPdoQ1h-EY"
+    },
+    "ballot_id": "622650f453036aff34eb72a9",
+    "election_id": "622650f453036aff34eb72a7",
+    "question_id": "622650f453036aff34eb72a2",
+    "state": "Confirmed",
+    "signature": "oIk4899sggT8CHAhht3sPQud4BzDN-SrWnc7Mcd_Qck_oM25YQ7rBElAnUPKMFCBPdAl2P2lnaDcCxQN4cPl7w"
+  }
+]
