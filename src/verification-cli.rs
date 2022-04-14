@@ -22,9 +22,9 @@ use dreip_backend::model::{
 
 const PROGRAM_NAME: &str = "verify-dreip";
 
-const ABOUT_TEXT: &str = "Verify the integrity of a DRE-ip election or ballot (using the P256 elliptic curve).
+const ABOUT_TEXT: &str = "Verify the integrity of a DRE-ip election or ballot(s) (using the P256 elliptic curve).
 
-Use either the -f option to verify an entire question's results, or the -r and -c options to verify an individual ballot's receipt.
+Use either the -f option to verify an entire question's results, or the -r and -c options to verify individual ballot receipt(s).
 
 EXIT CODES:
      0: Verification succeeded.
@@ -39,15 +39,15 @@ const FULL_RESULTS_HELP: &str = "The path to a JSON dump of the full election \
 results for a specific question, as returned by `GET /elections/<election_id>/\
 <question_id>/dump`. Specify this to verify an entire question's ballots and results.";
 
-const RECEIPT_HELP: &str = "The path to a JSON dump of a single receipt, as returned \
-when casting, auditing, or confirming a ballot. Specify this to verify a single ballot \
-independent of its question. Requires CRYPTO_PATH to be specified as well.";
+const RECEIPT_HELP: &str = "The path to a JSON dump of a single receipt or list of receipts, \
+as returned when casting, auditing, or confirming ballot(s). Specify this to verify ballot(s) \
+independent of their question. Requires CRYPTO_PATH to be specified as well.";
 
 const CRYPTO_HELP: &str = "The path to a JSON dump of the election cryptographic \
 configuration, i.e. an object containing `g1`, `g2`, and `public_key`. For \
 compatibility with the values returned by `GET /elections/<election_id>`, these three \
 fields may be nested inside an object called `crypto`. \
-This file is only needed when using the -r option to verify an individual receipt.";
+This file is only needed when using the -r option.";
 
 /// Construct the CLI configuration.
 fn cli() -> Command<'static> {
@@ -145,6 +145,26 @@ impl From<Crypto> for ElectionCrypto {
     }
 }
 
+/// A list of receipts, optionally a single receipt with no enclosing list.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Receipts {
+    Single(Box<AnyReceipt>),
+    Multiple(Vec<AnyReceipt>),
+}
+
+impl IntoIterator for Receipts {
+    type Item = AnyReceipt;
+    type IntoIter = std::vec::IntoIter<AnyReceipt>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Receipts::Single(r) => vec![*r].into_iter(),
+            Receipts::Multiple(rs) => rs.into_iter(),
+        }
+    }
+}
+
 /// Read the given file path, and read its results in as JSON of the specified type.
 fn load_path<T>(path: &str) -> Result<T, Error>
 where
@@ -156,21 +176,25 @@ where
 
 /// Run verification.
 fn verify(task: &VerificationTask) -> Result<(), Error> {
-    let verification_result = match task {
+    match task {
         VerificationTask::FullResults { path } => {
             let results: ElectionResults = load_path(path)?;
-            results.verify()
+            results.verify().map_err(Error::Verification)
         }
+
         VerificationTask::Receipt {
             receipt_path,
             crypto_path,
         } => {
-            let receipt: AnyReceipt = load_path(receipt_path)?;
+            let receipts: Receipts = load_path(receipt_path)?;
             let crypto: Crypto = load_path(crypto_path)?;
-            receipt.verify(&crypto.into())
+            let crypto: ElectionCrypto = crypto.into();
+            for receipt in receipts {
+                receipt.verify(&crypto).map_err(Error::Verification)?;
+            }
+            Ok(())
         }
-    };
-    verification_result.map_err(Error::Verification)
+    }
 }
 
 /// Run verification, report the result, and return the exit code.
@@ -296,6 +320,28 @@ mod tests {
             Err(Error::Verification(VerificationError::Receipt {
                 ballot_id: "622650f453036aff34eb72a9".parse().unwrap(),
             }))
+        );
+    }
+
+    #[test]
+    fn multiple_receipts() {
+        assert!(verify(&VerificationTask::Receipt {
+            receipt_path: "example_dumps/multiple_receipts.json",
+            crypto_path: "example_dumps/election_dump.json"
+        })
+        .is_ok());
+
+        assert_eq!(
+            verify(&VerificationTask::Receipt {
+                receipt_path: "example_dumps/multiple_receipts_invalid.json",
+                crypto_path: "example_dumps/election_dump.json"
+            }),
+            Err(Error::Verification(VerificationError::Ballot(
+                BallotError::Vote(VoteError {
+                    ballot_id: "622650f453036aff34eb72a9".parse().unwrap(),
+                    candidate_id: "Chris Riches".to_string(),
+                })
+            )))
         );
     }
 
