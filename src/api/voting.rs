@@ -655,6 +655,15 @@ mod tests {
         while let Some(Ok(total)) = totals.next().await {
             println!("{:?}", total);
         }
+
+        println!("\nCounters:");
+        let mut counters = Coll::<Counter>::from_db(db)
+            .find(None, None)
+            .await
+            .unwrap();
+        while let Some(Ok(counter)) = counters.next().await {
+            println!("{:?}", counter);
+        }
     }
 
     #[backend_test(voter)]

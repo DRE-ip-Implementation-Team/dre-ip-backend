@@ -116,10 +116,10 @@ db.candidate_totals.insertMany([
 db.counters.insertMany([
   {
     "_id": ObjectId("622650f453036aff34eb72a2"),
-    "next": 10
+    "next": NumberLong("10")
   },
   {
     "_id": ObjectId("622650f453036aff34eb72a3"),
-    "next": 10
+    "next": NumberLong("10")
   }
 ]);
