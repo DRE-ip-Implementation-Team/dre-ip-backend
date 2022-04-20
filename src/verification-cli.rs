@@ -17,7 +17,7 @@ use dreip_backend::model::{
         },
         receipt::Receipt,
     },
-    db::ballot::{Audited, Confirmed, Unconfirmed},
+    common::ballot::{Audited, Confirmed, Unconfirmed},
 };
 
 const PROGRAM_NAME: &str = "verify-dreip";
@@ -307,7 +307,7 @@ mod tests {
             }),
             Err(Error::Verification(VerificationError::Ballot(
                 BallotError::Vote(VoteError {
-                    ballot_id: "622650f453036aff34eb72b1".parse().unwrap(),
+                    ballot_id: "625fee0575cab16408b5038d".parse().unwrap(),
                     candidate_id: "Chris Riches".to_string(),
                 })
             )))
@@ -318,7 +318,7 @@ mod tests {
                 crypto_path: "example_dumps/crypto_dump.json"
             }),
             Err(Error::Verification(VerificationError::Receipt {
-                ballot_id: "622650f453036aff34eb72a9".parse().unwrap(),
+                ballot_id: "625fee0575cab16408b50386".parse().unwrap(),
             }))
         );
     }
@@ -338,7 +338,7 @@ mod tests {
             }),
             Err(Error::Verification(VerificationError::Ballot(
                 BallotError::Vote(VoteError {
-                    ballot_id: "622650f453036aff34eb72a9".parse().unwrap(),
+                    ballot_id: "625fee0575cab16408b5038d".parse().unwrap(),
                     candidate_id: "Chris Riches".to_string(),
                 })
             )))
