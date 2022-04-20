@@ -851,7 +851,8 @@ components:
       type: object
       properties:
         ballot_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
+          example: 12345
         election_id:
           $ref: "#/components/schemas/ID"
         question_id:
@@ -881,7 +882,7 @@ components:
         - votes
         - pwf
       example:
-        ballot_id: 6220e27c5f06ce6366456650
+        ballot_id: 12345
         election_id: 6220e27fbacbe75634ff900
         question_id: 6220e27fbacbe75634ff901
         state: "Unconfirmed"
@@ -911,7 +912,8 @@ components:
       type: object
       properties:
         ballot_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
+          example: 12345
         election_id:
           $ref: "#/components/schemas/ID"
         question_id:
@@ -941,7 +943,7 @@ components:
         - votes
         - pwf
       example:
-        ballot_id: 6220e27c5f06ce6366456650
+        ballot_id: 12345
         election_id: 6220e27fbacbe75634ff900
         question_id: 6220e27fbacbe75634ff901
         state: "Audited"
@@ -975,7 +977,8 @@ components:
       type: object
       properties:
         ballot_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
+          example: 12345
         election_id:
           $ref: "#/components/schemas/ID"
         question_id:
@@ -1005,7 +1008,7 @@ components:
         - votes
         - pwf
       example:
-        ballot_id: 6220e27c5f06ce6366456650
+        ballot_id: 12345
         election_id: 6220e27fbacbe75634ff900
         question_id: 6220e27fbacbe75634ff901
         state: "Confirmed"
@@ -1051,7 +1054,8 @@ components:
       type: object
       properties:
         ballot_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
+          example: 12345
         question_id:
           $ref: "#/components/schemas/ID"
         signature:
@@ -1061,7 +1065,7 @@ components:
         - question_id
         - signature
       example:
-        ballot_id: 6220e27c5f06ce6366456650
+        ballot_id: 12345
         question_id: 6220e27fbacbe75634ff901
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
     BallotRecallList:

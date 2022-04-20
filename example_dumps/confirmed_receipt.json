@@ -1,34 +1,34 @@
 {
   "votes": {
-    "Parry Hotter": {
-      "R": "AxV-tE1-Kirvt0nPrCjooH_SLtY-0mHTp1tRZK6LWg9B",
-      "Z": "A71EHx9W4D5b6qnjtNmHsoISyIY_CniSi9q6NCU_jQoz",
+    "Chris Riches": {
+      "R": "Ap2euhgUbmwoFzOabHmcTp9bND_GZTp6i_sW6-6jfY2X",
+      "Z": "AlVY5ZwtrXWqJI7YRIvNTMPuan25Szl-quoYh0Jv5Cf7",
       "pwf": {
-        "c1": "1V1IqhnZ2sRtE8f4WHbH9EzGhXF4l6lLIAwvrB_Obdc",
-        "c2": "0wkhM6QecGeYcC4SbxyEjt1c6KoyI6x90xaUT5W8dXQ",
-        "r1": "UJ09S_fEDQB7wVeXR072li438vqK7K7Mv14wQw04vhY",
-        "r2": "Ca3AepQtv65mBH1hIhJHqO2gvn6D-Fjy-KBO3nyFn4Q"
+        "c1": "785u8qOctNdqAo0R58wCA_x7sj3oz-EWpHGQXYn3Ppg",
+        "c2": "e7bLBiaXggqY5mD_b6WOzfUB5JbKUJ4uySxWW1GqCQw",
+        "r1": "b1IIyCfGXmGVOW0dB_88SXBpOI1UGkeHevBLzWdjzsc",
+        "r2": "Wv1IQ-YPI0ZH8H37P_34nR0cHDYLJ0K98aN-U_4VahI"
       }
     },
-    "Chris Riches": {
-      "R": "Azr1iAs_0KH9fkZ3SO-N8jGkLRQHXiyhxXQBPraolnXq",
-      "Z": "A2NCXzYUM8F35V5liHF7tZn2yMIbqAV3-diC3JCq8_2C",
+    "Parry Hotter": {
+      "R": "A2gnz6Larp3_rYC3ydf52a5Y83XHGSDZgQZ-z901y7xv",
+      "Z": "AzNvMnXoZkx1ME3n6JCDn03zJSHlYRy7Z4pqBI8IZW5T",
       "pwf": {
-        "c1": "bHYr-GnNvpqF-MnMrK-pXyZyxShFQgWgYpeRtV4QhQU",
-        "c2": "OKZSCD4HK1LWqqx0-o1Lap17MDx7i0owKuo3rVrltrg",
-        "r1": "4ZVryIq5Xbi0SW-0HgjEe5LBTe9uiAjXF-veBUa4zn0",
-        "r2": "azA2r4mCwJbaI3oP1PMlREU3H6LAjof3lDyUwqMPZ3I"
+        "c1": "nTAkEarq46G_fOU5RY0I4BBpERH8i9AlLC8S-0bS5ec",
+        "c2": "a9FeFg3jlM303p770TWWuZKgeaXXyxxACXQIl-Un5I8",
+        "r1": "Sof8CeNv6dYMJ-k8IARWAdp6KNhBdAvK-F79BMS9K6Q",
+        "r2": "F8JZRu6dONw2-kHOo9EP4q1U9J6LqBCea93ZAx9TKOs"
       }
     }
   },
   "pwf": {
-    "a": "Aq0Dt8aGNNTh0zHH6d1NkHloWeqegWjaNVsUJtXjf1-p",
-    "b": "A7orMg-82KGhGIFNBteXLbO9MMwA--hCI7LpLf78miMK",
-    "r": "ks9__-cg544hC5p2chmZ10KfnVh3rIDjQ3vB-qlpwkg"
+    "a": "AtiI1is2YqccUm2dSwaZE9oCd2of59vFaPTFMVpH0pal",
+    "b": "AqKJpVovOqsK13jqo65Sapg22aay2lGIFIM9yvV-Xegx",
+    "r": "q3WEJ7i9Xt6O0B0vaMTwww-HOl-o8YTB0bVcYHRurj8"
   },
-  "ballot_id": "625fee0575cab16408b50386",
-  "election_id": "625fee0575cab16408b50382",
-  "question_id": "625fee0575cab16408b5037a",
+  "ballot_id": 3,
+  "election_id": "6260238469993033906636fc",
+  "question_id": "6260238469993033906636f4",
   "state": "Confirmed",
-  "signature": "46CjEZcAc4IyumUqrzhzl6IVnTzZNpEYfhvSGi4lvER3LGQIyA8nuGkkIes6OA1KO7XHOulyAo2hIqbZZG53GA"
+  "signature": "GoaB9h1XA0QTID3jM707x1wnRUKOhvRhmRNKiT4JFut8DkDsP07iwbZp4dviK7MlpB8LZFuspVCpUrBOCW1B1w"
 }
