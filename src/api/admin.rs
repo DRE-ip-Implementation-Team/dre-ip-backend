@@ -21,7 +21,7 @@ use crate::{
             election::{Election, NewElection},
             voter::Voter,
         },
-        mongodb::{Coll, Id},
+        mongodb::{Coll, Counter, Id},
     },
     ElectionFinalizers,
 };
@@ -108,17 +108,40 @@ async fn create_election(
     spec: Json<ElectionSpec>,
     new_elections: Coll<NewElection>,
     elections: Coll<Election>,
+    counters: Coll<Counter>,
+    db_client: &State<Client>,
 ) -> Result<Json<ElectionDescription>> {
-    let election: NewElection = spec.0.into();
-    let new_id: Id = new_elections
-        .insert_one(&election, None)
-        .await?
-        .inserted_id
-        .as_object_id()
-        .unwrap() // Valid because the ID comes directly from the DB
-        .into();
-    let db_election = elections.find_one(new_id.as_doc(), None).await?.unwrap();
-    Ok(Json(db_election.into()))
+    let election = {
+        let mut session = db_client.start_session(None).await?;
+        session.start_transaction(None).await?;
+
+        // Create and insert the election.
+        let election: NewElection = spec.0.into();
+        let new_id: Id = new_elections
+            .insert_one_with_session(&election, None, &mut session)
+            .await?
+            .inserted_id
+            .as_object_id()
+            .unwrap() // Valid because the ID comes directly from the DB
+            .into();
+
+        // Create and insert a counter with the same ID.
+        let counter = Counter::new(new_id, 1);
+        counters
+            .insert_one_with_session(&counter, None, &mut session)
+            .await?;
+
+        // Retrieve the full election information including ID.
+        let election = elections
+            .find_one_with_session(new_id.as_doc(), None, &mut session)
+            .await?
+            .unwrap();
+
+        session.commit_transaction().await?;
+        election
+    };
+
+    Ok(Json(election.into()))
 }
 
 #[put("/elections/<election_id>", data = "<spec>", format = "json")]
@@ -244,6 +267,7 @@ async fn archive_election(
 }
 
 #[delete("/elections/<election_id>")]
+#[allow(clippy::too_many_arguments)]
 async fn delete_election(
     _token: AuthToken<Admin>,
     election_id: Id,
@@ -251,6 +275,7 @@ async fn delete_election(
     ballots: Coll<FinishedBallot>,
     totals: Coll<CandidateTotals>,
     voters: Coll<Voter>,
+    counters: Coll<Counter>,
     db_client: &State<Client>,
 ) -> Result<()> {
     // Get the election.
@@ -301,6 +326,12 @@ async fn delete_election(
         voters
             .update_many_with_session(doc! {}, update, None, &mut session)
             .await?;
+
+        // Delete the counter.
+        let result = counters
+            .delete_one_with_session(election_id.as_doc(), None, &mut session)
+            .await?;
+        assert_eq!(result.deleted_count, 1);
 
         session.commit_transaction().await?;
     }
@@ -436,15 +467,18 @@ mod tests {
 
     #[backend_test(admin)]
     async fn create_election(client: Client, db: Database) {
+        // Create an election.
         let response = client
             .post(uri!(create_election))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&ElectionSpec::current_example()).unwrap())
             .dispatch()
             .await;
-
         assert_eq!(Status::Ok, response.status());
+        let raw_response = response.into_string().await.unwrap();
+        let response_election: ElectionDescription = serde_json::from_str(&raw_response).unwrap();
 
+        // Ensure it is present in the DB.
         let elections = Coll::<ElectionMetadata>::from_db(&db);
         let with_name = doc! { "name": &ElectionSpec::current_example().name };
         let inserted_election = elections
@@ -452,11 +486,18 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-
         assert_eq!(
             ElectionMetadata::from(ElectionSpec::current_example()),
             inserted_election
         );
+
+        // Ensure the counter was created.
+        let counter = Coll::<Counter>::from_db(&db)
+            .find_one(response_election.id.as_doc(), None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(counter.next, 1);
     }
 
     #[backend_test(admin)]
@@ -615,6 +656,7 @@ mod tests {
             "election_id": *election.id,
         };
         assert_no_matches::<Election>(&db, election.id.as_doc()).await;
+        assert_no_matches::<Counter>(&db, election.id.as_doc()).await;
         // Since the filter doesn't specify a state, using the FinishedBallot
         // collection here actually includes unconfirmed ballots as well.
         assert_no_matches::<FinishedBallot>(&db, filter.clone()).await;

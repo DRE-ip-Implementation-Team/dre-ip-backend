@@ -17,6 +17,8 @@ use crate::model::{
     },
 };
 
+use super::counter::Counter;
+
 /// A type that can be directly inserted/read to/from the database.
 pub trait MongoCollection {
     /// The name of the collection.
@@ -113,4 +115,10 @@ impl MongoCollection for CandidateTotals {
 }
 impl MongoCollection for NewCandidateTotals {
     const NAME: &'static str = CANDIDATE_TOTALS;
+}
+
+// Counter collection
+const COUNTERS: &str = "counters";
+impl MongoCollection for Counter {
+    const NAME: &'static str = COUNTERS;
 }

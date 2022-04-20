@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 
-use dre_ip::{DreipGroup as DreipGroupTrait, DreipScalar, Ballot as DreipBallot, NoSecrets, SecretsPresent, VoteSecrets};
+use dre_ip::{
+    Ballot as DreipBallot, DreipGroup as DreipGroupTrait, DreipScalar, NoSecrets, SecretsPresent,
+    VoteSecrets,
+};
 use mongodb::bson::{to_bson, Bson};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
@@ -115,7 +118,7 @@ impl BallotState for Audited {
             if vote.secrets.v == <DreipGroup as DreipGroupTrait>::Scalar::one() {
                 return AuditExtraData {
                     candidate: candidate.clone(),
-                }
+                };
             }
         }
 
