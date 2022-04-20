@@ -4,28 +4,24 @@ use dre_ip::{CandidateTotals, DreipPublicKey, VerificationError as InternalError
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    api::{
-        candidate_totals::CandidateTotalsDesc, election::ElectionCrypto, id::ApiId,
-        receipt::Receipt,
-    },
+    api::{candidate_totals::CandidateTotalsDesc, election::ElectionCrypto, receipt::Receipt},
     common::{
         ballot::{Audited, BallotState, Confirmed},
         election::CandidateId,
     },
-    mongodb::Id,
 };
 
 pub use dre_ip::{BallotError, VoteError};
 
 /// `Id` itself can't implement `AsRef<[u8]>`, so we convert to `Vec<u8>` first.
-pub type EffectiveBallotId = Vec<u8>;
+pub type EffectiveBallotId = [u8; 8];
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum VerificationError {
     /// An individual ballot failed to verify.
-    Ballot(BallotError<ApiId, String>),
+    Ballot(BallotError<u64, String>),
     /// A receipt's signature was wrong.
-    Receipt { ballot_id: ApiId },
+    Receipt { ballot_id: u64 },
     /// A candidate's tally or random sum failed to verify.
     Tally { candidate_id: String },
     /// The set of candidates does not match between the ballots
@@ -41,16 +37,14 @@ impl From<InternalError<EffectiveBallotId, CandidateId>> for VerificationError {
                     BallotError::Vote(vote_err) => {
                         BallotError::Vote(VoteError {
                             // Convert bytes back into user-friendly ID.
-                            // Unwrap safe since the bytes came from a valid ID originally.
-                            ballot_id: Id::from_bytes(vote_err.ballot_id).unwrap().into(),
+                            ballot_id: u64::from_le_bytes(vote_err.ballot_id),
                             candidate_id: vote_err.candidate_id,
                         })
                     }
                     BallotError::BallotProof { ballot_id } => {
                         BallotError::BallotProof {
                             // Convert bytes back into user-friendly ID.
-                            // Unwrap safe since the bytes came from a valid ID originally.
-                            ballot_id: Id::from_bytes(ballot_id).unwrap().into(),
+                            ballot_id: u64::from_le_bytes(ballot_id),
                         }
                     }
                 })
@@ -67,9 +61,9 @@ pub struct ElectionResults {
     /// Election cryptographic data needed for verification.
     pub election: ElectionCrypto,
     /// All audited receipts.
-    pub audited: HashMap<ApiId, Receipt<Audited>>,
+    pub audited: HashMap<u64, Receipt<Audited>>,
     /// All confirmed receipts.
-    pub confirmed: HashMap<ApiId, Receipt<Confirmed>>,
+    pub confirmed: HashMap<u64, Receipt<Confirmed>>,
     /// Claimed candidate totals.
     pub totals: HashMap<CandidateId, CandidateTotalsDesc>,
 }
@@ -81,7 +75,7 @@ impl ElectionResults {
         let confirmed = self
             .confirmed
             .iter()
-            .map(|(id, r)| (id.to_bytes(), r.crypto.clone()))
+            .map(|(id, r)| (id.to_le_bytes(), r.crypto.clone()))
             .collect::<HashMap<_, _>>();
         let totals = self
             .totals
@@ -125,7 +119,7 @@ where
     // Verify PWFs.
     receipt
         .crypto
-        .verify(crypto.g1, crypto.g2, receipt.ballot_id.to_bytes())
+        .verify(crypto.g1, crypto.g2, receipt.ballot_id.to_le_bytes())
         .map_err(InternalError::Ballot)?;
 
     // Verify signature.
@@ -143,7 +137,7 @@ where
     for<'a> &'a <S as BallotState>::ReceiptData: Into<Vec<u8>>,
 {
     let mut msg = receipt.crypto.to_bytes();
-    msg.extend(receipt.ballot_id.to_bytes());
+    msg.extend(receipt.ballot_id.to_le_bytes());
     msg.extend(receipt.election_id.to_bytes());
     msg.extend(receipt.question_id.to_bytes());
     msg.extend(receipt.state.as_ref());

@@ -15,7 +15,7 @@ pub struct BallotSpec {
 /// ballot is verified by the signature, which only the owning voter will have.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BallotRecall {
-    pub ballot_id: Id,
+    pub ballot_id: u64,
     pub question_id: Id,
     #[serde(with = "dre_ip::group::serde_bytestring")]
     pub signature: Signature,

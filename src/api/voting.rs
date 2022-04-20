@@ -17,12 +17,12 @@ use crate::model::{
         election::ElectionState,
     },
     db::{
-        ballot::Ballot,
+        ballot::{Ballot, NewBallot},
         candidate_totals::{CandidateTotals, NewCandidateTotals},
         election::Election,
         voter::Voter,
     },
-    mongodb::{Coll, Id},
+    mongodb::{Coll, Counter, Id},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -163,7 +163,8 @@ async fn cast_ballots(
     election_id: Id,
     ballot_specs: Json<Vec<BallotSpec>>,
     elections: Coll<Election>,
-    ballots: Coll<Ballot<Unconfirmed>>,
+    ballots: Coll<NewBallot>,
+    counters: Coll<Counter>,
     db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
     // Get the election.
@@ -190,7 +191,6 @@ async fn cast_ballots(
     // The scoped block is needed to force `rng` to be dropped before the next `await`.
     let mut new_ballots = Vec::new();
     {
-        let mut rng = rand::thread_rng();
         for ballot_spec in ballot_specs.0 {
             // Get the yes and no candidates for this ballot.
             let question = election.questions.get(&ballot_spec.question).unwrap(); // Already checked.
@@ -204,13 +204,17 @@ async fn cast_ballots(
             // Sanity check.
             assert_eq!(question.candidates.len() - 1, no_candidates.len());
 
+            // Obtain the next ballot ID.
+            let ballot_id = Counter::next(&counters, election_id).await?;
+
             // Create the ballot.
-            let ballot = Ballot::new(
+            let ballot = NewBallot::new(
+                ballot_id,
                 question.id,
                 yes_candidate,
                 no_candidates,
                 &election,
-                &mut rng,
+                rand::thread_rng(),
             )
             .ok_or_else(|| {
                 Error::Status(
@@ -269,7 +273,7 @@ async fn audit_ballots(
         for ballot in recalled_ballots {
             let audited = ballot.audit();
             let filter = doc! {
-                "_id": *audited.id,
+                "_id": *audited.internal_id,
                 "election_id": election_id,
                 "question_id": *audited.question_id,
                 "state": Unconfirmed,
@@ -287,7 +291,7 @@ async fn audit_ballots(
     // Return receipts.
     let receipts = new_ballots
         .into_iter()
-        .map(|ballot| Receipt::from_ballot(ballot, &election))
+        .map(|ballot| Receipt::from_ballot(ballot.ballot, &election))
         .collect();
 
     Ok(Json(receipts))
@@ -405,7 +409,7 @@ async fn confirm_ballots(
             // Confirm ballot.
             let confirmed = ballot.confirm(&mut totals_map);
             let filter = doc! {
-                "_id": *confirmed.id,
+                "_id": *confirmed.internal_id,
                 "election_id": election_id,
                 "question_id": *confirmed.question_id,
                 "state": Unconfirmed,
@@ -438,7 +442,7 @@ async fn confirm_ballots(
     // Return receipts.
     let receipts = new_ballots
         .into_iter()
-        .map(|ballot| Receipt::from_ballot(ballot, &election))
+        .map(|ballot| Receipt::from_ballot(ballot.ballot, &election))
         .collect();
 
     Ok(Json(receipts))
@@ -478,9 +482,9 @@ async fn recall_ballots(
     let mut ballots = Vec::with_capacity(ballot_recalls.len());
     for recall in ballot_recalls {
         let filter = doc! {
-            "_id": *recall.ballot_id,
-            "election_id": *election.id,
-            "question_id": *recall.question_id,
+            "ballot_id": recall.ballot_id as i64, // BSON technically doesn't support u64, but i64 conversion is lossless.
+            "election_id": election.id,
+            "question_id": recall.question_id,
             "state": Unconfirmed,
         };
         let ballot = unconfirmed_ballots
@@ -490,7 +494,8 @@ async fn recall_ballots(
                 // Verify ownership of the ballot. If this fails, we return
                 // an error indistinguishable from the ballot ID not existing,
                 // so an attacker cannot learn anything about valid ballot IDs.
-                let true_signature = Receipt::from_ballot(ballot.clone(), election).signature;
+                let true_signature =
+                    Receipt::from_ballot(ballot.ballot.clone(), election).signature;
                 true_signature == recall.signature
             })
             .ok_or_else(|| Error::not_found(format!("Ballot with ID '{}'", recall.ballot_id)))?;
@@ -505,6 +510,7 @@ mod tests {
     use chrono::{Duration, Utc};
     use dre_ip::{DreipPublicKey, DreipScalar, Serializable};
     use mongodb::{bson::to_bson, Database};
+    use rand::Rng;
     use rocket::{
         futures::{StreamExt, TryStreamExt},
         http::ContentType,
@@ -526,7 +532,7 @@ mod tests {
     use super::*;
 
     /// Insert test data, returning the election ID and the ID of the allowed question,
-    /// which may differ between runs.
+    /// which will differ between runs.
     async fn insert_test_data(client: &Client, db: &Database) -> (Id, Id) {
         // Create some elections, only one of which is active.
         let election1 = Election {
@@ -540,6 +546,14 @@ mod tests {
         let elections = Coll::<Election>::from_db(db);
         elections
             .insert_many(vec![&election1, &election2], None)
+            .await
+            .unwrap();
+
+        // Create the associated counters.
+        let counter1 = Counter::new(election1.id, 1);
+        let counter2 = Counter::new(election2.id, 1);
+        Coll::<Counter>::from_db(db)
+            .insert_many(vec![&counter1, &counter2], None)
             .await
             .unwrap();
 
@@ -930,12 +944,12 @@ mod tests {
             .verify(
                 election.crypto.g1,
                 election.crypto.g2,
-                receipt.ballot_id.to_bytes()
+                receipt.ballot_id.to_le_bytes()
             )
             .is_ok());
         // Validate signature.
         let mut msg = receipt.crypto.to_bytes();
-        msg.extend(receipt.ballot_id.to_bytes());
+        msg.extend(receipt.ballot_id.to_le_bytes());
         msg.extend(receipt.election_id.to_bytes());
         msg.extend(receipt.question_id.to_bytes());
         msg.extend(receipt.state.as_ref());
@@ -944,7 +958,14 @@ mod tests {
 
         // Ensure the ballot in the database is correct.
         let ballot = Coll::<Ballot<Unconfirmed>>::from_db(&db)
-            .find_one(doc! {"_id": *receipt.ballot_id}, None)
+            .find_one(
+                doc! {
+                    "ballot_id": receipt.ballot_id as i64,
+                    "election_id": *receipt.election_id,
+                    "question_id": *receipt.question_id,
+                },
+                None,
+            )
             .await
             .unwrap()
             .unwrap();
@@ -1008,7 +1029,7 @@ mod tests {
 
         // Audit the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *first_receipt.ballot_id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1055,12 +1076,12 @@ mod tests {
             .verify(
                 election.crypto.g1,
                 election.crypto.g2,
-                second_receipt.ballot_id.to_bytes()
+                second_receipt.ballot_id.to_le_bytes()
             )
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
-        msg.extend(second_receipt.ballot_id.to_bytes());
+        msg.extend(second_receipt.ballot_id.to_le_bytes());
         msg.extend(second_receipt.election_id.to_bytes());
         msg.extend(second_receipt.question_id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
@@ -1112,7 +1133,7 @@ mod tests {
 
         // Confirm the ballot.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *first_receipt.ballot_id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1148,12 +1169,12 @@ mod tests {
             .verify(
                 election.crypto.g1,
                 election.crypto.g2,
-                second_receipt.ballot_id.to_bytes()
+                second_receipt.ballot_id.to_le_bytes()
             )
             .is_ok());
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
-        msg.extend(second_receipt.ballot_id.to_bytes());
+        msg.extend(second_receipt.ballot_id.to_le_bytes());
         msg.extend(second_receipt.election_id.to_bytes());
         msg.extend(second_receipt.question_id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
@@ -1371,7 +1392,7 @@ mod tests {
 
         // Try to confirm the wrong ballot ID.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: Id::new(),
+            ballot_id: rand::thread_rng().gen(),
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1385,7 +1406,7 @@ mod tests {
 
         // Try to confirm the wrong question ID.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *first_receipt.ballot_id,
+            ballot_id: first_receipt.ballot_id,
             question_id: Id::new(),
             signature: first_receipt.signature,
         }];
@@ -1401,7 +1422,7 @@ mod tests {
         let mut signature = first_receipt.signature.to_bytes();
         signature[0] = signature[0].wrapping_add(1);
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *first_receipt.ballot_id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: Signature::from_bytes(&signature).unwrap(),
         }];
@@ -1415,7 +1436,7 @@ mod tests {
 
         // Correctly confirm.
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *first_receipt.ballot_id,
+            ballot_id: first_receipt.ballot_id,
             question_id,
             signature: first_receipt.signature,
         }];
@@ -1476,7 +1497,7 @@ mod tests {
         // Confirm a vote.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *receipt.ballot_id,
+            ballot_id: receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];
@@ -1491,7 +1512,7 @@ mod tests {
         // Cast an identical vote, and audit it.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *receipt.ballot_id,
+            ballot_id: receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];
@@ -1506,7 +1527,7 @@ mod tests {
         // Ensure we can't confirm a second vote though.
         let receipt = cast(&client, election_id, question_id).await;
         let ballot_recalls = vec![BallotRecall {
-            ballot_id: *receipt.ballot_id,
+            ballot_id: receipt.ballot_id,
             question_id,
             signature: receipt.signature,
         }];

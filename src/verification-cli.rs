@@ -307,7 +307,7 @@ mod tests {
             }),
             Err(Error::Verification(VerificationError::Ballot(
                 BallotError::Vote(VoteError {
-                    ballot_id: "625fee0575cab16408b5038d".parse().unwrap(),
+                    ballot_id: 11,
                     candidate_id: "Chris Riches".to_string(),
                 })
             )))
@@ -318,7 +318,7 @@ mod tests {
                 crypto_path: "example_dumps/crypto_dump.json"
             }),
             Err(Error::Verification(VerificationError::Receipt {
-                ballot_id: "625fee0575cab16408b50386".parse().unwrap(),
+                ballot_id: 3,
             }))
         );
     }
@@ -338,7 +338,7 @@ mod tests {
             }),
             Err(Error::Verification(VerificationError::Ballot(
                 BallotError::Vote(VoteError {
-                    ballot_id: "625fee0575cab16408b5038d".parse().unwrap(),
+                    ballot_id: 10,
                     candidate_id: "Chris Riches".to_string(),
                 })
             )))

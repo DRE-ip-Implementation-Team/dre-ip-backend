@@ -8,7 +8,7 @@ use crate::model::{
         election::DreipGroup,
     },
     db::{
-        ballot::{Ballot, FinishedBallot},
+        ballot::{BallotCore, FinishedBallot},
         election::Election,
     },
 };
@@ -22,7 +22,7 @@ pub struct Receipt<S: BallotState> {
     #[serde(flatten)]
     pub crypto: BallotCrypto<S::ExposedSecrets>,
     /// Ballot ID.
-    pub ballot_id: ApiId,
+    pub ballot_id: u64,
     /// Election ID.
     pub election_id: ApiId,
     /// Question ID.
@@ -43,29 +43,29 @@ where
     for<'a> &'a <S as BallotState>::ReceiptData: Into<Vec<u8>>,
 {
     /// Construct a receipt from the given ballot.
-    pub fn from_ballot(ballot: Ballot<S>, election: &Election) -> Self {
+    pub fn from_ballot(ballot: BallotCore<S>, election: &Election) -> Self {
         // Get any extra data.
         let state_data = S::receipt_data(&ballot.crypto);
 
         // Convert the ballot from internal to receipt representation.
-        let crypto = S::internal_to_receipt(ballot.ballot.crypto);
+        let crypto = S::internal_to_receipt(ballot.crypto);
 
         // Sign the receipt.
         let mut msg = crypto.to_bytes();
-        msg.extend(ballot.id.to_bytes());
-        msg.extend(ballot.ballot.election_id.to_bytes());
-        msg.extend(ballot.ballot.question_id.to_bytes());
-        msg.extend(ballot.ballot.state.as_ref());
+        msg.extend(ballot.ballot_id.to_le_bytes());
+        msg.extend(ballot.election_id.to_bytes());
+        msg.extend(ballot.question_id.to_bytes());
+        msg.extend(ballot.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&state_data));
         let signature = election.crypto.private_key.sign(&msg);
 
         // Construct the result.
         Self {
             crypto,
-            ballot_id: ballot.id.into(),
-            election_id: ballot.ballot.election_id.into(),
-            question_id: ballot.ballot.question_id.into(),
-            state: ballot.ballot.state,
+            ballot_id: ballot.ballot_id,
+            election_id: ballot.election_id.into(),
+            question_id: ballot.question_id.into(),
+            state: ballot.state,
             state_data,
             signature,
         }
@@ -86,10 +86,10 @@ impl FinishedReceipt {
     pub fn from_finished_ballot(ballot: FinishedBallot, election: &Election) -> Self {
         match ballot {
             FinishedBallot::Audited(ballot) => {
-                FinishedReceipt::Audited(Receipt::from_ballot(ballot, election))
+                FinishedReceipt::Audited(Receipt::from_ballot(ballot.ballot, election))
             }
             FinishedBallot::Confirmed(ballot) => {
-                FinishedReceipt::Confirmed(Receipt::from_ballot(ballot, election))
+                FinishedReceipt::Confirmed(Receipt::from_ballot(ballot.ballot, election))
             }
         }
     }

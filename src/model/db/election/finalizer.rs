@@ -96,7 +96,7 @@ impl ElectionFinalizers {
         for ballot in ballots {
             let ballot = ballot.audit();
             let result = audited_ballots
-                .replace_one(ballot.id.as_doc(), &ballot, None)
+                .replace_one(ballot.internal_id.as_doc(), &ballot, None)
                 .await?;
             assert_eq!(result.modified_count, 1);
         }

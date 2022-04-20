@@ -362,8 +362,11 @@ mod tests {
             ballot::{Audited, Confirmed, Unconfirmed},
         },
         db::{
-            admin::DEFAULT_ADMIN_USERNAME, ballot::Ballot, candidate_totals::NewCandidateTotals,
-            election::ElectionMetadata, voter::NewVoter,
+            admin::DEFAULT_ADMIN_USERNAME,
+            ballot::{Ballot, BallotCore},
+            candidate_totals::NewCandidateTotals,
+            election::ElectionMetadata,
+            voter::NewVoter,
         },
         mongodb::MongoCollection,
     };
@@ -841,6 +844,10 @@ mod tests {
         assert_eq!(response.status(), status);
     }
 
+    // Clippy doesn't like the ballot!() macros inside the vec![] macro, since
+    // the order of resolving the ballot ID increments depends on the order of
+    // evaluating the vector elements. It's fine though - the order doesn't matter.
+    #[allow(clippy::eval_order_dependence)]
     async fn insert_ballots(db: &Database, election_id: Id) {
         let election = get_election_by_id(db, election_id).await;
         let q1 = election
@@ -880,10 +887,20 @@ mod tests {
             .map(|t| (t.candidate_name.clone(), &mut t.crypto))
             .collect::<HashMap<_, _>>();
 
+        let mut next_ballot_id = 1;
         macro_rules! ballot {
-            ($q:ident, $yes:ident, $no:ident) => {
-                Ballot::new($q.id, $yes.clone(), vec![$no.clone()], &election, &mut rng).unwrap()
-            };
+            ($q:ident, $yes:ident, $no:ident) => {{
+                next_ballot_id += 1;
+                BallotCore::new(
+                    next_ballot_id,
+                    $q.id,
+                    $yes.clone(),
+                    vec![$no.clone()],
+                    &election,
+                    &mut rng,
+                )
+                .unwrap()
+            }};
         }
 
         // Create confirmed ballots.
@@ -922,15 +939,15 @@ mod tests {
         ];
 
         // Insert ballots.
-        Coll::<Ballot<Confirmed>>::from_db(db)
+        Coll::<BallotCore<Confirmed>>::from_db(db)
             .insert_many(confirmed, None)
             .await
             .unwrap();
-        Coll::<Ballot<Audited>>::from_db(db)
+        Coll::<BallotCore<Audited>>::from_db(db)
             .insert_many(audited, None)
             .await
             .unwrap();
-        Coll::<Ballot<Unconfirmed>>::from_db(db)
+        Coll::<BallotCore<Unconfirmed>>::from_db(db)
             .insert_many(unconfirmed, None)
             .await
             .unwrap();

@@ -135,7 +135,7 @@ async fn election_question_ballots(
 async fn election_question_ballot(
     election_id: Id,
     question_id: Id,
-    ballot_id: Id,
+    ballot_id: u64,
     elections: Coll<Election>,
     ballots: Coll<FinishedBallot>,
 ) -> Result<Json<FinishedReceipt>> {
@@ -146,7 +146,7 @@ async fn election_question_ballot(
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
     let election_question_ballot = doc! {
-        "_id": (ballot_id),
+        "ballot_id": ballot_id as i64, // BSON technically doesn't support u64, but i64 conversion is lossless.
         "election_id": (election_id),
         "question_id": (question_id),
         "$or": [{"state": Audited}, {"state": Confirmed}],
@@ -237,10 +237,11 @@ async fn question_dump(
         while let Some(ballot) = election_ballots.next(&mut session).await {
             match ballot? {
                 FinishedBallot::Audited(b) => {
-                    audited_receipts.insert(b.id.into(), Receipt::from_ballot(b, &election));
+                    audited_receipts.insert(b.ballot_id, Receipt::from_ballot(b.ballot, &election));
                 }
                 FinishedBallot::Confirmed(b) => {
-                    confirmed_receipts.insert(b.id.into(), Receipt::from_ballot(b, &election));
+                    confirmed_receipts
+                        .insert(b.ballot_id, Receipt::from_ballot(b.ballot, &election));
                 }
             }
         }
@@ -298,7 +299,11 @@ mod tests {
     use crate::model::{
         api::election::{ElectionSpec, QuestionSpec},
         common::ballot::Unconfirmed,
-        db::{ballot::Ballot, candidate_totals::NewCandidateTotals, election::NewElection},
+        db::{
+            ballot::{Ballot, BallotCore},
+            candidate_totals::NewCandidateTotals,
+            election::NewElection,
+        },
     };
 
     use super::*;
@@ -656,7 +661,7 @@ mod tests {
             .get(uri!(election_question_ballot(
                 ballot.election_id,
                 ballot.question_id,
-                ballot.id
+                ballot.ballot_id
             )))
             .dispatch()
             .await;
@@ -787,6 +792,10 @@ mod tests {
             .unwrap();
     }
 
+    // Clippy doesn't like the ballot!() macros inside the vec![] macro, since
+    // the order of resolving the ballot ID increments depends on the order of
+    // evaluating the vector elements. It's fine though - the order doesn't matter.
+    #[allow(clippy::eval_order_dependence)]
     async fn insert_ballots(db: &Database) {
         let election = get_election_for_spec(db, ElectionSpec::current_example()).await;
         let q1 = election
@@ -826,10 +835,20 @@ mod tests {
             .map(|t| (t.candidate_name.clone(), &mut t.crypto))
             .collect::<HashMap<_, _>>();
 
+        let mut next_ballot_id = 1;
         macro_rules! ballot {
-            ($q:ident, $yes:ident, $no:ident) => {
-                Ballot::new($q.id, $yes.clone(), vec![$no.clone()], &election, &mut rng).unwrap()
-            };
+            ($q:ident, $yes:ident, $no:ident) => {{
+                next_ballot_id += 1;
+                BallotCore::new(
+                    next_ballot_id,
+                    $q.id,
+                    $yes.clone(),
+                    vec![$no.clone()],
+                    &election,
+                    &mut rng,
+                )
+                .unwrap()
+            }};
         }
 
         // Create confirmed ballots.
@@ -868,15 +887,15 @@ mod tests {
         ];
 
         // Insert ballots.
-        Coll::<Ballot<Confirmed>>::from_db(db)
+        Coll::<BallotCore<Confirmed>>::from_db(db)
             .insert_many(confirmed, None)
             .await
             .unwrap();
-        Coll::<Ballot<Audited>>::from_db(db)
+        Coll::<BallotCore<Audited>>::from_db(db)
             .insert_many(audited, None)
             .await
             .unwrap();
-        Coll::<Ballot<Unconfirmed>>::from_db(db)
+        Coll::<BallotCore<Unconfirmed>>::from_db(db)
             .insert_many(unconfirmed, None)
             .await
             .unwrap();

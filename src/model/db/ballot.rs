@@ -19,6 +19,9 @@ use crate::model::{
 /// Core ballot data, as stored in the database.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BallotCore<S: BallotState> {
+    /// Ballot ID. Unlike most IDs, this is an incrementing index, as it will
+    /// be directly seen by voters and needs to be user-friendly.
+    pub ballot_id: u64,
     /// Foreign Key election ID.
     pub election_id: Id,
     /// Foreign Key question ID.
@@ -34,9 +37,39 @@ pub struct BallotCore<S: BallotState> {
 }
 
 impl BallotCore<Unconfirmed> {
+    /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
+    pub fn new(
+        ballot_id: u64,
+        question_id: Id,
+        yes_candidate: CandidateId,
+        no_candidates: impl IntoIterator<Item = CandidateId>,
+        election: &Election,
+        rng: impl RngCore + CryptoRng,
+    ) -> Option<Self> {
+        let election_id = election.id;
+        let creation_time = Utc::now();
+        let crypto = DreipBallot::new(
+            rng,
+            election.crypto.g1,
+            election.crypto.g2,
+            ballot_id.to_le_bytes(),
+            yes_candidate,
+            no_candidates,
+        )?;
+        Some(BallotCore {
+            ballot_id,
+            election_id,
+            question_id,
+            creation_time,
+            crypto,
+            state: Unconfirmed,
+        })
+    }
+
     /// Audit this ballot.
     pub fn audit(self) -> BallotCore<Audited> {
         BallotCore {
+            ballot_id: self.ballot_id,
             election_id: self.election_id,
             question_id: self.question_id,
             creation_time: self.creation_time,
@@ -51,6 +84,7 @@ impl BallotCore<Unconfirmed> {
         totals: impl Into<Option<&'a mut HashMap<CandidateId, &'b mut CandidateTotals<DreipGroup>>>>,
     ) -> BallotCore<Confirmed> {
         BallotCore {
+            ballot_id: self.ballot_id,
             election_id: self.election_id,
             question_id: self.question_id,
             creation_time: self.creation_time,
@@ -60,50 +94,25 @@ impl BallotCore<Unconfirmed> {
     }
 }
 
-/// A ballot from the database, with its unique ID.
+/// A newly-created ballot that hasn't made it to the database yet.
+pub type NewBallot = BallotCore<Unconfirmed>;
+
+/// A ballot from the database, with its globally unique ID.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ballot<S: BallotState> {
+    /// This is *NOT* the ballot ID as far as the voting protocol is concerned.
+    /// This is just a unique identifier because the database demands one.
     #[serde(rename = "_id")]
-    pub id: Id,
+    pub internal_id: Id,
     /// Ballot contents.
     #[serde(flatten)]
     pub ballot: BallotCore<S>,
 }
 
 impl Ballot<Unconfirmed> {
-    /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
-    pub fn new(
-        question_id: Id,
-        yes_candidate: CandidateId,
-        no_candidates: impl IntoIterator<Item = CandidateId>,
-        election: &Election,
-        rng: impl RngCore + CryptoRng,
-    ) -> Option<Self> {
-        let id = Id::new();
-        let election_id = election.id;
-        let creation_time = Utc::now();
-        let crypto = DreipBallot::new(
-            rng,
-            election.crypto.g1,
-            election.crypto.g2,
-            id.to_bytes(),
-            yes_candidate,
-            no_candidates,
-        )?;
-        let ballot = BallotCore {
-            election_id,
-            question_id,
-            creation_time,
-            crypto,
-            state: Unconfirmed,
-        };
-
-        Some(Self { id, ballot })
-    }
-
     pub fn audit(self) -> Ballot<Audited> {
         Ballot {
-            id: self.id,
+            internal_id: self.internal_id,
             ballot: self.ballot.audit(),
         }
     }
@@ -113,7 +122,7 @@ impl Ballot<Unconfirmed> {
         totals: impl Into<Option<&'a mut HashMap<CandidateId, &'b mut CandidateTotals<DreipGroup>>>>,
     ) -> Ballot<Confirmed> {
         Ballot {
-            id: self.id,
+            internal_id: self.internal_id,
             ballot: self.ballot.confirm(totals),
         }
     }
