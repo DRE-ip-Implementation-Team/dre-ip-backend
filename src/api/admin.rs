@@ -125,17 +125,21 @@ async fn create_election(
             .unwrap() // Valid because the ID comes directly from the DB
             .into();
 
-        // Create and insert a counter with the same ID.
-        let counter = Counter::new(new_id, 1);
-        counters
-            .insert_one_with_session(&counter, None, &mut session)
-            .await?;
-
         // Retrieve the full election information including ID.
         let election = elections
             .find_one_with_session(new_id.as_doc(), None, &mut session)
             .await?
             .unwrap();
+
+        // Create and insert a counter for each question.
+        let new_counters = election
+            .questions
+            .keys()
+            .map(|question_id| Counter::new(*question_id, 1))
+            .collect::<Vec<_>>();
+        counters
+            .insert_many_with_session(&new_counters, None, &mut session)
+            .await?;
 
         session.commit_transaction().await?;
         election
@@ -327,11 +331,13 @@ async fn delete_election(
             .update_many_with_session(doc! {}, update, None, &mut session)
             .await?;
 
-        // Delete the counter.
-        let result = counters
-            .delete_one_with_session(election_id.as_doc(), None, &mut session)
-            .await?;
-        assert_eq!(result.deleted_count, 1);
+        // Delete the counters.
+        for question_id in election.questions.keys() {
+            let result = counters
+                .delete_one_with_session(question_id.as_doc(), None, &mut session)
+                .await?;
+            assert_eq!(result.deleted_count, 1);
+        }
 
         session.commit_transaction().await?;
     }
@@ -494,13 +500,15 @@ mod tests {
             inserted_election
         );
 
-        // Ensure the counter was created.
-        let counter = Coll::<Counter>::from_db(&db)
-            .find_one(response_election.id.as_doc(), None)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(counter.next, 1);
+        // Ensure the counters were created.
+        for question_id in response_election.questions.keys() {
+            let counter = Coll::<Counter>::from_db(&db)
+                .find_one(question_id.as_doc(), None)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(counter.next, 1);
+        }
     }
 
     #[backend_test(admin)]

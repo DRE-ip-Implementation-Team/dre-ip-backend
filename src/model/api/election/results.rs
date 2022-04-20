@@ -13,7 +13,7 @@ use crate::model::{
 
 pub use dre_ip::{BallotError, VoteError};
 
-/// `Id` itself can't implement `AsRef<[u8]>`, so we convert to `Vec<u8>` first.
+/// `u64` itself can't implement `AsRef<[u8]>`, so we convert to `[u8; 8]` first.
 pub type EffectiveBallotId = [u8; 8];
 
 #[derive(Debug, Eq, PartialEq, Clone)]

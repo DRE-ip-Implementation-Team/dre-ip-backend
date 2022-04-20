@@ -205,7 +205,7 @@ async fn cast_ballots(
             assert_eq!(question.candidates.len() - 1, no_candidates.len());
 
             // Obtain the next ballot ID.
-            let ballot_id = Counter::next(&counters, election_id).await?;
+            let ballot_id = Counter::next(&counters, question.id).await?;
 
             // Create the ballot.
             let ballot = NewBallot::new(
@@ -550,10 +550,15 @@ mod tests {
             .unwrap();
 
         // Create the associated counters.
-        let counter1 = Counter::new(election1.id, 1);
-        let counter2 = Counter::new(election2.id, 1);
+        let mut counters = Vec::new();
+        for election in [&election1, &election2] {
+            for question_id in election.questions.keys() {
+                let counter = Counter::new(*question_id, 1);
+                counters.push(counter);
+            }
+        }
         Coll::<Counter>::from_db(db)
-            .insert_many(vec![&counter1, &counter2], None)
+            .insert_many(counters, None)
             .await
             .unwrap();
 
