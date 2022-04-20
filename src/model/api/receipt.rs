@@ -29,6 +29,9 @@ pub struct Receipt<S: BallotState> {
     pub question_id: ApiId,
     /// The current state of the ballot.
     pub state: S,
+    /// Extra data specific to this ballot state.
+    #[serde(flatten)]
+    pub state_data: S::ReceiptData,
     /// The signature.
     #[serde(with = "dre_ip::group::serde_bytestring")]
     pub signature: Signature,
@@ -37,9 +40,13 @@ pub struct Receipt<S: BallotState> {
 impl<S: BallotState> Receipt<S>
 where
     for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
+    for<'a> &'a <S as BallotState>::ReceiptData: Into<Vec<u8>>,
 {
     /// Construct a receipt from the given ballot.
     pub fn from_ballot(ballot: Ballot<S>, election: &Election) -> Self {
+        // Get any extra data.
+        let state_data = S::receipt_data(&ballot.crypto);
+
         // Convert the ballot from internal to receipt representation.
         let crypto = S::internal_to_receipt(ballot.ballot.crypto);
 
@@ -49,6 +56,7 @@ where
         msg.extend(ballot.ballot.election_id.to_bytes());
         msg.extend(ballot.ballot.question_id.to_bytes());
         msg.extend(ballot.ballot.state.as_ref());
+        msg.extend(Into::<Vec<u8>>::into(&state_data));
         let signature = election.crypto.private_key.sign(&msg);
 
         // Construct the result.
@@ -58,6 +66,7 @@ where
             election_id: ballot.ballot.election_id.into(),
             question_id: ballot.ballot.question_id.into(),
             state: ballot.ballot.state,
+            state_data,
             signature,
         }
     }
