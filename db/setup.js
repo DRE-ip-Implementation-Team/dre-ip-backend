@@ -13,7 +13,6 @@ admins.createIndex({username: 1}, {unique: true});
 
 // Election collection
 db.createCollection("elections");
-elections = db.getCollection("elections");
 
 // Ballot collection
 db.createCollection("ballots");
@@ -24,3 +23,6 @@ ballots.createIndex({election_id: 1, question_id: 1, ballot_id: 1})
 db.createCollection("candidate_totals");
 candidate_totals = db.getCollection("candidate_totals");
 candidate_totals.createIndex({election_id: 1, question_id: 1, candidate_name: 1})
+
+// Counter collection
+db.createCollection("counters");
