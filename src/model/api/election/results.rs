@@ -120,6 +120,7 @@ pub fn verify_receipt<S>(
 where
     S: BallotState,
     for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
+    for<'a> &'a <S as BallotState>::ReceiptData: Into<Vec<u8>>,
 {
     // Verify PWFs.
     receipt
@@ -139,12 +140,14 @@ pub fn verify_receipt_signature<S>(
 where
     S: BallotState,
     for<'a> &'a <S as BallotState>::ExposedSecrets: Into<Vec<u8>>,
+    for<'a> &'a <S as BallotState>::ReceiptData: Into<Vec<u8>>,
 {
     let mut msg = receipt.crypto.to_bytes();
     msg.extend(receipt.ballot_id.to_bytes());
     msg.extend(receipt.election_id.to_bytes());
     msg.extend(receipt.question_id.to_bytes());
     msg.extend(receipt.state.as_ref());
+    msg.extend(Into::<Vec<u8>>::into(&receipt.state_data));
     if crypto.public_key.verify(&msg, &receipt.signature) {
         Ok(())
     } else {

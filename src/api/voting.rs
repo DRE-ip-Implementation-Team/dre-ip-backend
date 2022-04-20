@@ -939,6 +939,7 @@ mod tests {
         msg.extend(receipt.election_id.to_bytes());
         msg.extend(receipt.question_id.to_bytes());
         msg.extend(receipt.state.as_ref());
+        msg.extend(Into::<Vec<u8>>::into(&receipt.state_data));
         assert!(election.crypto.public_key.verify(&msg, &receipt.signature));
 
         // Ensure the ballot in the database is correct.
@@ -1063,6 +1064,7 @@ mod tests {
         msg.extend(second_receipt.election_id.to_bytes());
         msg.extend(second_receipt.question_id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
+        msg.extend(Into::<Vec<u8>>::into(&second_receipt.state_data));
         assert!(election
             .crypto
             .public_key
@@ -1155,6 +1157,7 @@ mod tests {
         msg.extend(second_receipt.election_id.to_bytes());
         msg.extend(second_receipt.question_id.to_bytes());
         msg.extend(second_receipt.state.as_ref());
+        msg.extend(Into::<Vec<u8>>::into(&second_receipt.state_data));
         assert!(election
             .crypto
             .public_key
