@@ -20,12 +20,12 @@ use crate::model::{
         pagination::{Paginated, PaginationRequest},
         receipt::{FinishedReceipt, Receipt},
     },
-    common::election::{CandidateId, ElectionState},
+    common::{
+        ballot::{Audited, Confirmed},
+        election::{CandidateId, ElectionState},
+    },
     db::{
-        admin::Admin,
-        ballot::{Audited, Confirmed, FinishedBallot},
-        candidate_totals::CandidateTotals,
-        election::Election,
+        admin::Admin, ballot::FinishedBallot, candidate_totals::CandidateTotals, election::Election,
     },
     mongodb::{Coll, Id},
 };
@@ -297,11 +297,8 @@ mod tests {
 
     use crate::model::{
         api::election::{ElectionSpec, QuestionSpec},
-        db::{
-            ballot::{Ballot, Unconfirmed},
-            candidate_totals::NewCandidateTotals,
-            election::NewElection,
-        },
+        common::ballot::Unconfirmed,
+        db::{ballot::Ballot, candidate_totals::NewCandidateTotals, election::NewElection},
     };
 
     use super::*;

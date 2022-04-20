@@ -11,9 +11,13 @@ use crate::model::{
         ballot::{BallotRecall, BallotSpec},
         receipt::Receipt,
     },
-    common::{allowed_questions::AllowedQuestions, election::ElectionState},
+    common::{
+        allowed_questions::AllowedQuestions,
+        ballot::{Audited, Confirmed, Unconfirmed},
+        election::ElectionState,
+    },
     db::{
-        ballot::{Audited, Ballot, Confirmed, Unconfirmed},
+        ballot::Ballot,
         candidate_totals::{CandidateTotals, NewCandidateTotals},
         election::Election,
         voter::Voter,
@@ -515,10 +519,8 @@ mod tests {
             receipt::Signature,
             sms::Sms,
         },
-        db::{
-            ballot::{Audited, Confirmed, Unconfirmed},
-            election::{Election, NewElection},
-        },
+        common::ballot::{Audited, Confirmed, Unconfirmed},
+        db::election::{Election, NewElection},
     };
 
     use super::*;
