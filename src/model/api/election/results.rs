@@ -8,8 +8,10 @@ use crate::model::{
         candidate_totals::CandidateTotalsDesc, election::ElectionCrypto, id::ApiId,
         receipt::Receipt,
     },
-    common::election::CandidateId,
-    db::ballot::{Audited, BallotState, Confirmed},
+    common::{
+        ballot::{Audited, BallotState, Confirmed},
+        election::CandidateId,
+    },
     mongodb::Id,
 };
 

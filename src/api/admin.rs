@@ -10,10 +10,13 @@ use crate::{
             auth::AuthToken,
             election::{ElectionDescription, ElectionSpec},
         },
-        common::election::ElectionState,
+        common::{
+            ballot::{Audited, Unconfirmed},
+            election::ElectionState,
+        },
         db::{
             admin::{Admin, NewAdmin},
-            ballot::{Audited, Ballot, FinishedBallot, Unconfirmed},
+            ballot::{Ballot, FinishedBallot},
             candidate_totals::CandidateTotals,
             election::{Election, NewElection},
             voter::Voter,
@@ -323,13 +326,13 @@ mod tests {
             election::{ElectionSpec, QuestionSpec},
             sms::Sms,
         },
-        common::allowed_questions::AllowedQuestions,
+        common::{
+            allowed_questions::AllowedQuestions,
+            ballot::{Audited, Confirmed, Unconfirmed},
+        },
         db::{
-            admin::DEFAULT_ADMIN_USERNAME,
-            ballot::{Audited, Ballot, Confirmed, Unconfirmed},
-            candidate_totals::NewCandidateTotals,
-            election::ElectionMetadata,
-            voter::NewVoter,
+            admin::DEFAULT_ADMIN_USERNAME, ballot::Ballot, candidate_totals::NewCandidateTotals,
+            election::ElectionMetadata, voter::NewVoter,
         },
         mongodb::MongoCollection,
     };

@@ -7,12 +7,15 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    common::election::{CandidateId, DreipGroup},
+    common::{
+        ballot::{Audited, BallotState, Confirmed, Unconfirmed},
+        election::{CandidateId, DreipGroup},
+    },
     db::election::Election,
     mongodb::Id,
 };
 
-use super::{Audited, BallotCore, BallotState, Confirmed, Unconfirmed};
+use super::BallotCore;
 
 /// A ballot from the database, with its unique ID.
 /// Also contains an election and question ID foreign key.

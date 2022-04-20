@@ -3,9 +3,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     api::id::ApiId,
-    common::election::DreipGroup,
+    common::{
+        ballot::{Audited, BallotCrypto, BallotState, Confirmed},
+        election::DreipGroup,
+    },
     db::{
-        ballot::{Audited, Ballot, BallotCrypto, BallotState, Confirmed, FinishedBallot},
+        ballot::{Ballot, FinishedBallot},
         election::Election,
     },
 };

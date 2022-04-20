@@ -6,12 +6,15 @@ use rocket::{
     State,
 };
 
-use crate::model::db::{
-    admin::{Admin, NewAdmin},
-    ballot::{Ballot, BallotState, FinishedBallot},
-    candidate_totals::{CandidateTotals, NewCandidateTotals},
-    election::{Election, ElectionMetadata, NewElection},
-    voter::{NewVoter, Voter},
+use crate::model::{
+    common::ballot::BallotState,
+    db::{
+        admin::{Admin, NewAdmin},
+        ballot::{Ballot, FinishedBallot},
+        candidate_totals::{CandidateTotals, NewCandidateTotals},
+        election::{Election, ElectionMetadata, NewElection},
+        voter::{NewVoter, Voter},
+    },
 };
 
 /// A type that can be directly inserted/read to/from the database.
