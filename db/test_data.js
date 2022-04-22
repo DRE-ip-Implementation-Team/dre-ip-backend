@@ -112,8 +112,12 @@ db.candidate_totals.insertMany([
   {"_id":ObjectId("622650f453036aff34eb72bd"),"election_id":ObjectId("622650f453036aff34eb72a7"),"question_id":ObjectId("622650f453036aff34eb72a3"),"ballot_id": 9,"candidate_name":"Jane Doe","tally":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM","r_sum":"FEnv2GdPEjKgNJyP0jg_upScM3LRw9IrzRqrqPRwh4k"}
 ]);
 
-// Create the current counters.
+// Create the counters.
 db.counters.insertMany([
+  {
+    "_id": ObjectId("622650f453036aff34eb72a4"),
+    "next": NumberLong("1")
+  },
   {
     "_id": ObjectId("622650f453036aff34eb72a2"),
     "next": NumberLong("10")
@@ -121,5 +125,13 @@ db.counters.insertMany([
   {
     "_id": ObjectId("622650f453036aff34eb72a3"),
     "next": NumberLong("10")
+  },
+  {
+    "_id": ObjectId("622651a81692ca8e92a98798"),
+    "next": NumberLong("1")
+  },
+  {
+    "_id": ObjectId("622651a81692ca8e92a98797"),
+    "next": NumberLong("1")
   }
 ]);
