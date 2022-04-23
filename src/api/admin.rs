@@ -76,7 +76,7 @@ async fn create_admin(
     Ok(())
 }
 
-#[delete("/admins", data = "<username>", format = "json")]
+#[delete("/admins/<username>")]
 async fn delete_admin(
     _token: AuthToken<Admin>,
     username: String,
@@ -399,9 +399,7 @@ mod tests {
         let count = admins.count_documents(None, None).await.unwrap();
         assert_eq!(count, 3); // Default admin, test admin, new admin.
         let response = client
-            .delete(uri!(delete_admin))
-            .header(ContentType::JSON)
-            .body(AdminCredentials::example2().username)
+            .delete(uri!(delete_admin(AdminCredentials::example2().username)))
             .dispatch()
             .await;
         assert_eq!(Status::Ok, response.status());
