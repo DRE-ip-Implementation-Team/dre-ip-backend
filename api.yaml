@@ -315,6 +315,14 @@ paths:
       parameters:
         - $ref: "#/components/parameters/PageNum"
         - $ref: "#/components/parameters/PageSize"
+        - name: filter_pattern
+          in: query
+          required: false
+          description:
+            A regular expression specifying a filter on ballot IDs.
+          schema:
+            type: string
+            example: "123"
       security: [ ]  # No authentication needed.
       tags:
         - Public Endpoints
@@ -1122,7 +1130,7 @@ components:
     PageNum:
       name: page_num
       in: query
-      required: true
+      required: false
       description: The page index into paginated data, starting at 1.
       schema:
         type: integer
@@ -1131,7 +1139,7 @@ components:
     PageSize:
       name: page_size
       in: query
-      required: true
+      required: false
       description:
         The requested size of a single paginated batch.
         The API may impose a maximum or minimum on this parameter.

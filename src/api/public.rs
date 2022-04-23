@@ -93,10 +93,11 @@ async fn election_non_admin(
     Ok(Json(election.into()))
 }
 
-#[get("/elections/<election_id>/<question_id>/ballots?<pagination..>")]
+#[get("/elections/<election_id>/<question_id>/ballots?<filter_pattern>&<pagination..>")]
 async fn election_question_ballots(
     election_id: Id,
     question_id: Id,
+    filter_pattern: Option<String>,
     pagination: PaginationRequest,
     elections: Coll<Election>,
     ballots: Coll<FinishedBallot>,
@@ -107,11 +108,22 @@ async fn election_question_ballots(
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
-    let filter = doc! {
+    let mut filter = doc! {
         "election_id": (election_id),
         "question_id": (question_id),
         "$or": [{"state": Audited}, {"state": Confirmed}],
     };
+    if let Some(pattern) = filter_pattern {
+        filter.insert(
+            "$expr",
+            doc! {
+                "$regexMatch": {
+                    "input": {"$toString": "$ballot_id"},
+                    "regex": pattern,
+                }
+            },
+        );
+    }
 
     let pagination_options = FindOptions::builder()
         .skip(u64::from(pagination.skip()))
@@ -593,6 +605,7 @@ mod tests {
             .get(uri!(election_question_ballots(
                 election.id,
                 question_id,
+                Option::<String>::None,
                 pagination
             )))
             .dispatch()
@@ -616,6 +629,7 @@ mod tests {
             .get(uri!(election_question_ballots(
                 election.id,
                 question_id,
+                Option::<String>::None,
                 pagination
             )))
             .dispatch()
@@ -642,6 +656,53 @@ mod tests {
                 .count(),
             5
         );
+    }
+
+    #[backend_test]
+    async fn get_election_question_ballots_filter(client: Client, db: Database) {
+        insert_elections(&db).await;
+        insert_ballots(&db).await;
+
+        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        let question_id = *election
+            .questions
+            .iter()
+            .find_map(|(id, q)| {
+                if q.description == QuestionSpec::example1().description {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+
+        // Filter to ballot IDs containing "3".
+        // We expect to see only one: a confirmed ballot with ID 3.
+        let pagination = PaginationRequest {
+            page_num: 1,
+            page_size: 50,
+        };
+        let response = client
+            .get(uri!(election_question_ballots(
+                election.id,
+                question_id,
+                Some("3".to_string()),
+                pagination
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        let raw_response = response.into_string().await.unwrap();
+        let receipts: Paginated<FinishedReceipt> = serde_json::from_str(&raw_response).unwrap();
+        assert_eq!(receipts.pagination.total, 1);
+        assert_eq!(receipts.items.len(), 1);
+        if let FinishedReceipt::Confirmed(receipt) = &receipts.items[0] {
+            assert_eq!(receipt.ballot_id, 3);
+        } else {
+            panic!("Wrong receipt!");
+        }
     }
 
     #[backend_test]
