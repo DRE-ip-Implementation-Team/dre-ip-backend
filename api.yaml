@@ -151,17 +151,19 @@ paths:
           description: Successfully created.
         400:
           description: Illegal credentials.
+  /admins/{username}:
+    parameters:
+      - in: path
+        name: username
+        required: true
+        description:
+          The username of the admin to delete.
+        schema:
+          type: string
     delete:
       summary: Delete an admin user.
       tags:
         - Administration Endpoints
-      requestBody:
-        description: Admin username.
-        required: true
-        content:
-          application/json:
-            schema:
-              type: string
       responses:
         200:
           description: Successfully deleted.
