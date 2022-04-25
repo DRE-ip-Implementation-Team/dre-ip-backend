@@ -18,15 +18,13 @@ use crate::model::{
         candidate_totals::CandidateTotalsDesc,
         election::{ElectionDescription, ElectionResults, ElectionSummary},
         pagination::{Paginated, PaginationRequest},
-        receipt::{FinishedReceipt, Receipt},
+        receipt::{PublicReceipt, Receipt},
     },
     common::{
         ballot::{Audited, BallotId, Confirmed},
         election::{CandidateId, ElectionId, ElectionState, QuestionId},
     },
-    db::{
-        admin::Admin, ballot::FinishedBallot, candidate_totals::CandidateTotals, election::Election,
-    },
+    db::{admin::Admin, ballot::AnyBallot, candidate_totals::CandidateTotals, election::Election},
     mongodb::{u32_id_filter, Coll},
 };
 
@@ -100,8 +98,8 @@ async fn election_question_ballots(
     filter_pattern: Option<String>,
     pagination: PaginationRequest,
     elections: Coll<Election>,
-    ballots: Coll<FinishedBallot>,
-) -> Result<Json<Paginated<FinishedReceipt>>> {
+    ballots: Coll<AnyBallot>,
+) -> Result<Json<Paginated<PublicReceipt>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
         .find_one(u32_id_filter(election_id), None)
@@ -111,7 +109,6 @@ async fn election_question_ballots(
     let mut filter = doc! {
         "election_id": election_id,
         "question_id": question_id,
-        "$or": [{"state": Audited}, {"state": Confirmed}],
     };
     if let Some(pattern) = filter_pattern {
         filter.insert(
@@ -133,7 +130,7 @@ async fn election_question_ballots(
     let ballots_page = ballots
         .find(filter.clone(), pagination_options)
         .await?
-        .map(|ballot| ballot.map(|ballot| FinishedReceipt::from_finished_ballot(ballot, &election)))
+        .map(|ballot| ballot.map(|ballot| PublicReceipt::from_ballot(ballot, &election)))
         .try_collect::<Vec<_>>()
         .await?;
 
@@ -149,8 +146,8 @@ async fn election_question_ballot(
     question_id: QuestionId,
     ballot_id: BallotId,
     elections: Coll<Election>,
-    ballots: Coll<FinishedBallot>,
-) -> Result<Json<FinishedReceipt>> {
+    ballots: Coll<AnyBallot>,
+) -> Result<Json<PublicReceipt>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
         .find_one(u32_id_filter(election_id), None)
@@ -161,13 +158,12 @@ async fn election_question_ballot(
         "ballot_id": ballot_id,
         "election_id": election_id,
         "question_id": question_id,
-        "$or": [{"state": Audited}, {"state": Confirmed}],
     };
 
     let ballot = ballots
         .find_one(election_question_ballot, None)
         .await?
-        .map(|ballot| FinishedReceipt::from_finished_ballot(ballot, &election))
+        .map(|ballot| PublicReceipt::from_ballot(ballot, &election))
         .ok_or_else(|| {
             Error::not_found(format!(
                 "Ballot with ID '{}' for election '{}', question '{}'",
@@ -205,7 +201,7 @@ async fn question_dump(
     question_id: QuestionId,
     elections: Coll<Election>,
     totals: Coll<CandidateTotals>,
-    ballots: Coll<FinishedBallot>,
+    ballots: Coll<AnyBallot>,
     db_client: &State<Client>,
 ) -> Result<Json<ElectionResults>> {
     // Ensure we read a consistent snapshot of the election data.
@@ -248,10 +244,11 @@ async fn question_dump(
             .await?;
         while let Some(ballot) = election_ballots.next(&mut session).await {
             match ballot? {
-                FinishedBallot::Audited(b) => {
+                AnyBallot::Unconfirmed(_) => {} // Ignore unconfirmed ballots.
+                AnyBallot::Audited(b) => {
                     audited_receipts.insert(b.ballot_id, Receipt::from_ballot(b.ballot, &election));
                 }
-                FinishedBallot::Confirmed(b) => {
+                AnyBallot::Confirmed(b) => {
                     confirmed_receipts
                         .insert(b.ballot_id, Receipt::from_ballot(b.ballot, &election));
                 }
@@ -613,10 +610,10 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipts: Paginated<FinishedReceipt> = serde_json::from_str(&raw_response).unwrap();
+        let receipts: Paginated<PublicReceipt> = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(receipts.pagination.page_num, 1);
         assert_eq!(receipts.pagination.page_size, 2);
-        assert_eq!(receipts.pagination.total, 7);
+        assert_eq!(receipts.pagination.total, 9);
         assert_eq!(receipts.items.len(), 2);
 
         // Get all ballots.
@@ -637,21 +634,16 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipts: Paginated<FinishedReceipt> = serde_json::from_str(&raw_response).unwrap();
+        let receipts: Paginated<PublicReceipt> = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(receipts.pagination.page_num, 1);
         assert_eq!(receipts.pagination.page_size, 50);
-        assert_eq!(receipts.pagination.total, 7);
-        assert_eq!(receipts.items.len(), 7);
+        assert_eq!(receipts.pagination.total, 9);
+        assert_eq!(receipts.items.len(), 9);
         assert_eq!(
             receipts
                 .items
                 .iter()
-                .filter(|receipt| {
-                    match receipt {
-                        FinishedReceipt::Audited(_) => false,
-                        FinishedReceipt::Confirmed(_) => true,
-                    }
-                })
+                .filter(|receipt| matches!(receipt, PublicReceipt::Confirmed(_)))
                 .count(),
             5
         );
@@ -694,10 +686,10 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipts: Paginated<FinishedReceipt> = serde_json::from_str(&raw_response).unwrap();
+        let receipts: Paginated<PublicReceipt> = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(receipts.pagination.total, 1);
         assert_eq!(receipts.items.len(), 1);
-        if let FinishedReceipt::Confirmed(receipt) = &receipts.items[0] {
+        if let PublicReceipt::Confirmed(receipt) = &receipts.items[0] {
             assert_eq!(receipt.ballot_id, 3);
         } else {
             panic!("Wrong receipt!");
@@ -729,10 +721,10 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipt: FinishedReceipt = serde_json::from_str(&raw_response).unwrap();
+        let receipt: PublicReceipt = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(
             receipt,
-            FinishedReceipt::from_finished_ballot(FinishedBallot::Audited(ballot), &election)
+            PublicReceipt::from_ballot(AnyBallot::Audited(ballot), &election)
         );
     }
 
@@ -800,7 +792,7 @@ mod tests {
         println!("{election_json}\n");
 
         for question in election.questions.values() {
-            let ballots = Coll::<FinishedBallot>::from_db(&db)
+            let ballots = Coll::<AnyBallot>::from_db(&db)
                 .find(
                     doc! {"question_id": question.id, "state": {"$ne": Unconfirmed}},
                     None,

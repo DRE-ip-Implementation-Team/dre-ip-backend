@@ -1059,7 +1059,10 @@ mod tests {
             .unwrap();
         assert_eq!(first_receipt.ballot_id, second_receipt.ballot_id);
         assert_eq!(first_receipt.crypto.pwf, second_receipt.crypto.pwf);
-        assert_eq!(first_receipt.confirmation_code, second_receipt.confirmation_code);
+        assert_eq!(
+            first_receipt.confirmation_code,
+            second_receipt.confirmation_code
+        );
         for (candidate, vote1) in first_receipt.crypto.votes.iter() {
             let vote2 = second_receipt.crypto.votes.get(candidate).unwrap();
             assert_eq!(vote1.pwf, vote2.pwf);
@@ -1165,7 +1168,10 @@ mod tests {
             .unwrap();
         assert_eq!(first_receipt.ballot_id, second_receipt.ballot_id);
         assert_eq!(first_receipt.crypto, second_receipt.crypto);
-        assert_eq!(first_receipt.confirmation_code, second_receipt.confirmation_code);
+        assert_eq!(
+            first_receipt.confirmation_code,
+            second_receipt.confirmation_code
+        );
 
         // Validate PWFs.
         assert!(second_receipt

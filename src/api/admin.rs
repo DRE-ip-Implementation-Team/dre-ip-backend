@@ -16,7 +16,7 @@ use crate::{
         },
         db::{
             admin::{Admin, NewAdmin},
-            ballot::{Ballot, FinishedBallot},
+            ballot::{AnyBallot, Ballot},
             candidate_totals::CandidateTotals,
             election::Election,
             voter::Voter,
@@ -266,7 +266,7 @@ async fn delete_election(
     _token: AuthToken<Admin>,
     election_id: ElectionId,
     elections: Coll<Election>,
-    ballots: Coll<FinishedBallot>,
+    ballots: Coll<AnyBallot>,
     totals: Coll<CandidateTotals>,
     voters: Coll<Voter>,
     counters: Coll<Counter>,
@@ -662,9 +662,7 @@ mod tests {
         };
         assert_no_matches::<Election>(&db, u32_id_filter(election.id)).await;
         assert_no_matches::<Counter>(&db, u32_id_filter(election.id)).await;
-        // Since the filter doesn't specify a state, using the FinishedBallot
-        // collection here actually includes unconfirmed ballots as well.
-        assert_no_matches::<FinishedBallot>(&db, filter.clone()).await;
+        assert_no_matches::<AnyBallot>(&db, filter.clone()).await;
         assert_no_matches::<CandidateTotals>(&db, filter).await;
         let field_name = format!("allowed_questions.{}", election.id);
         let filter = doc! {
