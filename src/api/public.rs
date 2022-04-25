@@ -852,6 +852,14 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
+        // Put the election in the past.
+        let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        let result = Coll::<Election>::from_db(&db)
+            .replace_one(u32_id_filter(election.id), &election, None)
+            .await
+            .unwrap();
+        assert_eq!(result.modified_count, 1);
         let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let election_json = serde_json::to_string(&election).unwrap();

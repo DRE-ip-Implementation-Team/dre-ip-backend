@@ -5,6 +5,9 @@
     "public_key": "A1uGHX6Nj5AvfxnRXOv0vRuGV9OXB1JSKdmLRIkvXsMo"
   },
   "audited": {
+    "11": {
+      "votes": {
+        "Parry Hotter": {
           "r": "b8L2BvthCaWAWkpSR2UJ0cm6Mz9Yrq7z8UEQp22b1rg",
           "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
           "R": "A_dtEuK-6aB8c-njNFIcBCCz_GmLCFIZVoKAoUvYJesV",
@@ -258,22 +261,6 @@
       "confirmation_code": "DRB3GH4K2D52VTDSWSNPWWA7NNUYD5TGGRH3Z7UVZVZS5N7TZR",
       "state": "Confirmed",
       "signature": "lHDzjLy0LHsdRSy3DMe4R1nCA2U87LguhX50qaa_-_HoZFNJYFhgApx-DL07ZduIjmCBRRfO1XDyJvpjPkYmQw"
-    }
-  },
-  "totals": {
-    "Chris Riches": {
-      "election_id": 946927538,
-      "question_id": 1,
-      "candidate_name": "Chris Riches",
-      "tally": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM",
-      "r_sum": "dCnLn6SFTbw50E3R8gdo30_PPBEEXKCD8shE1y-zDnM"
-    },
-    "Parry Hotter": {
-      "election_id": 946927538,
-      "question_id": 1,
-      "candidate_name": "Parry Hotter",
-      "tally": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAI",
-      "r_sum": "FRT6izGcHEz8PhOV1bWk5qUjFReRF_jtiJFpVexdcjw"
     }
   }
 }
