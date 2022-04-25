@@ -335,6 +335,7 @@ mod tests {
         db::{
             ballot::{Ballot, BallotCore},
             candidate_totals::NewCandidateTotals,
+            election::Question,
         },
     };
 
@@ -850,16 +851,23 @@ mod tests {
     #[backend_test(admin)]
     async fn generate_test_data(client: Client, db: Database) {
         insert_elections(&db).await;
-        insert_ballots(&db).await;
 
-        // Put the election in the past.
+        // Put the election in the past, and set ID to 1.
         let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        election.id = 1;
         election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
         let result = Coll::<Election>::from_db(&db)
-            .replace_one(u32_id_filter(election.id), &election, None)
+            .delete_many(doc! {}, None)
             .await
             .unwrap();
-        assert_eq!(result.modified_count, 1);
+        assert_eq!(result.deleted_count, 3);
+        Coll::<Election>::from_db(&db)
+            .insert_one(&election, None)
+            .await
+            .unwrap();
+
+        insert_ballots(&db).await;
+
         let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let election_json = serde_json::to_string(&election).unwrap();
@@ -867,10 +875,7 @@ mod tests {
 
         for question in election.questions.values() {
             let ballots = Coll::<AnyBallot>::from_db(&db)
-                .find(
-                    doc! {"question_id": question.id, "state": {"$ne": Unconfirmed}},
-                    None,
-                )
+                .find(doc! {"question_id": question.id}, None)
                 .await
                 .unwrap()
                 .try_collect::<Vec<_>>()
@@ -918,10 +923,6 @@ mod tests {
             .unwrap();
     }
 
-    // Clippy doesn't like the ballot!() macros inside the vec![] macro, since
-    // the order of resolving the ballot ID increments depends on the order of
-    // evaluating the vector elements. It's fine though - the order doesn't matter.
-    #[allow(clippy::eval_order_dependence)]
     async fn insert_ballots(db: &Database) {
         let election = get_election_for_spec(db, ElectionSpec::current_example()).await;
         let q1 = election
@@ -961,55 +962,54 @@ mod tests {
             .map(|t| (t.candidate_name.clone(), &mut t.crypto))
             .collect::<HashMap<_, _>>();
 
-        let mut next_ballot_id = 1;
+        let mut ballot =
+            |question: &Question, yes: CandidateId, no: CandidateId, ballot_id: &mut BallotId| {
+                *ballot_id += 1;
+                BallotCore::new(*ballot_id, question.id, yes, vec![no], &election, &mut rng)
+                    .unwrap()
+            };
+
         macro_rules! ballot {
-            ($q:ident, $yes:ident, $no:ident) => {{
-                next_ballot_id += 1;
-                BallotCore::new(
-                    next_ballot_id,
-                    $q.id,
-                    $yes.clone(),
-                    vec![$no.clone()],
-                    &election,
-                    &mut rng,
-                )
-                .unwrap()
-            }};
+            ($q:ident, $yes:ident, $no:ident, $id:ident) => {
+                ballot(&$q, $yes.clone(), $no.clone(), &mut $id)
+            };
         }
 
+        let mut q1_id = 0;
+        let mut q2_id = 0;
         // Create confirmed ballots.
         let confirmed = vec![
             // q1: 3 votes for candidate 1, 2 votes for candidate 2
-            ballot!(q1, q1c1, q1c2).confirm(&mut totals_map),
-            ballot!(q1, q1c1, q1c2).confirm(&mut totals_map),
-            ballot!(q1, q1c1, q1c2).confirm(&mut totals_map),
-            ballot!(q1, q1c2, q1c1).confirm(&mut totals_map),
-            ballot!(q1, q1c2, q1c1).confirm(&mut totals_map),
+            ballot!(q1, q1c1, q1c2, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c1, q1c2, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c1, q1c2, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c2, q1c1, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c2, q1c1, q1_id).confirm(&mut totals_map),
             // q2: 3 votes for candidate 2
-            ballot!(q2, q2c2, q2c1).confirm(&mut totals_map),
-            ballot!(q2, q2c2, q2c1).confirm(&mut totals_map),
-            ballot!(q2, q2c2, q2c1).confirm(&mut totals_map),
+            ballot!(q2, q2c2, q2c1, q2_id).confirm(&mut totals_map),
+            ballot!(q2, q2c2, q2c1, q2_id).confirm(&mut totals_map),
+            ballot!(q2, q2c2, q2c1, q2_id).confirm(&mut totals_map),
         ];
 
         // Create audited ballots.
         let audited = vec![
             // q1: 1 vote for each
-            ballot!(q1, q1c1, q1c2).audit(),
-            ballot!(q1, q1c2, q1c1).audit(),
+            ballot!(q1, q1c1, q1c2, q1_id).audit(),
+            ballot!(q1, q1c2, q1c1, q1_id).audit(),
             // q2: 3 votes for candidate 2, 1 vote for candidate 1
-            ballot!(q2, q2c2, q2c1).audit(),
-            ballot!(q2, q2c2, q2c1).audit(),
-            ballot!(q2, q2c2, q2c1).audit(),
-            ballot!(q2, q2c1, q2c2).audit(),
+            ballot!(q2, q2c2, q2c1, q2_id).audit(),
+            ballot!(q2, q2c2, q2c1, q2_id).audit(),
+            ballot!(q2, q2c2, q2c1, q2_id).audit(),
+            ballot!(q2, q2c1, q2c2, q2_id).audit(),
         ];
 
         // Create unconfirmed ballots.
         let unconfirmed = vec![
             // q1: 1 vote for each
-            ballot!(q1, q1c1, q1c2),
-            ballot!(q1, q1c2, q1c1),
+            ballot!(q1, q1c1, q1c2, q1_id),
+            ballot!(q1, q1c2, q1c1, q1_id),
             // q2: 1 vote for candidate 1
-            ballot!(q2, q2c1, q2c2),
+            ballot!(q2, q2c1, q2c2, q2_id),
         ];
 
         // Insert ballots.
