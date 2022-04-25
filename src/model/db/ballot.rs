@@ -142,12 +142,13 @@ impl<S: BallotState> DerefMut for Ballot<S> {
     }
 }
 
-/// A ballot that is either Confirmed or Audited.
-/// With the untagged representation, `Ballot<Audited>` and
-/// `Ballot<Confirmed>` can both directly deserialize to this type.
+/// A ballot in any state.
+/// With the untagged representation, all Ballot<S: BallotState> can directly
+/// deserialize to this type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
-pub enum FinishedBallot {
+pub enum AnyBallot {
+    Unconfirmed(Ballot<Unconfirmed>),
     Audited(Ballot<Audited>),
     Confirmed(Ballot<Confirmed>),
 }
