@@ -8,7 +8,11 @@ use mongodb::bson::{to_bson, Bson};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
 
-use crate::model::common::election::{CandidateId, DreipGroup};
+use crate::model::api::election::ReceiptError;
+use crate::model::{
+    api::{election::VerificationError, receipt::Receipt},
+    common::election::{CandidateId, DreipGroup},
+};
 
 pub type BallotId = u32;
 pub type BallotCrypto<S> = DreipBallot<CandidateId, DreipGroup, S>;
@@ -31,10 +35,20 @@ pub trait BallotState: Copy + AsRef<[u8]> {
     ) -> BallotCrypto<Self::ExposedSecrets>;
 
     /// Get the internal crypto with no secrets.
-    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets>;
+    fn remove_internal_secrets(
+        internal: &BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<NoSecrets>;
+
+    /// Get the external crypto with no secrets.
+    fn remove_external_secrets(
+        external: &BallotCrypto<Self::ExposedSecrets>,
+    ) -> BallotCrypto<NoSecrets>;
 
     /// Retrieve the extra receipt data.
     fn receipt_data(internal: &BallotCrypto<Self::InternalSecrets>) -> Self::ReceiptData;
+
+    /// Verify the extra receipt data.
+    fn verify_receipt_data(receipt: &Receipt<Self>) -> Result<(), VerificationError>;
 }
 
 /// Extra candidate ID data for audited receipts.
@@ -79,12 +93,24 @@ impl BallotState for Unconfirmed {
         internal.confirm(None)
     }
 
-    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets> {
+    fn remove_internal_secrets(
+        internal: &BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<NoSecrets> {
         internal.clone().confirm(None)
+    }
+
+    fn remove_external_secrets(
+        external: &BallotCrypto<Self::ExposedSecrets>,
+    ) -> BallotCrypto<NoSecrets> {
+        external.clone()
     }
 
     fn receipt_data(_: &BallotCrypto<Self::InternalSecrets>) -> Self::ReceiptData {
         NoSecrets(())
+    }
+
+    fn verify_receipt_data(_receipt: &Receipt<Self>) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 
@@ -118,8 +144,16 @@ impl BallotState for Audited {
         internal
     }
 
-    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets> {
+    fn remove_internal_secrets(
+        internal: &BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<NoSecrets> {
         internal.clone().confirm(None)
+    }
+
+    fn remove_external_secrets(
+        external: &BallotCrypto<Self::ExposedSecrets>,
+    ) -> BallotCrypto<NoSecrets> {
+        external.clone().confirm(None)
     }
 
     /// This assumes that the ballot is well-formed, i.e. there is a yes-candidate.
@@ -138,6 +172,21 @@ impl BallotState for Audited {
         // but such ballots are impossible to construct unless you're *really* trying.
         AuditExtraData {
             candidate: internal.votes.keys().next().unwrap().clone(),
+        }
+    }
+
+    fn verify_receipt_data(receipt: &Receipt<Self>) -> Result<(), VerificationError> {
+        let correct_extra_data = Self::receipt_data(&receipt.crypto);
+        if receipt.state_data == correct_extra_data {
+            Ok(())
+        } else {
+            Err(VerificationError::Receipt(
+                ReceiptError::RevealedCandidate {
+                    ballot_id: receipt.ballot_id,
+                    claimed_candidate: receipt.state_data.candidate.clone(),
+                    true_candidate: correct_extra_data.candidate,
+                },
+            ))
         }
     }
 }
@@ -172,11 +221,23 @@ impl BallotState for Confirmed {
         internal
     }
 
-    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets> {
+    fn remove_internal_secrets(
+        internal: &BallotCrypto<Self::InternalSecrets>,
+    ) -> BallotCrypto<NoSecrets> {
         internal.clone()
+    }
+
+    fn remove_external_secrets(
+        external: &BallotCrypto<Self::ExposedSecrets>,
+    ) -> BallotCrypto<NoSecrets> {
+        external.clone()
     }
 
     fn receipt_data(_: &BallotCrypto<Self::InternalSecrets>) -> Self::ReceiptData {
         NoSecrets(())
+    }
+
+    fn verify_receipt_data(_receipt: &Receipt<Self>) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
