@@ -65,36 +65,47 @@ pub struct ElectionResults {
     /// All confirmed receipts.
     pub confirmed: HashMap<BallotId, Receipt<Confirmed>>,
     /// Claimed candidate totals.
-    pub totals: HashMap<CandidateId, CandidateTotalsDesc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub totals: Option<HashMap<CandidateId, CandidateTotalsDesc>>,
 }
 
 impl ElectionResults {
     /// Verify the election results.
     pub fn verify(&self) -> Result<(), VerificationError> {
-        // Verify the confirmed ballots and candidate totals.
-        let confirmed = self
-            .confirmed
-            .iter()
-            .map(|(id, r)| (id.to_le_bytes(), r.crypto.clone()))
-            .collect::<HashMap<_, _>>();
-        let totals = self
-            .totals
-            .iter()
-            .map(|(id, tot)| {
-                (
-                    id.clone(),
-                    CandidateTotals {
-                        tally: tot.tally,
-                        r_sum: tot.r_sum,
-                    },
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        dre_ip::verify_election(self.election.g1, self.election.g2, &confirmed, &totals)?;
+        // See if we have the totals or not.
+        if let Some(totals) = &self.totals {
+            // Verify the confirmed ballots and candidate totals.
+            let confirmed = self
+                .confirmed
+                .iter()
+                .map(|(id, r)| (id.to_le_bytes(), r.crypto.clone()))
+                .collect::<HashMap<_, _>>();
 
-        // Verify the signatures of confirmed receipts.
-        for receipt in self.confirmed.values() {
-            verify_receipt_signature(receipt, &self.election)?;
+            let totals = totals
+                .iter()
+                .map(|(id, tot)| {
+                    (
+                        id.clone(),
+                        CandidateTotals {
+                            tally: tot.tally,
+                            r_sum: tot.r_sum,
+                        },
+                    )
+                })
+                .collect::<HashMap<_, _>>();
+
+            dre_ip::verify_election(self.election.g1, self.election.g2, &confirmed, &totals)?;
+
+            // Verify the signatures of confirmed receipts.
+            for receipt in self.confirmed.values() {
+                verify_receipt_signature(receipt, &self.election)?;
+            }
+        } else {
+            // Verify all the confirmed receipts.
+            for receipt in self.confirmed.values() {
+                verify_receipt(receipt, &self.election)?;
+            }
         }
 
         // Verify all the audited receipts.

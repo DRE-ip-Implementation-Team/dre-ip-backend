@@ -15,7 +15,7 @@ use crate::model::{
 use super::metadata::ElectionMetadata;
 
 /// Core election data, as stored in the database.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Election {
     /// Unique ID.
     #[serde(rename = "_id")]

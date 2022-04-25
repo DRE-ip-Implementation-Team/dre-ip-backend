@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::Utc;
 use mongodb::{
     bson::doc,
     options::{FindOptions, SessionOptions},
@@ -178,9 +179,23 @@ async fn election_question_ballot(
 async fn candidate_totals(
     election_id: ElectionId,
     question_id: QuestionId,
+    elections: Coll<Election>,
     totals: Coll<CandidateTotals>,
 ) -> Result<Json<HashMap<CandidateId, CandidateTotalsDesc>>> {
-    // No need to filter our drafts if non-admin, since draft elections cannot have totals.
+    let election = elections
+        .find_one(u32_id_filter(election_id), None)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
+
+    if election.metadata.state != ElectionState::Archived
+        && Utc::now() <= election.metadata.end_time
+    {
+        return Err(Error::not_found(format!(
+            "Election with ID '{}'",
+            election_id
+        )));
+    }
+
     let question_totals_filter = doc! {
         "election_id": election_id,
         "question_id": question_id,
@@ -206,7 +221,7 @@ async fn question_dump(
 ) -> Result<Json<ElectionResults>> {
     // Ensure we read a consistent snapshot of the election data.
     let election;
-    let mut candidate_totals = HashMap::new();
+    let mut candidate_totals = None;
     let mut audited_receipts = HashMap::new();
     let mut confirmed_receipts = HashMap::new();
     {
@@ -222,16 +237,25 @@ async fn question_dump(
             .await?
             .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
-        let totals_filter = doc! {
-            "election_id": election_id,
-            "question_id": question_id,
-        };
-        let mut totals_cursor = totals
-            .find_with_session(totals_filter, None, &mut session)
-            .await?;
-        while let Some(total) = totals_cursor.next(&mut session).await {
-            let total = total?;
-            candidate_totals.insert(total.candidate_name.clone(), total.into());
+        // Only retrieve totals if the election has finished.
+        if election.metadata.state == ElectionState::Archived
+            || Utc::now() > election.metadata.end_time
+        {
+            let totals_filter = doc! {
+                "election_id": election_id,
+                "question_id": question_id,
+            };
+            let mut totals_cursor = totals
+                .find_with_session(totals_filter, None, &mut session)
+                .await?;
+            candidate_totals = Some({
+                let mut candidate_totals = HashMap::new();
+                while let Some(total) = totals_cursor.next(&mut session).await {
+                    let total = total?;
+                    candidate_totals.insert(total.candidate_name.clone(), total.into());
+                }
+                candidate_totals
+            });
         }
 
         let ballots_filter = doc! {
@@ -733,7 +757,7 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let q1 = election
             .questions
@@ -741,6 +765,22 @@ mod tests {
             .find(|q| q.description == QuestionSpec::example1().description)
             .unwrap();
 
+        // Ensure we cannot get the totals on an in-progress election.
+        let response = client
+            .get(uri!(candidate_totals(election.id, q1.id,)))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Set the end time in the past.
+        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        let result = Coll::<Election>::from_db(&db)
+            .replace_one(u32_id_filter(election.id), &election, None)
+            .await
+            .unwrap();
+        assert_eq!(result.modified_count, 1);
+
+        // Ensure we can get the totals on a finished election.
         let response = client
             .get(uri!(candidate_totals(election.id, q1.id,)))
             .dispatch()
@@ -759,13 +799,38 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let q1 = election
             .questions
             .values()
             .find(|q| q.description == QuestionSpec::example1().description)
             .unwrap();
+
+        // Try with an in-progress election.
+        let response = client
+            .get(uri!(question_dump(election.id, q1.id)))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        let raw_response = response.into_string().await.unwrap();
+        let results: ElectionResults = serde_json::from_str(&raw_response).unwrap();
+        assert_eq!(
+            results.election,
+            ElectionDescription::from(election.clone()).crypto
+        );
+        assert!(results.totals.is_none());
+        assert!(results.verify().is_ok());
+
+        // Try with a finished election.
+        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        let result = Coll::<Election>::from_db(&db)
+            .replace_one(u32_id_filter(election.id), &election, None)
+            .await
+            .unwrap();
+        assert_eq!(result.modified_count, 1);
 
         let response = client
             .get(uri!(question_dump(election.id, q1.id)))
@@ -777,6 +842,7 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
         let results: ElectionResults = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(results.election, ElectionDescription::from(election).crypto);
+        assert!(results.totals.is_some());
         assert!(results.verify().is_ok());
     }
 

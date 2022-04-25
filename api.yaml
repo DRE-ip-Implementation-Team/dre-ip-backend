@@ -374,7 +374,7 @@ paths:
       - $ref: "#/components/parameters/ElectionID"
       - $ref: "#/components/parameters/QuestionID"
     get:
-      summary: Fetch the candidate totals for this question.
+      summary: Fetch the candidate totals for this question. The election must have finished.
       security: [ ]  # No authentication needed.
       tags:
         - Public Endpoints
@@ -393,6 +393,7 @@ paths:
       - $ref: "#/components/parameters/QuestionID"
     get:
       summary: Dump the entire election state for this question.
+               Only includes candidate totals if the election has finished.
       security: [ ]  # No authentication needed.
       tags:
         - Public Endpoints
@@ -1141,6 +1142,10 @@ components:
         totals:
           type: object
           description: Object map from candidate names to totals.
+      required:
+        - election
+        - audited
+        - confirmed
   # Common parameters
   parameters:
     ElectionID:
