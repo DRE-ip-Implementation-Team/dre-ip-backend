@@ -20,7 +20,7 @@ pub mod scheduled_task;
 
 use crate::model::{
     db::{admin::ensure_admin_exists, election::ElectionFinalizers as RawElectionFinalizers},
-    mongodb::Coll,
+    mongodb::{ensure_election_id_counter_exists, Coll},
 };
 
 pub async fn build() -> Rocket<Build> {
@@ -70,6 +70,11 @@ pub(crate) async fn rocket_for_db_and_notifier(
     ensure_admin_exists(&Coll::from_db(&db))
         .await
         .expect("Failed to contact database during admin user init");
+
+    // Ensure the global election ID counter exists.
+    ensure_election_id_counter_exists(&Coll::from_db(&db))
+        .await
+        .expect("Failed to contact database during election id counter init");
 
     rocket::build()
         .mount("/", api::routes())

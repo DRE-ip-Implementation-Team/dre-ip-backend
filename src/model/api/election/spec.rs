@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    common::election::{ElectionState, Electorate},
-    db::election::{ElectionMetadata, NewElection, Question},
-    mongodb::Id,
+    common::election::{ElectionId, ElectionState, Electorate, QuestionId},
+    db::election::{Election, ElectionMetadata, Question},
 };
 
 /// An election specification.
@@ -24,20 +24,29 @@ pub struct ElectionSpec {
     pub questions: Vec<QuestionSpec>,
 }
 
-impl From<ElectionSpec> for NewElection {
-    fn from(spec: ElectionSpec) -> Self {
-        let electorates = spec
+impl ElectionSpec {
+    /// Convert this spec into a proper Election with unique IDs.
+    pub fn into_election(self, election_id: ElectionId, rng: impl RngCore + CryptoRng) -> Election {
+        let electorates = self
             .electorates
             .into_iter()
             .map(|electorate| (electorate.name.clone(), electorate))
             .collect();
-        Self::new(
-            spec.name,
-            spec.start_time,
-            spec.end_time,
+        Election::new(
+            election_id,
+            self.name,
+            self.start_time,
+            self.end_time,
             electorates,
-            spec.questions.into_iter().map(QuestionSpec::into).collect(),
-            rand::thread_rng(),
+            self.questions
+                .into_iter()
+                .enumerate()
+                .map(|(i, q)| {
+                    let question_id = 1 + QuestionId::try_from(i).expect("usize to u32");
+                    (question_id, q.into_question(question_id))
+                })
+                .collect(),
+            rng,
         )
     }
 }
@@ -64,17 +73,15 @@ pub struct QuestionSpec {
     pub candidates: Vec<String>,
 }
 
-impl From<QuestionSpec> for (Id, Question) {
-    fn from(spec: QuestionSpec) -> Self {
-        let id = Id::new();
-        let question = Question {
+impl QuestionSpec {
+    /// Convert this spec into a question with the given unique ID.
+    pub fn into_question(self, id: QuestionId) -> Question {
+        Question {
             id,
-            description: spec.description,
-            constraints: spec.constraints,
-            candidates: spec.candidates,
-        };
-
-        (id, question)
+            description: self.description,
+            constraints: self.constraints,
+            candidates: self.candidates,
+        }
     }
 }
 

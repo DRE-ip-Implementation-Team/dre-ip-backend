@@ -178,3 +178,10 @@ pub mod serde_string_map {
         })
     }
 }
+
+/// Convert a u32 unique ID to a filter document.
+pub fn u32_id_filter(id: u32) -> Document {
+    doc! {
+        "_id": id
+    }
+}
