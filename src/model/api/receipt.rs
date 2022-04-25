@@ -2,7 +2,6 @@ use dre_ip::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    api::id::ApiId,
     common::{
         ballot::{Audited, BallotCrypto, BallotState, Confirmed},
         election::DreipGroup,
@@ -22,11 +21,11 @@ pub struct Receipt<S: BallotState> {
     #[serde(flatten)]
     pub crypto: BallotCrypto<S::ExposedSecrets>,
     /// Ballot ID.
-    pub ballot_id: u64,
+    pub ballot_id: u32,
     /// Election ID.
-    pub election_id: ApiId,
+    pub election_id: u32,
     /// Question ID.
-    pub question_id: ApiId,
+    pub question_id: u32,
     /// The current state of the ballot.
     pub state: S,
     /// Extra data specific to this ballot state.
@@ -53,8 +52,8 @@ where
         // Sign the receipt.
         let mut msg = crypto.to_bytes();
         msg.extend(ballot.ballot_id.to_le_bytes());
-        msg.extend(ballot.election_id.to_bytes());
-        msg.extend(ballot.question_id.to_bytes());
+        msg.extend(ballot.election_id.to_le_bytes());
+        msg.extend(ballot.question_id.to_le_bytes());
         msg.extend(ballot.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&state_data));
         let signature = election.crypto.private_key.sign(&msg);
@@ -63,8 +62,8 @@ where
         Self {
             crypto,
             ballot_id: ballot.ballot_id,
-            election_id: ballot.election_id.into(),
-            question_id: ballot.question_id.into(),
+            election_id: ballot.election_id,
+            question_id: ballot.question_id,
             state: ballot.state,
             state_data,
             signature,

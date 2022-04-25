@@ -21,13 +21,13 @@ use crate::model::{
         receipt::{FinishedReceipt, Receipt},
     },
     common::{
-        ballot::{Audited, Confirmed},
-        election::{CandidateId, ElectionState},
+        ballot::{Audited, BallotId, Confirmed},
+        election::{CandidateId, ElectionId, ElectionState, QuestionId},
     },
     db::{
         admin::Admin, ballot::FinishedBallot, candidate_totals::CandidateTotals, election::Election,
     },
-    mongodb::{Coll, Id},
+    mongodb::{u32_id_filter, Coll},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -65,11 +65,11 @@ async fn elections_non_admin(
 #[get("/elections/<election_id>", rank = 1)]
 async fn election_admin(
     _token: AuthToken<Admin>,
-    election_id: Id,
+    election_id: ElectionId,
     elections: Coll<Election>,
 ) -> Result<Json<ElectionDescription>> {
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
     Ok(Json(election.into()))
@@ -77,11 +77,11 @@ async fn election_admin(
 
 #[get("/elections/<election_id>", rank = 2)]
 async fn election_non_admin(
-    election_id: Id,
+    election_id: ElectionId,
     elections: Coll<Election>,
 ) -> Result<Json<ElectionDescription>> {
     let filter = doc! {
-        "_id": (election_id),
+        "_id": election_id,
         "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
     };
 
@@ -95,8 +95,8 @@ async fn election_non_admin(
 
 #[get("/elections/<election_id>/<question_id>/ballots?<filter_pattern>&<pagination..>")]
 async fn election_question_ballots(
-    election_id: Id,
-    question_id: Id,
+    election_id: ElectionId,
+    question_id: QuestionId,
     filter_pattern: Option<String>,
     pagination: PaginationRequest,
     elections: Coll<Election>,
@@ -104,13 +104,13 @@ async fn election_question_ballots(
 ) -> Result<Json<Paginated<FinishedReceipt>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
     let mut filter = doc! {
-        "election_id": (election_id),
-        "question_id": (question_id),
+        "election_id": election_id,
+        "question_id": question_id,
         "$or": [{"state": Audited}, {"state": Confirmed}],
     };
     if let Some(pattern) = filter_pattern {
@@ -145,22 +145,22 @@ async fn election_question_ballots(
 
 #[get("/elections/<election_id>/<question_id>/ballots/<ballot_id>")]
 async fn election_question_ballot(
-    election_id: Id,
-    question_id: Id,
-    ballot_id: u64,
+    election_id: ElectionId,
+    question_id: QuestionId,
+    ballot_id: BallotId,
     elections: Coll<Election>,
     ballots: Coll<FinishedBallot>,
 ) -> Result<Json<FinishedReceipt>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
     let election_question_ballot = doc! {
-        "ballot_id": ballot_id as i64, // BSON technically doesn't support u64, but i64 conversion is lossless.
-        "election_id": (election_id),
-        "question_id": (question_id),
+        "ballot_id": ballot_id,
+        "election_id": election_id,
+        "question_id": question_id,
         "$or": [{"state": Audited}, {"state": Confirmed}],
     };
 
@@ -180,14 +180,14 @@ async fn election_question_ballot(
 
 #[get("/elections/<election_id>/<question_id>/totals")]
 async fn candidate_totals(
-    election_id: Id,
-    question_id: Id,
+    election_id: ElectionId,
+    question_id: QuestionId,
     totals: Coll<CandidateTotals>,
 ) -> Result<Json<HashMap<CandidateId, CandidateTotalsDesc>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have totals.
     let question_totals_filter = doc! {
-        "election_id": (election_id),
-        "question_id": (question_id),
+        "election_id": election_id,
+        "question_id": question_id,
     };
     let question_totals = totals
         .find(question_totals_filter, None)
@@ -201,8 +201,8 @@ async fn candidate_totals(
 
 #[get("/elections/<election_id>/<question_id>/dump")]
 async fn question_dump(
-    election_id: Id,
-    question_id: Id,
+    election_id: ElectionId,
+    question_id: QuestionId,
     elections: Coll<Election>,
     totals: Coll<CandidateTotals>,
     ballots: Coll<FinishedBallot>,
@@ -218,7 +218,7 @@ async fn question_dump(
         let mut session = db_client.start_session(Some(session_options)).await?;
 
         let election_filter = doc! {
-            "_id": (election_id),
+            "_id": election_id,
             "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
         };
         election = elections
@@ -227,8 +227,8 @@ async fn question_dump(
             .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
         let totals_filter = doc! {
-            "election_id": (election_id),
-            "question_id": (question_id),
+            "election_id": election_id,
+            "question_id": question_id,
         };
         let mut totals_cursor = totals
             .find_with_session(totals_filter, None, &mut session)
@@ -239,8 +239,8 @@ async fn question_dump(
         }
 
         let ballots_filter = doc! {
-            "election_id": (election_id),
-            "question_id": (question_id),
+            "election_id": election_id,
+            "question_id": question_id,
             "$or": [{"state": Audited}, {"state": Confirmed}],
         };
         let mut election_ballots = ballots
@@ -314,7 +314,6 @@ mod tests {
         db::{
             ballot::{Ballot, BallotCore},
             candidate_totals::NewCandidateTotals,
-            election::NewElection,
         },
     };
 
@@ -339,8 +338,8 @@ mod tests {
             .collect::<Vec<_>>();
 
         let expected = vec![
-            NewElection::published_example().metadata,
-            NewElection::draft_example().metadata,
+            Election::published_example().metadata,
+            Election::draft_example().metadata,
         ];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
             assert_eq!(actual.name, expected.name);
@@ -369,7 +368,7 @@ mod tests {
             .into_iter()
             .collect::<Vec<_>>();
 
-        let expected = vec![NewElection::published_example().metadata];
+        let expected = vec![Election::published_example().metadata];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
             assert_eq!(actual.name, expected.name);
             assert_eq!(actual.state, expected.state);
@@ -400,7 +399,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::published_example();
+        let expected = Election::published_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -440,7 +439,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::draft_example();
+        let expected = Election::draft_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -480,7 +479,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::published_example();
+        let expected = Election::published_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -530,7 +529,7 @@ mod tests {
             .into_iter()
             .collect::<Vec<_>>();
 
-        let expected = vec![NewElection::archived_example().metadata];
+        let expected = vec![Election::archived_example().metadata];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
             assert_eq!(actual.name, expected.name);
             assert_eq!(actual.state, expected.state);
@@ -539,7 +538,7 @@ mod tests {
         }
 
         // Try getting a specific archived election.
-        let election_id = *serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
+        let election_id = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
             .unwrap()
             .into_iter()
             .next()
@@ -560,7 +559,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::archived_example();
+        let expected = Election::archived_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -803,7 +802,7 @@ mod tests {
         for question in election.questions.values() {
             let ballots = Coll::<FinishedBallot>::from_db(&db)
                 .find(
-                    doc! {"question_id": *question.id, "state": {"$ne": Unconfirmed}},
+                    doc! {"question_id": question.id, "state": {"$ne": Unconfirmed}},
                     None,
                 )
                 .await
@@ -817,7 +816,7 @@ mod tests {
             }
             println!();
             let totals = Coll::<CandidateTotals>::from_db(&db)
-                .find(doc! {"question_id": *question.id}, None)
+                .find(doc! {"question_id": question.id}, None)
                 .await
                 .unwrap()
                 .try_collect::<Vec<_>>()
@@ -840,12 +839,12 @@ mod tests {
     }
 
     async fn insert_elections(db: &Database) {
-        Coll::<NewElection>::from_db(db)
+        Coll::<Election>::from_db(db)
             .insert_many(
                 [
-                    NewElection::published_example(),
-                    NewElection::draft_example(),
-                    NewElection::archived_example(),
+                    Election::published_example(),
+                    Election::draft_example(),
+                    Election::archived_example(),
                 ],
                 None,
             )

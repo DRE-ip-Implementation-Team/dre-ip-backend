@@ -10,6 +10,7 @@ use serde_unit_struct::{Deserialize_unit_struct, Serialize_unit_struct};
 
 use crate::model::common::election::{CandidateId, DreipGroup};
 
+pub type BallotId = u32;
 pub type BallotCrypto<S> = DreipBallot<CandidateId, DreipGroup, S>;
 
 /// Trait for the ballot state, enforcing on the type level that secrets are present
