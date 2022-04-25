@@ -160,7 +160,7 @@ impl PublicReceipt {
 /// Calculate the confirmation code.
 fn calc_confirmation_code<S: BallotState>(ballot: &BallotCore<S>) -> String {
     let mut hasher: Sha256 = Sha256::new();
-    hasher.update(S::remove_secrets(&ballot.crypto).to_bytes());
+    hasher.update(S::remove_internal_secrets(&ballot.crypto).to_bytes());
     hasher.update(ballot.ballot_id.to_le_bytes());
     hasher.update(ballot.election_id.to_le_bytes());
     hasher.update(ballot.question_id.to_le_bytes());

@@ -9,7 +9,7 @@ use clap::{Arg, ArgMatches, Command};
 use rocket::serde::json::serde_json;
 
 use dreip_backend::model::api::election::{
-    BallotError, ElectionResults, VerificationError, VoteError,
+    BallotError, ElectionResults, ReceiptError, VerificationError, VoteError,
 };
 
 const PROGRAM_NAME: &str = "verify-dreip";
@@ -100,12 +100,32 @@ fn run(args: &ArgMatches) -> u8 {
                     "The candidates listed in the tallies do \
                     not match those found in the ballots.",
                 ),
-                VerificationError::Receipt { ballot_id } => {
-                    format!(
-                        "The receipt for ballot {} has an invalid signature.",
-                        ballot_id
-                    )
-                }
+                VerificationError::Receipt(err) => match err {
+                    ReceiptError::Signature { ballot_id } => {
+                        format!(
+                            "The receipt for ballot {} has an invalid signature.",
+                            ballot_id
+                        )
+                    }
+                    ReceiptError::ConfirmationCode { ballot_id } => {
+                        format!(
+                            "The receipt for ballot {} has an invalid confirmation code.",
+                            ballot_id
+                        )
+                    }
+                    ReceiptError::RevealedCandidate {
+                        ballot_id,
+                        claimed_candidate,
+                        true_candidate,
+                    } => {
+                        format!(
+                            "The receipt for ballot {} claims candidate {} but is actually for candidate {}.",
+                            ballot_id,
+                            claimed_candidate,
+                            true_candidate
+                        )
+                    }
+                },
             };
             println!("Verification failed: {}", msg);
             255
@@ -127,8 +147,31 @@ mod tests {
     fn verification() {
         assert!(verify("example_dumps/election.json").is_ok());
         assert!(verify("example_dumps/election_inprogress.json").is_ok());
+
         assert_eq!(
-            verify("example_dumps/election_invalid.json"),
+            verify("example_dumps/election_invalid_candidate.json"),
+            Err(Error::Verification(VerificationError::Receipt(
+                ReceiptError::RevealedCandidate {
+                    ballot_id: 11,
+                    claimed_candidate: "Chris Riches".to_string(),
+                    true_candidate: "Parry Hotter".to_string(),
+                }
+            )))
+        );
+        assert_eq!(
+            verify("example_dumps/election_invalid_conf_code.json"),
+            Err(Error::Verification(VerificationError::Receipt(
+                ReceiptError::ConfirmationCode { ballot_id: 11 }
+            )))
+        );
+        assert_eq!(
+            verify("example_dumps/election_invalid_signature.json"),
+            Err(Error::Verification(VerificationError::Receipt(
+                ReceiptError::Signature { ballot_id: 5 }
+            )))
+        );
+        assert_eq!(
+            verify("example_dumps/election_invalid_totals.json"),
             Err(Error::Verification(VerificationError::Tally {
                 candidate_id: "Parry Hotter".into()
             }))
@@ -141,7 +184,7 @@ mod tests {
         let args = cli().try_get_matches_from(command_line).unwrap();
         assert_eq!(run(&args), 0);
 
-        let command_line = [PROGRAM_NAME, "example_dumps/election_invalid.json"];
+        let command_line = [PROGRAM_NAME, "example_dumps/election_invalid_totals.json"];
         let args = cli().try_get_matches_from(command_line).unwrap();
         assert_eq!(run(&args), 255);
 
