@@ -9,7 +9,7 @@ use sha2::Sha256;
 use crate::{
     model::{
         api::sms::Sms,
-        common::allowed_questions::AllowedQuestions,
+        common::{allowed_questions::AllowedQuestions, election::ElectionId},
         mongodb::{serde_string_map, Id},
     },
     Config,
@@ -25,7 +25,7 @@ pub struct VoterCore {
     /// Maps election IDs to the IDs of questions the voter can answer for that election.
     /// This is populated according to their group constraints when they join an election.
     #[serde(with = "serde_string_map")]
-    pub allowed_questions: HashMap<Id, AllowedQuestions>,
+    pub allowed_questions: HashMap<ElectionId, AllowedQuestions>,
 }
 
 impl VoterCore {

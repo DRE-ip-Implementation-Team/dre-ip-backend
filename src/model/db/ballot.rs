@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     common::{
-        ballot::{Audited, BallotCrypto, BallotState, Confirmed, Unconfirmed},
-        election::{CandidateId, DreipGroup},
+        ballot::{Audited, BallotCrypto, BallotId, BallotState, Confirmed, Unconfirmed},
+        election::{CandidateId, DreipGroup, ElectionId, QuestionId},
     },
     db::election::Election,
     mongodb::Id,
@@ -21,11 +21,11 @@ use crate::model::{
 pub struct BallotCore<S: BallotState> {
     /// Ballot ID. Unlike most IDs, this is an incrementing index, as it will
     /// be directly seen by voters and needs to be user-friendly.
-    pub ballot_id: u64,
+    pub ballot_id: BallotId,
     /// Foreign Key election ID.
-    pub election_id: Id,
+    pub election_id: ElectionId,
     /// Foreign Key question ID.
-    pub question_id: Id,
+    pub question_id: QuestionId,
     /// Ballot creation time, used to automatically expire unconfirmed votes.
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub creation_time: DateTime<Utc>,
@@ -39,8 +39,8 @@ pub struct BallotCore<S: BallotState> {
 impl BallotCore<Unconfirmed> {
     /// Create a new ballot. Can only fail if there are duplicate candidate IDs passed in.
     pub fn new(
-        ballot_id: u64,
-        question_id: Id,
+        ballot_id: BallotId,
+        question_id: QuestionId,
         yes_candidate: CandidateId,
         no_candidates: impl IntoIterator<Item = CandidateId>,
         election: &Election,

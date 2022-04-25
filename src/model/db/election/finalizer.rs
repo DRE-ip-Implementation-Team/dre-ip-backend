@@ -8,15 +8,15 @@ use crate::error::{Error, Result};
 use crate::model::{
     common::{
         ballot::{Audited, Unconfirmed},
-        election::ElectionState,
+        election::{ElectionId, ElectionState},
     },
     db::{ballot::Ballot, election::Election},
-    mongodb::{Coll, Id},
+    mongodb::Coll,
 };
 use crate::scheduled_task::ScheduledTask;
 
 /// Election finalizers: scheduled tasks for auditing unconfirmed ballots at the end of an election.
-pub struct ElectionFinalizers(pub HashMap<Id, ScheduledTask<Result<()>>>);
+pub struct ElectionFinalizers(pub HashMap<ElectionId, ScheduledTask<Result<()>>>);
 
 impl ElectionFinalizers {
     /// Create an empty set of election finalizers.
@@ -60,7 +60,7 @@ impl ElectionFinalizers {
 
     /// Immediately trigger the finalizer for the given election.
     /// If the finalizer was not previously scheduled, this will have no effect.
-    pub async fn finalize_election(&mut self, election_id: Id) -> Result<()> {
+    pub async fn finalize_election(&mut self, election_id: ElectionId) -> Result<()> {
         match self.0.remove(&election_id) {
             Some(finalizer) => {
                 finalizer.trigger_now();
@@ -77,7 +77,7 @@ impl ElectionFinalizers {
 
     /// Finalize the given election by auditing all unconfirmed ballots.
     async fn finalizer(
-        election_id: Id,
+        election_id: ElectionId,
         unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
         audited_ballots: Coll<Ballot<Audited>>,
     ) -> Result<()> {

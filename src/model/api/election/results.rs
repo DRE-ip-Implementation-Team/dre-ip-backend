@@ -6,22 +6,22 @@ use serde::{Deserialize, Serialize};
 use crate::model::{
     api::{candidate_totals::CandidateTotalsDesc, election::ElectionCrypto, receipt::Receipt},
     common::{
-        ballot::{Audited, BallotState, Confirmed},
+        ballot::{Audited, BallotId, BallotState, Confirmed},
         election::CandidateId,
     },
 };
 
 pub use dre_ip::{BallotError, VoteError};
 
-/// `u64` itself can't implement `AsRef<[u8]>`, so we convert to `[u8; 8]` first.
-pub type EffectiveBallotId = [u8; 8];
+/// `u32` itself can't implement `AsRef<[u8]>`, so we convert to `[u8; 4]` first.
+pub type EffectiveBallotId = [u8; 4];
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum VerificationError {
     /// An individual ballot failed to verify.
-    Ballot(BallotError<u64, String>),
+    Ballot(BallotError<BallotId, String>),
     /// A receipt's signature was wrong.
-    Receipt { ballot_id: u64 },
+    Receipt { ballot_id: BallotId },
     /// A candidate's tally or random sum failed to verify.
     Tally { candidate_id: String },
     /// The set of candidates does not match between the ballots
@@ -37,14 +37,14 @@ impl From<InternalError<EffectiveBallotId, CandidateId>> for VerificationError {
                     BallotError::Vote(vote_err) => {
                         BallotError::Vote(VoteError {
                             // Convert bytes back into user-friendly ID.
-                            ballot_id: u64::from_le_bytes(vote_err.ballot_id),
+                            ballot_id: u32::from_le_bytes(vote_err.ballot_id),
                             candidate_id: vote_err.candidate_id,
                         })
                     }
                     BallotError::BallotProof { ballot_id } => {
                         BallotError::BallotProof {
                             // Convert bytes back into user-friendly ID.
-                            ballot_id: u64::from_le_bytes(ballot_id),
+                            ballot_id: u32::from_le_bytes(ballot_id),
                         }
                     }
                 })
@@ -61,9 +61,9 @@ pub struct ElectionResults {
     /// Election cryptographic data needed for verification.
     pub election: ElectionCrypto,
     /// All audited receipts.
-    pub audited: HashMap<u64, Receipt<Audited>>,
+    pub audited: HashMap<BallotId, Receipt<Audited>>,
     /// All confirmed receipts.
-    pub confirmed: HashMap<u64, Receipt<Confirmed>>,
+    pub confirmed: HashMap<BallotId, Receipt<Confirmed>>,
     /// Claimed candidate totals.
     pub totals: HashMap<CandidateId, CandidateTotalsDesc>,
 }
@@ -138,8 +138,8 @@ where
 {
     let mut msg = receipt.crypto.to_bytes();
     msg.extend(receipt.ballot_id.to_le_bytes());
-    msg.extend(receipt.election_id.to_bytes());
-    msg.extend(receipt.question_id.to_bytes());
+    msg.extend(receipt.election_id.to_le_bytes());
+    msg.extend(receipt.question_id.to_le_bytes());
     msg.extend(receipt.state.as_ref());
     msg.extend(Into::<Vec<u8>>::into(&receipt.state_data));
     if crypto.public_key.verify(&msg, &receipt.signature) {

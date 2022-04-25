@@ -6,15 +6,20 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    common::election::{CandidateId, DreipGroup, ElectionState, Electorate, QuestionId},
-    mongodb::{serde_string_map, Id},
+    common::election::{
+        CandidateId, DreipGroup, ElectionId, ElectionState, Electorate, QuestionId,
+    },
+    mongodb::serde_string_map,
 };
 
 use super::metadata::ElectionMetadata;
 
 /// Core election data, as stored in the database.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ElectionCore {
+pub struct Election {
+    /// Unique ID.
+    #[serde(rename = "_id")]
+    pub id: ElectionId,
     /// Top-level metadata.
     #[serde(flatten)]
     pub metadata: ElectionMetadata,
@@ -27,9 +32,10 @@ pub struct ElectionCore {
     pub crypto: DreipElection<DreipGroup>,
 }
 
-impl ElectionCore {
+impl Election {
     /// Create a new election.
     pub fn new(
+        id: ElectionId,
         name: String,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
@@ -47,6 +53,7 @@ impl ElectionCore {
         );
 
         Self {
+            id,
             metadata: ElectionMetadata {
                 name,
                 state: ElectionState::Draft,
@@ -63,8 +70,8 @@ impl ElectionCore {
 /// A single question.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Question {
-    /// Question unique ID.
-    pub id: Id,
+    /// Unique ID.
+    pub id: QuestionId,
     /// Question text.
     pub description: String,
     /// A voter must be in at least one of these electorate groups to vote on this question.
@@ -81,19 +88,24 @@ mod tests {
 
     use super::*;
 
-    impl ElectionCore {
+    impl Election {
         pub fn draft_example() -> Self {
-            ElectionSpec::future_example().into()
+            let mut rng = rand::thread_rng();
+            ElectionSpec::future_example().into_election(rng.next_u32(), rng)
         }
 
         pub fn published_example() -> Self {
-            let mut example: Self = ElectionSpec::current_example().into();
+            let mut rng = rand::thread_rng();
+            let mut example: Self =
+                ElectionSpec::current_example().into_election(rng.next_u32(), rng);
             example.metadata.state = ElectionState::Published;
             example
         }
 
         pub fn archived_example() -> Self {
-            let mut example: Self = ElectionSpec::current_example().into();
+            let mut rng = rand::thread_rng();
+            let mut example: Self =
+                ElectionSpec::current_example().into_election(rng.next_u32(), rng);
             example.metadata.start_time = example.metadata.start_time - Duration::days(100);
             example.metadata.end_time = example.metadata.end_time - Duration::days(100);
             example.metadata.state = ElectionState::Archived;

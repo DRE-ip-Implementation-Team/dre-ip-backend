@@ -14,7 +14,7 @@ use crate::model::{
     common::{
         allowed_questions::AllowedQuestions,
         ballot::{Audited, Confirmed, Unconfirmed},
-        election::ElectionState,
+        election::{ElectionId, ElectionState},
     },
     db::{
         ballot::{Ballot, NewBallot},
@@ -22,7 +22,7 @@ use crate::model::{
         election::Election,
         voter::Voter,
     },
-    mongodb::{Coll, Counter, Id},
+    mongodb::{ballot_counter_id, Coll, Counter, Id},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -39,7 +39,7 @@ pub fn routes() -> Vec<Route> {
 #[get("/elections/<election_id>/join")]
 async fn has_joined(
     token: AuthToken<Voter>,
-    election_id: Id,
+    election_id: ElectionId,
     voters: Coll<Voter>,
 ) -> Result<Json<bool>> {
     let voter = voter_by_id(token.id, &voters).await?;
@@ -49,7 +49,7 @@ async fn has_joined(
 #[post("/elections/<election_id>/join", data = "<joins>", format = "json")]
 async fn join_election(
     token: AuthToken<Voter>,
-    election_id: Id,
+    election_id: ElectionId,
     joins: Json<HashMap<String, HashSet<String>>>,
     elections: Coll<Election>,
     voters: Coll<Voter>,
@@ -139,7 +139,7 @@ async fn join_election(
 #[get("/elections/<election_id>/questions/allowed")]
 async fn get_allowed(
     token: AuthToken<Voter>,
-    election_id: Id,
+    election_id: ElectionId,
     voters: Coll<Voter>,
 ) -> Result<Json<AllowedQuestions>> {
     let voter = voter_by_id(token.id, &voters).await?;
@@ -160,7 +160,7 @@ async fn get_allowed(
 )]
 async fn cast_ballots(
     _token: AuthToken<Voter>,
-    election_id: Id,
+    election_id: ElectionId,
     ballot_specs: Json<Vec<BallotSpec>>,
     elections: Coll<Election>,
     ballots: Coll<NewBallot>,
@@ -205,7 +205,8 @@ async fn cast_ballots(
             assert_eq!(question.candidates.len() - 1, no_candidates.len());
 
             // Obtain the next ballot ID.
-            let ballot_id = Counter::next(&counters, question.id).await?;
+            let counter_id = ballot_counter_id(election_id, question.id);
+            let ballot_id = Counter::next(&counters, &counter_id).await?;
 
             // Create the ballot.
             let ballot = NewBallot::new(
@@ -252,7 +253,7 @@ async fn cast_ballots(
 )]
 async fn audit_ballots(
     _token: AuthToken<Voter>,
-    election_id: Id,
+    election_id: ElectionId,
     ballot_recalls: Json<Vec<BallotRecall>>,
     elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
@@ -273,9 +274,9 @@ async fn audit_ballots(
         for ballot in recalled_ballots {
             let audited = ballot.audit();
             let filter = doc! {
-                "_id": *audited.internal_id,
+                "_id": audited.internal_id,
                 "election_id": election_id,
-                "question_id": *audited.question_id,
+                "question_id": audited.question_id,
                 "state": Unconfirmed,
             };
             let result = audited_ballots
@@ -305,7 +306,7 @@ async fn audit_ballots(
 #[allow(clippy::too_many_arguments)]
 async fn confirm_ballots(
     token: AuthToken<Voter>,
-    election_id: Id,
+    election_id: ElectionId,
     ballot_recalls: Json<Vec<BallotRecall>>,
     voters: Coll<Voter>,
     elections: Coll<Election>,
@@ -377,7 +378,7 @@ async fn confirm_ballots(
             // Get candidate totals.
             let filter = doc! {
                 "election_id": election_id,
-                "question_id": *ballot.question_id,
+                "question_id": ballot.question_id,
             };
             let mut totals = candidate_totals
                 .find(filter, None)
@@ -409,9 +410,9 @@ async fn confirm_ballots(
             // Confirm ballot.
             let confirmed = ballot.confirm(&mut totals_map);
             let filter = doc! {
-                "_id": *confirmed.internal_id,
+                "_id": confirmed.internal_id,
                 "election_id": election_id,
-                "question_id": *confirmed.question_id,
+                "question_id": confirmed.question_id,
                 "state": Unconfirmed,
             };
             let result = confirmed_ballots
@@ -423,7 +424,7 @@ async fn confirm_ballots(
             for t in totals {
                 let filter = doc! {
                     "election_id": election_id,
-                    "question_id": *confirmed.question_id,
+                    "question_id": confirmed.question_id,
                     "candidate_name": t.candidate_name.clone(),
                 };
                 let options = ReplaceOptions::builder().upsert(true).build();
@@ -457,7 +458,10 @@ async fn voter_by_id(voter_id: Id, voters: &Coll<Voter>) -> Result<Voter> {
 
 /// Return an active Election from the database via ID lookup.
 /// An active election is finalised and within its start and end times.
-async fn active_election_by_id(election_id: Id, elections: &Coll<Election>) -> Result<Election> {
+async fn active_election_by_id(
+    election_id: ElectionId,
+    elections: &Coll<Election>,
+) -> Result<Election> {
     let now = Utc::now();
 
     let is_active = doc! {
@@ -482,7 +486,7 @@ async fn recall_ballots(
     let mut ballots = Vec::with_capacity(ballot_recalls.len());
     for recall in ballot_recalls {
         let filter = doc! {
-            "ballot_id": recall.ballot_id as i64, // BSON technically doesn't support u64, but i64 conversion is lossless.
+            "ballot_id": recall.ballot_id,
             "election_id": election.id,
             "question_id": recall.question_id,
             "state": Unconfirmed,
@@ -525,24 +529,22 @@ mod tests {
             receipt::Signature,
             sms::Sms,
         },
-        common::ballot::{Audited, Confirmed, Unconfirmed},
-        db::election::{Election, NewElection},
+        common::{
+            ballot::{Audited, Confirmed, Unconfirmed},
+            election::QuestionId,
+        },
+        db::election::Election,
+        mongodb::u32_id_filter,
     };
 
     use super::*;
 
     /// Insert test data, returning the election ID and the ID of the allowed question,
     /// which will differ between runs.
-    async fn insert_test_data(client: &Client, db: &Database) -> (Id, Id) {
+    async fn insert_test_data(client: &Client, db: &Database) -> (ElectionId, QuestionId) {
         // Create some elections, only one of which is active.
-        let election1 = Election {
-            id: Id::new(),
-            election: NewElection::published_example(),
-        };
-        let election2 = Election {
-            id: Id::new(),
-            election: NewElection::draft_example(),
-        };
+        let election1 = Election::published_example();
+        let election2 = Election::draft_example();
         let elections = Coll::<Election>::from_db(db);
         elections
             .insert_many(vec![&election1, &election2], None)
@@ -553,7 +555,10 @@ mod tests {
         let mut counters = Vec::new();
         for election in [&election1, &election2] {
             for question_id in election.questions.keys() {
-                let counter = Counter::new(*question_id, 1);
+                let counter = Counter {
+                    id: ballot_counter_id(election.id, *question_id),
+                    next: 1,
+                };
                 counters.push(counter);
             }
         }
@@ -665,18 +670,14 @@ mod tests {
 
     #[backend_test(voter)]
     async fn has_joined(client: Client, db: Database) {
-        let election = NewElection::published_example();
-        let election_id: Id = Coll::<NewElection>::from_db(&db)
+        let election = Election::published_example();
+        Coll::<Election>::from_db(&db)
             .insert_one(&election, None)
             .await
-            .unwrap()
-            .inserted_id
-            .as_object_id()
-            .unwrap()
-            .into();
+            .unwrap();
 
         // We haven't yet joined the election, so the endpoint should agree.
-        let response = client.get(uri!(has_joined(election_id))).dispatch().await;
+        let response = client.get(uri!(has_joined(election.id))).dispatch().await;
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
         let joined: bool = serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
@@ -684,7 +685,7 @@ mod tests {
 
         // Join the election (no groups).
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body("{}")
             .dispatch()
@@ -693,7 +694,7 @@ mod tests {
         assert!(response.body().is_none());
 
         // The endpoint should now say we have joined.
-        let response = client.get(uri!(has_joined(election_id))).dispatch().await;
+        let response = client.get(uri!(has_joined(election.id))).dispatch().await;
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_some());
         let joined: bool = serde_json::from_str(&response.into_string().await.unwrap()).unwrap();
@@ -702,15 +703,11 @@ mod tests {
 
     #[backend_test(voter)]
     async fn join_all_groups(client: Client, db: Database) {
-        let election = NewElection::published_example();
-        let election_id: Id = Coll::<NewElection>::from_db(&db)
+        let election = Election::published_example();
+        Coll::<Election>::from_db(&db)
             .insert_one(&election, None)
             .await
-            .unwrap()
-            .inserted_id
-            .as_object_id()
-            .unwrap()
-            .into();
+            .unwrap();
 
         // Check no questions are allowed.
         let sms_hmac = Sms::example_hmac(&client);
@@ -733,7 +730,7 @@ mod tests {
             ),
         ]);
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
@@ -748,7 +745,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(
-            voter.allowed_questions[&election_id]
+            voter.allowed_questions[&election.id]
                 .keys()
                 .collect::<HashSet<_>>(),
             election.questions.keys().collect()
@@ -757,15 +754,11 @@ mod tests {
 
     #[backend_test(voter)]
     async fn join_one_group(client: Client, db: Database) {
-        let election = NewElection::published_example();
-        let election_id: Id = Coll::<NewElection>::from_db(&db)
+        let election = Election::published_example();
+        Coll::<Election>::from_db(&db)
             .insert_one(&election, None)
             .await
-            .unwrap()
-            .inserted_id
-            .as_object_id()
-            .unwrap()
-            .into();
+            .unwrap();
 
         // Check no questions are allowed.
         let sms_hmac = Sms::example_hmac(&client);
@@ -782,7 +775,7 @@ mod tests {
             HashSet::from_iter(vec!["Quidditch".to_string()]),
         )]);
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
@@ -797,7 +790,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(
-            voter.allowed_questions[&election_id]
+            voter.allowed_questions[&election.id]
                 .keys()
                 .collect::<HashSet<_>>(),
             election
@@ -816,15 +809,11 @@ mod tests {
 
     #[backend_test(voter)]
     async fn bad_joins(client: Client, db: Database) {
-        let election = NewElection::published_example();
-        let election_id: Id = Coll::<NewElection>::from_db(&db)
-            .insert_one(election, None)
+        let election = Election::published_example();
+        Coll::<Election>::from_db(&db)
+            .insert_one(&election, None)
             .await
-            .unwrap()
-            .inserted_id
-            .as_object_id()
-            .unwrap()
-            .into();
+            .unwrap();
 
         // Try to join a non-existent election.
         let joins: HashMap<String, HashSet<String>> = HashMap::from_iter(vec![(
@@ -832,7 +821,7 @@ mod tests {
             HashSet::from_iter(vec!["Quidditch".to_string()]),
         )]);
         let response = client
-            .post(uri!(join_election(Id::new())))
+            .post(uri!(join_election(rand::thread_rng().gen::<u32>())))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
@@ -845,7 +834,7 @@ mod tests {
             HashSet::from_iter(vec!["Quidditch".to_string()]),
         )]);
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
@@ -858,7 +847,7 @@ mod tests {
             HashSet::from_iter(vec!["Foo".to_string()]),
         )]);
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
@@ -871,7 +860,7 @@ mod tests {
             HashSet::from_iter(vec!["CompSci", "Maths"].into_iter().map(String::from)),
         )]);
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
@@ -884,14 +873,14 @@ mod tests {
             HashSet::from_iter(vec!["Quidditch".to_string()]),
         )]);
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
         let response = client
-            .post(uri!(join_election(election_id)))
+            .post(uri!(join_election(election.id)))
             .header(ContentType::JSON)
             .body(serde_json::to_string(&joins).unwrap())
             .dispatch()
@@ -945,7 +934,7 @@ mod tests {
 
         // Ensure the receipt passes validation.
         let election = Coll::<Election>::from_db(&db)
-            .find_one(doc! {"_id": election_id}, None)
+            .find_one(u32_id_filter(election_id), None)
             .await
             .unwrap()
             .unwrap();
@@ -961,8 +950,8 @@ mod tests {
         // Validate signature.
         let mut msg = receipt.crypto.to_bytes();
         msg.extend(receipt.ballot_id.to_le_bytes());
-        msg.extend(receipt.election_id.to_bytes());
-        msg.extend(receipt.question_id.to_bytes());
+        msg.extend(receipt.election_id.to_le_bytes());
+        msg.extend(receipt.question_id.to_le_bytes());
         msg.extend(receipt.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&receipt.state_data));
         assert!(election.crypto.public_key.verify(&msg, &receipt.signature));
@@ -971,9 +960,9 @@ mod tests {
         let ballot = Coll::<Ballot<Unconfirmed>>::from_db(&db)
             .find_one(
                 doc! {
-                    "ballot_id": receipt.ballot_id as i64,
-                    "election_id": *receipt.election_id,
-                    "question_id": *receipt.question_id,
+                    "ballot_id": receipt.ballot_id,
+                    "election_id": receipt.election_id,
+                    "question_id": receipt.question_id,
                 },
                 None,
             )
@@ -1063,7 +1052,7 @@ mod tests {
 
         // Ensure the receipts match.
         let election = Coll::<Election>::from_db(&db)
-            .find_one(doc! {"_id": election_id}, None)
+            .find_one(u32_id_filter(election_id), None)
             .await
             .unwrap()
             .unwrap();
@@ -1093,8 +1082,8 @@ mod tests {
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
         msg.extend(second_receipt.ballot_id.to_le_bytes());
-        msg.extend(second_receipt.election_id.to_bytes());
-        msg.extend(second_receipt.question_id.to_bytes());
+        msg.extend(second_receipt.election_id.to_le_bytes());
+        msg.extend(second_receipt.question_id.to_le_bytes());
         msg.extend(second_receipt.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&second_receipt.state_data));
         assert!(election
@@ -1167,7 +1156,7 @@ mod tests {
 
         // Ensure the receipts match.
         let election = Coll::<Election>::from_db(&db)
-            .find_one(doc! {"_id": election_id}, None)
+            .find_one(u32_id_filter(election_id), None)
             .await
             .unwrap()
             .unwrap();
@@ -1186,8 +1175,8 @@ mod tests {
         // Validate signature.
         let mut msg = second_receipt.crypto.to_bytes();
         msg.extend(second_receipt.ballot_id.to_le_bytes());
-        msg.extend(second_receipt.election_id.to_bytes());
-        msg.extend(second_receipt.question_id.to_bytes());
+        msg.extend(second_receipt.election_id.to_le_bytes());
+        msg.extend(second_receipt.question_id.to_le_bytes());
         msg.extend(second_receipt.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&second_receipt.state_data));
         assert!(election
@@ -1239,7 +1228,7 @@ mod tests {
 
         // Try voting on a non-existent question.
         let ballot_specs = vec![BallotSpec {
-            question: Id::new(),
+            question: rand::thread_rng().gen(),
             candidate: "John Smith".to_string(),
         }];
         let response = client
@@ -1319,7 +1308,7 @@ mod tests {
 
         // Vote on a non-existent election.
         let response = client
-            .post(uri!(cast_ballots(Id::new())))
+            .post(uri!(cast_ballots(rand::thread_rng().gen::<u32>())))
             .header(ContentType::JSON)
             .body("[]")
             .dispatch()
@@ -1328,7 +1317,7 @@ mod tests {
 
         // Vote on a non-existent question.
         let ballot_specs = vec![BallotSpec {
-            question: Id::new(),
+            question: rand::thread_rng().gen(),
             candidate: "Alice".to_string(),
         }];
         let response = client
@@ -1341,7 +1330,7 @@ mod tests {
 
         // Vote on the question we are not allowed to.
         let not_allowed_question = *Coll::<Election>::from_db(&db)
-            .find_one(election_id.as_doc(), None)
+            .find_one(u32_id_filter(election_id), None)
             .await
             .unwrap()
             .unwrap()
@@ -1418,7 +1407,7 @@ mod tests {
         // Try to confirm the wrong question ID.
         let ballot_recalls = vec![BallotRecall {
             ballot_id: first_receipt.ballot_id,
-            question_id: Id::new(),
+            question_id: rand::thread_rng().gen(),
             signature: first_receipt.signature,
         }];
         let response = client
@@ -1483,7 +1472,11 @@ mod tests {
         let (election_id, question_id) = insert_test_data(&client, &db).await;
 
         // Correctly cast a vote.
-        async fn cast(client: &Client, election_id: Id, question_id: Id) -> Receipt<Unconfirmed> {
+        async fn cast(
+            client: &Client,
+            election_id: ElectionId,
+            question_id: QuestionId,
+        ) -> Receipt<Unconfirmed> {
             let candidate_id = "Chris Riches".to_string();
             let ballot_specs = vec![BallotSpec {
                 question: question_id,

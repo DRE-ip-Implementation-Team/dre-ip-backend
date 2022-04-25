@@ -12,7 +12,7 @@ use crate::model::{
         admin::{Admin, NewAdmin},
         ballot::{Ballot, BallotCore, FinishedBallot},
         candidate_totals::{CandidateTotals, NewCandidateTotals},
-        election::{Election, ElectionMetadata, NewElection},
+        election::{Election, ElectionMetadata},
         voter::{NewVoter, Voter},
     },
 };
@@ -93,9 +93,6 @@ impl MongoCollection for Election {
     const NAME: &'static str = ELECTIONS;
 }
 impl MongoCollection for ElectionMetadata {
-    const NAME: &'static str = ELECTIONS;
-}
-impl MongoCollection for NewElection {
     const NAME: &'static str = ELECTIONS;
 }
 
