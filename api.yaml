@@ -870,6 +870,8 @@ components:
         state:
           type: string
           description: Always "Unconfirmed".
+        confirmation_code:
+          type: string
         signature:
           type: string
         votes:
@@ -888,6 +890,7 @@ components:
         - election_id
         - question_id
         - state
+        - confirmation_code
         - signature
         - votes
         - pwf
@@ -896,6 +899,7 @@ components:
         election_id: 6220e27fbacbe75634ff900
         question_id: 6220e27fbacbe75634ff901
         state: "Unconfirmed"
+        confirmation_code: "YNEDDW2KR3P2IWCIQK2PWL2265YODQFDXLKNBRT3A64AT2T3V2"
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
         votes:
           Alice:
@@ -931,6 +935,8 @@ components:
         state:
           type: string
           description: Always "Audited".
+        confirmation_code:
+          type: string
         signature:
           type: string
         votes:
@@ -949,6 +955,7 @@ components:
         - election_id
         - question_id
         - state
+        - confirmation_code
         - signature
         - votes
         - pwf
@@ -957,6 +964,7 @@ components:
         election_id: 6220e27fbacbe75634ff900
         question_id: 6220e27fbacbe75634ff901
         state: "Audited"
+        confirmation_code: "YNEDDW2KR3P2IWCIQK2PWL2265YODQFDXLKNBRT3A64AT2T3V2"
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
         votes:
           Alice:
@@ -996,6 +1004,8 @@ components:
         state:
           type: string
           description: Always "Confirmed".
+        confirmation_code:
+          type: string
         signature:
           type: string
         votes:
@@ -1014,6 +1024,7 @@ components:
         - election_id
         - question_id
         - state
+        - confirmation_code
         - signature
         - votes
         - pwf
@@ -1022,6 +1033,7 @@ components:
         election_id: 6220e27fbacbe75634ff900
         question_id: 6220e27fbacbe75634ff901
         state: "Confirmed"
+        confirmation_code: "YNEDDW2KR3P2IWCIQK2PWL2265YODQFDXLKNBRT3A64AT2T3V2"
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
         votes:
           Alice:
@@ -1111,14 +1123,16 @@ components:
       required: true
       description: The ID of the election to operate on.
       schema:
-        $ref: "#/components/schemas/ID"
+        type: integer
+        example: 5
     QuestionID:
       name: questionID
       in: path
       required: true
       description: The ID of the election question to operate on.
       schema:
-        $ref: "#/components/schemas/ID"
+        type: integer
+        example: 12
     BallotID:
       name: ballotID
       in: path

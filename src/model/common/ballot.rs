@@ -30,6 +30,9 @@ pub trait BallotState: Copy + AsRef<[u8]> {
         internal: BallotCrypto<Self::InternalSecrets>,
     ) -> BallotCrypto<Self::ExposedSecrets>;
 
+    /// Get the internal crypto with no secrets.
+    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets>;
+
     /// Retrieve the extra receipt data.
     fn receipt_data(internal: &BallotCrypto<Self::InternalSecrets>) -> Self::ReceiptData;
 }
@@ -76,6 +79,10 @@ impl BallotState for Unconfirmed {
         internal.confirm(None)
     }
 
+    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets> {
+        internal.clone().confirm(None)
+    }
+
     fn receipt_data(_: &BallotCrypto<Self::InternalSecrets>) -> Self::ReceiptData {
         NoSecrets(())
     }
@@ -109,6 +116,10 @@ impl BallotState for Audited {
         internal: BallotCrypto<Self::InternalSecrets>,
     ) -> BallotCrypto<Self::ExposedSecrets> {
         internal
+    }
+
+    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets> {
+        internal.clone().confirm(None)
     }
 
     /// This assumes that the ballot is well-formed, i.e. there is a yes-candidate.
@@ -159,6 +170,10 @@ impl BallotState for Confirmed {
         internal: BallotCrypto<Self::InternalSecrets>,
     ) -> BallotCrypto<Self::ExposedSecrets> {
         internal
+    }
+
+    fn remove_secrets(internal: &BallotCrypto<Self::InternalSecrets>) -> BallotCrypto<NoSecrets> {
+        internal.clone()
     }
 
     fn receipt_data(_: &BallotCrypto<Self::InternalSecrets>) -> Self::ReceiptData {

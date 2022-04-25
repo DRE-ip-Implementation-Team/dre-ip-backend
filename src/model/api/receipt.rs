@@ -1,5 +1,7 @@
+use data_encoding::BASE32;
 use dre_ip::{DreipGroup as DreipGroupTrait, DreipPrivateKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::model::{
     common::{
@@ -14,6 +16,8 @@ use crate::model::{
 
 pub type Signature = <DreipGroup as DreipGroupTrait>::Signature;
 
+pub const CONFIRMATION_CODE_LENGTH: usize = 50;
+
 /// A receipt. Audited receipts will contain the secret values; any other type will not.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Receipt<S: BallotState> {
@@ -26,6 +30,9 @@ pub struct Receipt<S: BallotState> {
     pub election_id: u32,
     /// Question ID.
     pub question_id: u32,
+    /// A hash of the IDs and the public crypto elements,
+    /// encoded in base32 and truncated to 50 characters.
+    pub confirmation_code: String,
     /// The current state of the ballot.
     pub state: S,
     /// Extra data specific to this ballot state.
@@ -46,6 +53,15 @@ where
         // Get any extra data.
         let state_data = S::receipt_data(&ballot.crypto);
 
+        // Calculate the confirmation code.
+        let mut hasher: Sha256 = Sha256::new();
+        hasher.update(S::remove_secrets(&ballot.crypto).to_bytes());
+        hasher.update(ballot.ballot_id.to_le_bytes());
+        hasher.update(ballot.election_id.to_le_bytes());
+        hasher.update(ballot.question_id.to_le_bytes());
+        let mut confirmation_code = BASE32.encode(&hasher.finalize());
+        confirmation_code.truncate(CONFIRMATION_CODE_LENGTH);
+
         // Convert the ballot from internal to receipt representation.
         let crypto = S::internal_to_receipt(ballot.crypto);
 
@@ -54,6 +70,7 @@ where
         msg.extend(ballot.ballot_id.to_le_bytes());
         msg.extend(ballot.election_id.to_le_bytes());
         msg.extend(ballot.question_id.to_le_bytes());
+        msg.extend(confirmation_code.as_bytes());
         msg.extend(ballot.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&state_data));
         let signature = election.crypto.private_key.sign(&msg);
@@ -64,6 +81,7 @@ where
             ballot_id: ballot.ballot_id,
             election_id: ballot.election_id,
             question_id: ballot.question_id,
+            confirmation_code,
             state: ballot.state,
             state_data,
             signature,

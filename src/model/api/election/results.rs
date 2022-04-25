@@ -140,6 +140,7 @@ where
     msg.extend(receipt.ballot_id.to_le_bytes());
     msg.extend(receipt.election_id.to_le_bytes());
     msg.extend(receipt.question_id.to_le_bytes());
+    msg.extend(receipt.confirmation_code.as_bytes());
     msg.extend(receipt.state.as_ref());
     msg.extend(Into::<Vec<u8>>::into(&receipt.state_data));
     if crypto.public_key.verify(&msg, &receipt.signature) {

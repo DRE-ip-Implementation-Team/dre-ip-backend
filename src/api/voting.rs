@@ -952,6 +952,7 @@ mod tests {
         msg.extend(receipt.ballot_id.to_le_bytes());
         msg.extend(receipt.election_id.to_le_bytes());
         msg.extend(receipt.question_id.to_le_bytes());
+        msg.extend(receipt.confirmation_code.as_bytes());
         msg.extend(receipt.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&receipt.state_data));
         assert!(election.crypto.public_key.verify(&msg, &receipt.signature));
@@ -1058,6 +1059,7 @@ mod tests {
             .unwrap();
         assert_eq!(first_receipt.ballot_id, second_receipt.ballot_id);
         assert_eq!(first_receipt.crypto.pwf, second_receipt.crypto.pwf);
+        assert_eq!(first_receipt.confirmation_code, second_receipt.confirmation_code);
         for (candidate, vote1) in first_receipt.crypto.votes.iter() {
             let vote2 = second_receipt.crypto.votes.get(candidate).unwrap();
             assert_eq!(vote1.pwf, vote2.pwf);
@@ -1084,6 +1086,7 @@ mod tests {
         msg.extend(second_receipt.ballot_id.to_le_bytes());
         msg.extend(second_receipt.election_id.to_le_bytes());
         msg.extend(second_receipt.question_id.to_le_bytes());
+        msg.extend(second_receipt.confirmation_code.as_bytes());
         msg.extend(second_receipt.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&second_receipt.state_data));
         assert!(election
@@ -1162,6 +1165,7 @@ mod tests {
             .unwrap();
         assert_eq!(first_receipt.ballot_id, second_receipt.ballot_id);
         assert_eq!(first_receipt.crypto, second_receipt.crypto);
+        assert_eq!(first_receipt.confirmation_code, second_receipt.confirmation_code);
 
         // Validate PWFs.
         assert!(second_receipt
@@ -1177,6 +1181,7 @@ mod tests {
         msg.extend(second_receipt.ballot_id.to_le_bytes());
         msg.extend(second_receipt.election_id.to_le_bytes());
         msg.extend(second_receipt.question_id.to_le_bytes());
+        msg.extend(second_receipt.confirmation_code.as_bytes());
         msg.extend(second_receipt.state.as_ref());
         msg.extend(Into::<Vec<u8>>::into(&second_receipt.state_data));
         assert!(election
