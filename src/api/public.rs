@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::Utc;
 use mongodb::{
     bson::doc,
     options::{FindOptions, SessionOptions},
@@ -18,16 +19,14 @@ use crate::model::{
         candidate_totals::CandidateTotalsDesc,
         election::{ElectionDescription, ElectionResults, ElectionSummary},
         pagination::{Paginated, PaginationRequest},
-        receipt::{FinishedReceipt, Receipt},
+        receipt::{PublicReceipt, Receipt},
     },
     common::{
-        ballot::{Audited, Confirmed},
-        election::{CandidateId, ElectionState},
+        ballot::{Audited, BallotId, Confirmed},
+        election::{CandidateId, ElectionId, ElectionState, QuestionId},
     },
-    db::{
-        admin::Admin, ballot::FinishedBallot, candidate_totals::CandidateTotals, election::Election,
-    },
-    mongodb::{Coll, Id},
+    db::{admin::Admin, ballot::AnyBallot, candidate_totals::CandidateTotals, election::Election},
+    mongodb::{u32_id_filter, Coll},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -65,11 +64,11 @@ async fn elections_non_admin(
 #[get("/elections/<election_id>", rank = 1)]
 async fn election_admin(
     _token: AuthToken<Admin>,
-    election_id: Id,
+    election_id: ElectionId,
     elections: Coll<Election>,
 ) -> Result<Json<ElectionDescription>> {
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
     Ok(Json(election.into()))
@@ -77,11 +76,11 @@ async fn election_admin(
 
 #[get("/elections/<election_id>", rank = 2)]
 async fn election_non_admin(
-    election_id: Id,
+    election_id: ElectionId,
     elections: Coll<Election>,
 ) -> Result<Json<ElectionDescription>> {
     let filter = doc! {
-        "_id": (election_id),
+        "_id": election_id,
         "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
     };
 
@@ -95,23 +94,22 @@ async fn election_non_admin(
 
 #[get("/elections/<election_id>/<question_id>/ballots?<filter_pattern>&<pagination..>")]
 async fn election_question_ballots(
-    election_id: Id,
-    question_id: Id,
+    election_id: ElectionId,
+    question_id: QuestionId,
     filter_pattern: Option<String>,
     pagination: PaginationRequest,
     elections: Coll<Election>,
-    ballots: Coll<FinishedBallot>,
-) -> Result<Json<Paginated<FinishedReceipt>>> {
+    ballots: Coll<AnyBallot>,
+) -> Result<Json<Paginated<PublicReceipt>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
     let mut filter = doc! {
-        "election_id": (election_id),
-        "question_id": (question_id),
-        "$or": [{"state": Audited}, {"state": Confirmed}],
+        "election_id": election_id,
+        "question_id": question_id,
     };
     if let Some(pattern) = filter_pattern {
         filter.insert(
@@ -133,7 +131,7 @@ async fn election_question_ballots(
     let ballots_page = ballots
         .find(filter.clone(), pagination_options)
         .await?
-        .map(|ballot| ballot.map(|ballot| FinishedReceipt::from_finished_ballot(ballot, &election)))
+        .map(|ballot| ballot.map(|ballot| PublicReceipt::from_ballot(ballot, &election)))
         .try_collect::<Vec<_>>()
         .await?;
 
@@ -145,29 +143,28 @@ async fn election_question_ballots(
 
 #[get("/elections/<election_id>/<question_id>/ballots/<ballot_id>")]
 async fn election_question_ballot(
-    election_id: Id,
-    question_id: Id,
-    ballot_id: u64,
+    election_id: ElectionId,
+    question_id: QuestionId,
+    ballot_id: BallotId,
     elections: Coll<Election>,
-    ballots: Coll<FinishedBallot>,
-) -> Result<Json<FinishedReceipt>> {
+    ballots: Coll<AnyBallot>,
+) -> Result<Json<PublicReceipt>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
     let election_question_ballot = doc! {
-        "ballot_id": ballot_id as i64, // BSON technically doesn't support u64, but i64 conversion is lossless.
-        "election_id": (election_id),
-        "question_id": (question_id),
-        "$or": [{"state": Audited}, {"state": Confirmed}],
+        "ballot_id": ballot_id,
+        "election_id": election_id,
+        "question_id": question_id,
     };
 
     let ballot = ballots
         .find_one(election_question_ballot, None)
         .await?
-        .map(|ballot| FinishedReceipt::from_finished_ballot(ballot, &election))
+        .map(|ballot| PublicReceipt::from_ballot(ballot, &election))
         .ok_or_else(|| {
             Error::not_found(format!(
                 "Ballot with ID '{}' for election '{}', question '{}'",
@@ -180,14 +177,28 @@ async fn election_question_ballot(
 
 #[get("/elections/<election_id>/<question_id>/totals")]
 async fn candidate_totals(
-    election_id: Id,
-    question_id: Id,
+    election_id: ElectionId,
+    question_id: QuestionId,
+    elections: Coll<Election>,
     totals: Coll<CandidateTotals>,
 ) -> Result<Json<HashMap<CandidateId, CandidateTotalsDesc>>> {
-    // No need to filter our drafts if non-admin, since draft elections cannot have totals.
+    let election = elections
+        .find_one(u32_id_filter(election_id), None)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
+
+    if election.metadata.state != ElectionState::Archived
+        && Utc::now() <= election.metadata.end_time
+    {
+        return Err(Error::not_found(format!(
+            "Election with ID '{}'",
+            election_id
+        )));
+    }
+
     let question_totals_filter = doc! {
-        "election_id": (election_id),
-        "question_id": (question_id),
+        "election_id": election_id,
+        "question_id": question_id,
     };
     let question_totals = totals
         .find(question_totals_filter, None)
@@ -201,16 +212,16 @@ async fn candidate_totals(
 
 #[get("/elections/<election_id>/<question_id>/dump")]
 async fn question_dump(
-    election_id: Id,
-    question_id: Id,
+    election_id: ElectionId,
+    question_id: QuestionId,
     elections: Coll<Election>,
     totals: Coll<CandidateTotals>,
-    ballots: Coll<FinishedBallot>,
+    ballots: Coll<AnyBallot>,
     db_client: &State<Client>,
 ) -> Result<Json<ElectionResults>> {
     // Ensure we read a consistent snapshot of the election data.
     let election;
-    let mut candidate_totals = HashMap::new();
+    let mut candidate_totals = None;
     let mut audited_receipts = HashMap::new();
     let mut confirmed_receipts = HashMap::new();
     {
@@ -218,7 +229,7 @@ async fn question_dump(
         let mut session = db_client.start_session(Some(session_options)).await?;
 
         let election_filter = doc! {
-            "_id": (election_id),
+            "_id": election_id,
             "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
         };
         election = elections
@@ -226,21 +237,30 @@ async fn question_dump(
             .await?
             .ok_or_else(|| Error::not_found(format!("Election with ID '{}'", election_id)))?;
 
-        let totals_filter = doc! {
-            "election_id": (election_id),
-            "question_id": (question_id),
-        };
-        let mut totals_cursor = totals
-            .find_with_session(totals_filter, None, &mut session)
-            .await?;
-        while let Some(total) = totals_cursor.next(&mut session).await {
-            let total = total?;
-            candidate_totals.insert(total.candidate_name.clone(), total.into());
+        // Only retrieve totals if the election has finished.
+        if election.metadata.state == ElectionState::Archived
+            || Utc::now() > election.metadata.end_time
+        {
+            let totals_filter = doc! {
+                "election_id": election_id,
+                "question_id": question_id,
+            };
+            let mut totals_cursor = totals
+                .find_with_session(totals_filter, None, &mut session)
+                .await?;
+            candidate_totals = Some({
+                let mut candidate_totals = HashMap::new();
+                while let Some(total) = totals_cursor.next(&mut session).await {
+                    let total = total?;
+                    candidate_totals.insert(total.candidate_name.clone(), total.into());
+                }
+                candidate_totals
+            });
         }
 
         let ballots_filter = doc! {
-            "election_id": (election_id),
-            "question_id": (question_id),
+            "election_id": election_id,
+            "question_id": question_id,
             "$or": [{"state": Audited}, {"state": Confirmed}],
         };
         let mut election_ballots = ballots
@@ -248,10 +268,11 @@ async fn question_dump(
             .await?;
         while let Some(ballot) = election_ballots.next(&mut session).await {
             match ballot? {
-                FinishedBallot::Audited(b) => {
+                AnyBallot::Unconfirmed(_) => {} // Ignore unconfirmed ballots.
+                AnyBallot::Audited(b) => {
                     audited_receipts.insert(b.ballot_id, Receipt::from_ballot(b.ballot, &election));
                 }
-                FinishedBallot::Confirmed(b) => {
+                AnyBallot::Confirmed(b) => {
                     confirmed_receipts
                         .insert(b.ballot_id, Receipt::from_ballot(b.ballot, &election));
                 }
@@ -314,7 +335,7 @@ mod tests {
         db::{
             ballot::{Ballot, BallotCore},
             candidate_totals::NewCandidateTotals,
-            election::NewElection,
+            election::Question,
         },
     };
 
@@ -339,8 +360,8 @@ mod tests {
             .collect::<Vec<_>>();
 
         let expected = vec![
-            NewElection::published_example().metadata,
-            NewElection::draft_example().metadata,
+            Election::published_example().metadata,
+            Election::draft_example().metadata,
         ];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
             assert_eq!(actual.name, expected.name);
@@ -369,7 +390,7 @@ mod tests {
             .into_iter()
             .collect::<Vec<_>>();
 
-        let expected = vec![NewElection::published_example().metadata];
+        let expected = vec![Election::published_example().metadata];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
             assert_eq!(actual.name, expected.name);
             assert_eq!(actual.state, expected.state);
@@ -400,7 +421,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::published_example();
+        let expected = Election::published_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -440,7 +461,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::draft_example();
+        let expected = Election::draft_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -480,7 +501,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::published_example();
+        let expected = Election::published_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -530,7 +551,7 @@ mod tests {
             .into_iter()
             .collect::<Vec<_>>();
 
-        let expected = vec![NewElection::archived_example().metadata];
+        let expected = vec![Election::archived_example().metadata];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
             assert_eq!(actual.name, expected.name);
             assert_eq!(actual.state, expected.state);
@@ -539,7 +560,7 @@ mod tests {
         }
 
         // Try getting a specific archived election.
-        let election_id = *serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
+        let election_id = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
             .unwrap()
             .into_iter()
             .next()
@@ -560,7 +581,7 @@ mod tests {
         let fetched_election = serde_json::from_str::<ElectionDescription>(&raw_response).unwrap();
 
         // Note: the IDs and crypto will be different here so we need to be careful with comparisons.
-        let expected = NewElection::archived_example();
+        let expected = Election::archived_example();
 
         assert_eq!(expected.metadata.name, fetched_election.name);
         assert_eq!(expected.metadata.state, fetched_election.state);
@@ -614,10 +635,10 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipts: Paginated<FinishedReceipt> = serde_json::from_str(&raw_response).unwrap();
+        let receipts: Paginated<PublicReceipt> = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(receipts.pagination.page_num, 1);
         assert_eq!(receipts.pagination.page_size, 2);
-        assert_eq!(receipts.pagination.total, 7);
+        assert_eq!(receipts.pagination.total, 9);
         assert_eq!(receipts.items.len(), 2);
 
         // Get all ballots.
@@ -638,21 +659,16 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipts: Paginated<FinishedReceipt> = serde_json::from_str(&raw_response).unwrap();
+        let receipts: Paginated<PublicReceipt> = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(receipts.pagination.page_num, 1);
         assert_eq!(receipts.pagination.page_size, 50);
-        assert_eq!(receipts.pagination.total, 7);
-        assert_eq!(receipts.items.len(), 7);
+        assert_eq!(receipts.pagination.total, 9);
+        assert_eq!(receipts.items.len(), 9);
         assert_eq!(
             receipts
                 .items
                 .iter()
-                .filter(|receipt| {
-                    match receipt {
-                        FinishedReceipt::Audited(_) => false,
-                        FinishedReceipt::Confirmed(_) => true,
-                    }
-                })
+                .filter(|receipt| matches!(receipt, PublicReceipt::Confirmed(_)))
                 .count(),
             5
         );
@@ -695,10 +711,10 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipts: Paginated<FinishedReceipt> = serde_json::from_str(&raw_response).unwrap();
+        let receipts: Paginated<PublicReceipt> = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(receipts.pagination.total, 1);
         assert_eq!(receipts.items.len(), 1);
-        if let FinishedReceipt::Confirmed(receipt) = &receipts.items[0] {
+        if let PublicReceipt::Confirmed(receipt) = &receipts.items[0] {
             assert_eq!(receipt.ballot_id, 3);
         } else {
             panic!("Wrong receipt!");
@@ -730,10 +746,10 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let receipt: FinishedReceipt = serde_json::from_str(&raw_response).unwrap();
+        let receipt: PublicReceipt = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(
             receipt,
-            FinishedReceipt::from_finished_ballot(FinishedBallot::Audited(ballot), &election)
+            PublicReceipt::from_ballot(AnyBallot::Audited(ballot), &election)
         );
     }
 
@@ -742,7 +758,7 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let q1 = election
             .questions
@@ -750,6 +766,22 @@ mod tests {
             .find(|q| q.description == QuestionSpec::example1().description)
             .unwrap();
 
+        // Ensure we cannot get the totals on an in-progress election.
+        let response = client
+            .get(uri!(candidate_totals(election.id, q1.id,)))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NotFound);
+
+        // Set the end time in the past.
+        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        let result = Coll::<Election>::from_db(&db)
+            .replace_one(u32_id_filter(election.id), &election, None)
+            .await
+            .unwrap();
+        assert_eq!(result.modified_count, 1);
+
+        // Ensure we can get the totals on a finished election.
         let response = client
             .get(uri!(candidate_totals(election.id, q1.id,)))
             .dispatch()
@@ -768,13 +800,38 @@ mod tests {
         insert_elections(&db).await;
         insert_ballots(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
 
         let q1 = election
             .questions
             .values()
             .find(|q| q.description == QuestionSpec::example1().description)
             .unwrap();
+
+        // Try with an in-progress election.
+        let response = client
+            .get(uri!(question_dump(election.id, q1.id)))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert!(response.body().is_some());
+
+        let raw_response = response.into_string().await.unwrap();
+        let results: ElectionResults = serde_json::from_str(&raw_response).unwrap();
+        assert_eq!(
+            results.election,
+            ElectionDescription::from(election.clone()).crypto
+        );
+        assert!(results.totals.is_none());
+        assert!(results.verify().is_ok());
+
+        // Try with a finished election.
+        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        let result = Coll::<Election>::from_db(&db)
+            .replace_one(u32_id_filter(election.id), &election, None)
+            .await
+            .unwrap();
+        assert_eq!(result.modified_count, 1);
 
         let response = client
             .get(uri!(question_dump(election.id, q1.id)))
@@ -786,6 +843,7 @@ mod tests {
         let raw_response = response.into_string().await.unwrap();
         let results: ElectionResults = serde_json::from_str(&raw_response).unwrap();
         assert_eq!(results.election, ElectionDescription::from(election).crypto);
+        assert!(results.totals.is_some());
         assert!(results.verify().is_ok());
     }
 
@@ -793,6 +851,21 @@ mod tests {
     #[backend_test(admin)]
     async fn generate_test_data(client: Client, db: Database) {
         insert_elections(&db).await;
+
+        // Put the election in the past, and set ID to 1.
+        let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
+        election.id = 1;
+        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        let result = Coll::<Election>::from_db(&db)
+            .delete_many(doc! {}, None)
+            .await
+            .unwrap();
+        assert_eq!(result.deleted_count, 3);
+        Coll::<Election>::from_db(&db)
+            .insert_one(&election, None)
+            .await
+            .unwrap();
+
         insert_ballots(&db).await;
 
         let election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
@@ -801,11 +874,8 @@ mod tests {
         println!("{election_json}\n");
 
         for question in election.questions.values() {
-            let ballots = Coll::<FinishedBallot>::from_db(&db)
-                .find(
-                    doc! {"question_id": *question.id, "state": {"$ne": Unconfirmed}},
-                    None,
-                )
+            let ballots = Coll::<AnyBallot>::from_db(&db)
+                .find(doc! {"question_id": question.id}, None)
                 .await
                 .unwrap()
                 .try_collect::<Vec<_>>()
@@ -817,7 +887,7 @@ mod tests {
             }
             println!();
             let totals = Coll::<CandidateTotals>::from_db(&db)
-                .find(doc! {"question_id": *question.id}, None)
+                .find(doc! {"question_id": question.id}, None)
                 .await
                 .unwrap()
                 .try_collect::<Vec<_>>()
@@ -840,12 +910,12 @@ mod tests {
     }
 
     async fn insert_elections(db: &Database) {
-        Coll::<NewElection>::from_db(db)
+        Coll::<Election>::from_db(db)
             .insert_many(
                 [
-                    NewElection::published_example(),
-                    NewElection::draft_example(),
-                    NewElection::archived_example(),
+                    Election::published_example(),
+                    Election::draft_example(),
+                    Election::archived_example(),
                 ],
                 None,
             )
@@ -853,10 +923,6 @@ mod tests {
             .unwrap();
     }
 
-    // Clippy doesn't like the ballot!() macros inside the vec![] macro, since
-    // the order of resolving the ballot ID increments depends on the order of
-    // evaluating the vector elements. It's fine though - the order doesn't matter.
-    #[allow(clippy::eval_order_dependence)]
     async fn insert_ballots(db: &Database) {
         let election = get_election_for_spec(db, ElectionSpec::current_example()).await;
         let q1 = election
@@ -896,55 +962,54 @@ mod tests {
             .map(|t| (t.candidate_name.clone(), &mut t.crypto))
             .collect::<HashMap<_, _>>();
 
-        let mut next_ballot_id = 1;
+        let mut ballot =
+            |question: &Question, yes: CandidateId, no: CandidateId, ballot_id: &mut BallotId| {
+                *ballot_id += 1;
+                BallotCore::new(*ballot_id, question.id, yes, vec![no], &election, &mut rng)
+                    .unwrap()
+            };
+
         macro_rules! ballot {
-            ($q:ident, $yes:ident, $no:ident) => {{
-                next_ballot_id += 1;
-                BallotCore::new(
-                    next_ballot_id,
-                    $q.id,
-                    $yes.clone(),
-                    vec![$no.clone()],
-                    &election,
-                    &mut rng,
-                )
-                .unwrap()
-            }};
+            ($q:ident, $yes:ident, $no:ident, $id:ident) => {
+                ballot(&$q, $yes.clone(), $no.clone(), &mut $id)
+            };
         }
 
+        let mut q1_id = 0;
+        let mut q2_id = 0;
         // Create confirmed ballots.
         let confirmed = vec![
             // q1: 3 votes for candidate 1, 2 votes for candidate 2
-            ballot!(q1, q1c1, q1c2).confirm(&mut totals_map),
-            ballot!(q1, q1c1, q1c2).confirm(&mut totals_map),
-            ballot!(q1, q1c1, q1c2).confirm(&mut totals_map),
-            ballot!(q1, q1c2, q1c1).confirm(&mut totals_map),
-            ballot!(q1, q1c2, q1c1).confirm(&mut totals_map),
+            ballot!(q1, q1c1, q1c2, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c1, q1c2, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c1, q1c2, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c2, q1c1, q1_id).confirm(&mut totals_map),
+            ballot!(q1, q1c2, q1c1, q1_id).confirm(&mut totals_map),
             // q2: 3 votes for candidate 2
-            ballot!(q2, q2c2, q2c1).confirm(&mut totals_map),
-            ballot!(q2, q2c2, q2c1).confirm(&mut totals_map),
-            ballot!(q2, q2c2, q2c1).confirm(&mut totals_map),
+            ballot!(q2, q2c2, q2c1, q2_id).confirm(&mut totals_map),
+            ballot!(q2, q2c2, q2c1, q2_id).confirm(&mut totals_map),
+            ballot!(q2, q2c2, q2c1, q2_id).confirm(&mut totals_map),
         ];
 
         // Create audited ballots.
         let audited = vec![
             // q1: 1 vote for each
-            ballot!(q1, q1c1, q1c2).audit(),
-            ballot!(q1, q1c2, q1c1).audit(),
+            ballot!(q1, q1c1, q1c2, q1_id).audit(),
+            ballot!(q1, q1c2, q1c1, q1_id).audit(),
             // q2: 3 votes for candidate 2, 1 vote for candidate 1
-            ballot!(q2, q2c2, q2c1).audit(),
-            ballot!(q2, q2c2, q2c1).audit(),
-            ballot!(q2, q2c2, q2c1).audit(),
-            ballot!(q2, q2c1, q2c2).audit(),
+            ballot!(q2, q2c2, q2c1, q2_id).audit(),
+            ballot!(q2, q2c2, q2c1, q2_id).audit(),
+            ballot!(q2, q2c2, q2c1, q2_id).audit(),
+            ballot!(q2, q2c1, q2c2, q2_id).audit(),
         ];
 
         // Create unconfirmed ballots.
         let unconfirmed = vec![
             // q1: 1 vote for each
-            ballot!(q1, q1c1, q1c2),
-            ballot!(q1, q1c2, q1c1),
+            ballot!(q1, q1c1, q1c2, q1_id),
+            ballot!(q1, q1c2, q1c1, q1_id),
             // q2: 1 vote for candidate 1
-            ballot!(q2, q2c1, q2c2),
+            ballot!(q2, q2c1, q2c2, q2_id),
         ];
 
         // Insert ballots.

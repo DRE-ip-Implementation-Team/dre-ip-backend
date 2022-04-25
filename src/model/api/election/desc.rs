@@ -5,7 +5,6 @@ use dre_ip::DreipGroup as DreipGroupTrait;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    api::id::ApiId,
     common::election::{DreipGroup, ElectionState, Electorate},
     db::election::{Election, Question},
 };
@@ -14,7 +13,7 @@ use crate::model::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ElectionDescription {
     /// Election unique ID.
-    pub id: ApiId,
+    pub id: u32,
     /// Election name.
     pub name: String,
     /// Election state.
@@ -26,7 +25,7 @@ pub struct ElectionDescription {
     /// Election electorates by name.
     pub electorates: HashMap<String, Electorate>,
     /// Election questions.
-    pub questions: HashMap<ApiId, QuestionDescription>,
+    pub questions: HashMap<u32, QuestionDescription>,
     /// Election cryptographic configuration.
     pub crypto: ElectionCrypto,
 }
@@ -47,24 +46,23 @@ pub struct ElectionCrypto {
 impl From<Election> for ElectionDescription {
     fn from(election: Election) -> Self {
         let questions = election
-            .election
             .questions
             .into_iter()
-            .map(|(id, q)| (id.into(), q.into()))
+            .map(|(id, q)| (id, q.into()))
             .collect();
 
         Self {
-            id: election.id.into(),
-            name: election.election.metadata.name,
-            state: election.election.metadata.state,
-            start_time: election.election.metadata.start_time,
-            end_time: election.election.metadata.end_time,
-            electorates: election.election.electorates,
+            id: election.id,
+            name: election.metadata.name,
+            state: election.metadata.state,
+            start_time: election.metadata.start_time,
+            end_time: election.metadata.end_time,
+            electorates: election.electorates,
             questions,
             crypto: ElectionCrypto {
-                g1: election.election.crypto.g1,
-                g2: election.election.crypto.g2,
-                public_key: election.election.crypto.public_key,
+                g1: election.crypto.g1,
+                g2: election.crypto.g2,
+                public_key: election.crypto.public_key,
             },
         }
     }
@@ -74,7 +72,7 @@ impl From<Election> for ElectionDescription {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ElectionSummary {
     /// Election unique ID.
-    pub id: ApiId,
+    pub id: u32,
     /// Election name.
     pub name: String,
     /// Election state.
@@ -88,11 +86,11 @@ pub struct ElectionSummary {
 impl From<Election> for ElectionSummary {
     fn from(election: Election) -> Self {
         Self {
-            id: election.id.into(),
-            name: election.election.metadata.name,
-            state: election.election.metadata.state,
-            start_time: election.election.metadata.start_time,
-            end_time: election.election.metadata.end_time,
+            id: election.id,
+            name: election.metadata.name,
+            state: election.metadata.state,
+            start_time: election.metadata.start_time,
+            end_time: election.metadata.end_time,
         }
     }
 }
@@ -101,7 +99,7 @@ impl From<Election> for ElectionSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuestionDescription {
     /// Question unique ID, in API-friendly form.
-    pub id: ApiId,
+    pub id: u32,
     /// Question text.
     pub description: String,
     /// A voter must be in at least one of these electorate groups to vote on this question.
@@ -113,7 +111,7 @@ pub struct QuestionDescription {
 impl From<Question> for QuestionDescription {
     fn from(question: Question) -> Self {
         Self {
-            id: question.id.into(),
+            id: question.id,
             description: question.description,
             constraints: question.constraints,
             candidates: question.candidates,
