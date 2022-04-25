@@ -1220,7 +1220,7 @@ mod tests {
             election: ElectionDescription::from(election).crypto,
             audited: HashMap::new(),
             confirmed: ballots,
-            totals,
+            totals: Some(totals),
         };
 
         assert!(results.verify().is_ok());
