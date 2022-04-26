@@ -52,6 +52,7 @@ impl Challenge {
             .unwrap(),
         )
         .max_age(time::Duration::seconds(config.otp_ttl().num_seconds()))
+        .http_only(true)
         .same_site(SameSite::Strict)
         .finish()
     }
