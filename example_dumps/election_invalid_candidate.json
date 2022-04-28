@@ -5,6 +5,9 @@
     "public_key": "A1uGHX6Nj5AvfxnRXOv0vRuGV9OXB1JSKdmLRIkvXsMo"
   },
   "audited": {
+    "11": {
+      "votes": {
+        "Parry Hotter": {
           "r": "b8L2BvthCaWAWkpSR2UJ0cm6Mz9Yrq7z8UEQp22b1rg",
           "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
           "R": "A_dtEuK-6aB8c-njNFIcBCCz_GmLCFIZVoKAoUvYJesV",
@@ -39,7 +42,7 @@
       "question_id": 1,
       "confirmation_code": "R4RKFGHFNVF2SB24RCN762PUVPNW2R6YZ47Z424QKKVQ4E2ALS",
       "state": "Audited",
-      "candidate": "Parry Hotter",
+      "candidate": "Chris Riches",
       "signature": "JDhvhaNUW_xYT0Lp20_ivuOiS36EpWIYutPC6HbFY7svRIjGpbnwe6SnpZvwCUUP8ceHlv8rXfjMdnMCWuAplQ"
     },
     "10": {

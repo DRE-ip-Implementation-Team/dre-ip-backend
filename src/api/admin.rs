@@ -12,16 +12,16 @@ use crate::{
         },
         common::{
             ballot::{Audited, Unconfirmed},
-            election::ElectionState,
+            election::{ElectionId, ElectionState},
         },
         db::{
             admin::{Admin, NewAdmin},
-            ballot::{Ballot, FinishedBallot},
+            ballot::{AnyBallot, Ballot},
             candidate_totals::CandidateTotals,
-            election::{Election, NewElection},
+            election::Election,
             voter::Voter,
         },
-        mongodb::{Coll, Counter, Id},
+        mongodb::{ballot_counter_id, u32_id_filter, Coll, Counter, ELECTION_ID_COUNTER_ID},
     },
     ElectionFinalizers,
 };
@@ -106,7 +106,6 @@ async fn delete_admin(
 async fn create_election(
     _token: AuthToken<Admin>,
     spec: Json<ElectionSpec>,
-    new_elections: Coll<NewElection>,
     elections: Coll<Election>,
     counters: Coll<Counter>,
     db_client: &State<Client>,
@@ -115,27 +114,23 @@ async fn create_election(
         let mut session = db_client.start_session(None).await?;
         session.start_transaction(None).await?;
 
-        // Create and insert the election.
-        let election: NewElection = spec.0.into();
-        let new_id: Id = new_elections
-            .insert_one_with_session(&election, None, &mut session)
-            .await?
-            .inserted_id
-            .as_object_id()
-            .unwrap() // Valid because the ID comes directly from the DB
-            .into();
+        // Obtain a unique election ID.
+        let election_id = Counter::next(&counters, ELECTION_ID_COUNTER_ID).await?;
 
-        // Retrieve the full election information including ID.
-        let election = elections
-            .find_one_with_session(new_id.as_doc(), None, &mut session)
-            .await?
-            .unwrap();
+        // Create and insert the election.
+        let election = spec.0.into_election(election_id, rand::thread_rng());
+        elections
+            .insert_one_with_session(&election, None, &mut session)
+            .await?;
 
         // Create and insert a counter for each question.
         let new_counters = election
             .questions
             .keys()
-            .map(|question_id| Counter::new(*question_id, 1))
+            .map(|question_id| Counter {
+                id: ballot_counter_id(election_id, *question_id),
+                next: 1,
+            })
             .collect::<Vec<_>>();
         counters
             .insert_many_with_session(&new_counters, None, &mut session)
@@ -151,14 +146,13 @@ async fn create_election(
 #[put("/elections/<election_id>", data = "<spec>", format = "json")]
 async fn modify_election(
     _token: AuthToken<Admin>,
-    election_id: Id,
+    election_id: ElectionId,
     spec: Json<ElectionSpec>,
-    new_elections: Coll<NewElection>,
     elections: Coll<Election>,
 ) -> Result<Json<ElectionDescription>> {
     // Get the existing election.
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election {}", election_id)))?;
 
@@ -175,23 +169,19 @@ async fn modify_election(
     }
 
     // Replace with the new spec.
-    let new_election: NewElection = spec.0.into();
-    let result = new_elections
-        .replace_one(election_id.as_doc(), &new_election, None)
+    let new_election = spec.0.into_election(election_id, rand::thread_rng());
+    let result = elections
+        .replace_one(u32_id_filter(election_id), &new_election, None)
         .await?;
     assert_eq!(result.modified_count, 1);
 
-    let db_election = elections
-        .find_one(election_id.as_doc(), None)
-        .await?
-        .unwrap();
-    Ok(Json(db_election.into()))
+    Ok(Json(new_election.into()))
 }
 
 #[post("/elections/<election_id>/publish")]
 async fn publish_election(
     _token: AuthToken<Admin>,
-    election_id: Id,
+    election_id: ElectionId,
     elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     audited_ballots: Coll<Ballot<Audited>>,
@@ -220,7 +210,7 @@ async fn publish_election(
 
     // Schedule the election finalizer.
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .unwrap(); // Presence already checked.
     election_finalizers.lock().await.schedule_election(
@@ -235,7 +225,7 @@ async fn publish_election(
 #[post("/elections/<election_id>/archive")]
 async fn archive_election(
     _token: AuthToken<Admin>,
-    election_id: Id,
+    election_id: ElectionId,
     elections: Coll<Election>,
     election_finalizers: &State<ElectionFinalizers>,
 ) -> Result<()> {
@@ -274,9 +264,9 @@ async fn archive_election(
 #[allow(clippy::too_many_arguments)]
 async fn delete_election(
     _token: AuthToken<Admin>,
-    election_id: Id,
+    election_id: ElectionId,
     elections: Coll<Election>,
-    ballots: Coll<FinishedBallot>,
+    ballots: Coll<AnyBallot>,
     totals: Coll<CandidateTotals>,
     voters: Coll<Voter>,
     counters: Coll<Counter>,
@@ -284,7 +274,7 @@ async fn delete_election(
 ) -> Result<()> {
     // Get the election.
     let election = elections
-        .find_one(election_id.as_doc(), None)
+        .find_one(u32_id_filter(election_id), None)
         .await?
         .ok_or_else(|| Error::not_found(format!("Election {}", election_id)))?;
 
@@ -305,7 +295,7 @@ async fn delete_election(
 
         // Delete the election itself.
         let result = elections
-            .delete_one_with_session(election_id.as_doc(), None, &mut session)
+            .delete_one_with_session(u32_id_filter(election_id), None, &mut session)
             .await?;
         assert_eq!(result.deleted_count, 1);
 
@@ -334,7 +324,11 @@ async fn delete_election(
         // Delete the counters.
         for question_id in election.questions.keys() {
             let result = counters
-                .delete_one_with_session(question_id.as_doc(), None, &mut session)
+                .delete_one_with_session(
+                    doc! {"_id": ballot_counter_id(election_id, *question_id)},
+                    None,
+                    &mut session,
+                )
                 .await?;
             assert_eq!(result.deleted_count, 1);
         }
@@ -351,6 +345,7 @@ mod tests {
 
     use chrono::Duration;
     use mongodb::{bson::Document, Database};
+    use rand::Rng;
     use rocket::{
         http::{ContentType, Status},
         local::asynchronous::{Client, LocalResponse},
@@ -374,7 +369,7 @@ mod tests {
             election::ElectionMetadata,
             voter::NewVoter,
         },
-        mongodb::MongoCollection,
+        mongodb::{Id, MongoCollection},
     };
     use crate::Config;
 
@@ -501,7 +496,10 @@ mod tests {
         // Ensure the counters were created.
         for question_id in response_election.questions.keys() {
             let counter = Coll::<Counter>::from_db(&db)
-                .find_one(question_id.as_doc(), None)
+                .find_one(
+                    doc! {"_id": ballot_counter_id(response_election.id, *question_id)},
+                    None,
+                )
                 .await
                 .unwrap()
                 .unwrap();
@@ -512,45 +510,45 @@ mod tests {
     #[backend_test(admin)]
     async fn publish_archive(client: Client, db: Database) {
         // Try to publish/archive an election that doesn't exist.
-        publish_expect_status(&client, Id::new(), Status::BadRequest).await;
-        archive_expect_status(&client, Id::new(), Status::BadRequest).await;
+        publish_expect_status(&client, rand::thread_rng().gen(), Status::BadRequest).await;
+        archive_expect_status(&client, rand::thread_rng().gen(), Status::BadRequest).await;
 
         // Create an election.
         let spec = ElectionSpec::current_example();
         let election = create_election_for_spec(&client, &spec).await;
 
         // Archive it.
-        archive(&client, *election.id).await;
-        let archived = get_election_by_id(&db, *election.id).await;
+        archive(&client, election.id).await;
+        let archived = get_election_by_id(&db, election.id).await;
         assert_eq!(archived.metadata.state, ElectionState::Archived);
 
         // Check we can't publish it or archive it again.
-        publish_expect_status(&client, *election.id, Status::BadRequest).await;
-        archive_expect_status(&client, *election.id, Status::BadRequest).await;
+        publish_expect_status(&client, election.id, Status::BadRequest).await;
+        archive_expect_status(&client, election.id, Status::BadRequest).await;
 
         // Create a new election.
         let election = create_election_for_spec(&client, &spec).await;
 
         // Publish it.
-        publish(&client, *election.id).await;
-        let published = get_election_by_id(&db, *election.id).await;
+        publish(&client, election.id).await;
+        let published = get_election_by_id(&db, election.id).await;
         assert_eq!(published.metadata.state, ElectionState::Published);
 
         // Check we can't publish it again.
-        publish_expect_status(&client, *election.id, Status::BadRequest).await;
+        publish_expect_status(&client, election.id, Status::BadRequest).await;
 
         // Archive it.
-        archive(&client, *election.id).await;
-        let archived = get_election_by_id(&db, *election.id).await;
+        archive(&client, election.id).await;
+        let archived = get_election_by_id(&db, election.id).await;
         assert_eq!(archived.metadata.state, ElectionState::Archived);
     }
 
     #[backend_test(admin)]
-    async fn modify_election(client: Client, db: Database) {
+    async fn modify_election(client: Client) {
         // Try to modify an election that doesn't exist.
         modify_expect_status(
             &client,
-            Id::new(),
+            rand::thread_rng().gen(),
             &ElectionSpec::current_example(),
             Status::NotFound,
         )
@@ -562,8 +560,7 @@ mod tests {
 
         // Modify it.
         spec.name = "New Name".to_string();
-        let modified = modify_election_with_spec(&client, *election.id, &spec).await;
-        assert_eq!(modified, get_election_by_id(&db, *election.id).await.into());
+        let modified = modify_election_with_spec(&client, election.id, &spec).await;
         assert_eq!(modified.name, spec.name);
         assert_eq!(modified.state, election.state);
         assert_eq!(modified.start_time, election.start_time);
@@ -571,12 +568,11 @@ mod tests {
         assert_eq!(modified.electorates, election.electorates);
 
         // Publish it.
-        publish(&client, *election.id).await;
+        publish(&client, election.id).await;
 
         // Modify it again.
         spec.start_time = Utc::now();
-        let modified = modify_election_with_spec(&client, *election.id, &spec).await;
-        assert_eq!(modified, get_election_by_id(&db, *election.id).await.into());
+        let modified = modify_election_with_spec(&client, election.id, &spec).await;
         assert_eq!(modified.name, spec.name);
         assert_eq!(modified.state, ElectionState::Draft);
         assert!(modified.start_time - spec.start_time < Duration::seconds(1));
@@ -584,24 +580,24 @@ mod tests {
         assert_eq!(modified.electorates, election.electorates);
 
         // Re-publish.
-        publish(&client, *election.id).await;
+        publish(&client, election.id).await;
 
         // Ensure we can't modify due to the new start date.
         modify_expect_status(
             &client,
-            *election.id,
+            election.id,
             &ElectionSpec::current_example(),
             Status::BadRequest,
         )
         .await;
 
         // Archive it.
-        archive(&client, *election.id).await;
+        archive(&client, election.id).await;
 
         // Ensure we can't modify an archived election.
         modify_expect_status(
             &client,
-            *election.id,
+            election.id,
             &ElectionSpec::current_example(),
             Status::BadRequest,
         )
@@ -610,10 +606,10 @@ mod tests {
         // Ensure we can't modify an election that went straight from draft to archived
         // while still being before the start time.
         let election = create_election_for_spec(&client, &ElectionSpec::future_example()).await;
-        archive(&client, *election.id).await;
+        archive(&client, election.id).await;
         modify_expect_status(
             &client,
-            *election.id,
+            election.id,
             &ElectionSpec::current_example(),
             Status::BadRequest,
         )
@@ -623,52 +619,50 @@ mod tests {
     #[backend_test(admin)]
     async fn delete_election(client: Client, db: Database) {
         // Try to delete an election that doesn't exist.
-        delete_expect_status(&client, Id::new(), Status::NotFound).await;
+        delete_expect_status(&client, rand::thread_rng().gen(), Status::NotFound).await;
 
         // Create an election.
         let spec = ElectionSpec::current_example();
         let election = create_election_for_spec(&client, &spec).await;
 
         // Delete it.
-        delete(&client, *election.id).await;
-        assert_no_matches::<Election>(&db, election.id.as_doc()).await;
+        delete(&client, election.id).await;
+        assert_no_matches::<Election>(&db, u32_id_filter(election.id)).await;
 
         // Create a new election.
         let election = create_election_for_spec(&client, &spec).await;
 
         // Publish it.
-        publish(&client, *election.id).await;
+        publish(&client, election.id).await;
 
         // Check it can't be deleted.
-        delete_expect_status(&client, *election.id, Status::BadRequest).await;
-        get_election_by_id(&db, *election.id).await;
+        delete_expect_status(&client, election.id, Status::BadRequest).await;
+        get_election_by_id(&db, election.id).await;
 
         // Archive it.
-        archive(&client, *election.id).await;
+        archive(&client, election.id).await;
 
         // Delete it.
-        delete(&client, *election.id).await;
-        assert_no_matches::<Election>(&db, election.id.as_doc()).await;
+        delete(&client, election.id).await;
+        assert_no_matches::<Election>(&db, u32_id_filter(election.id)).await;
 
         // Create an active election.
         let election = create_election_for_spec(&client, &spec).await;
-        publish(&client, *election.id).await;
+        publish(&client, election.id).await;
 
         // Cast, audit, and confirm various votes.
-        insert_ballots(&db, *election.id).await;
-        let voters = insert_allowed_questions(&client, &db, *election.id).await;
+        insert_ballots(&db, election.id).await;
+        let voters = insert_allowed_questions(&client, &db, election.id).await;
 
         // Delete it.
-        archive(&client, *election.id).await;
-        delete(&client, *election.id).await;
+        archive(&client, election.id).await;
+        delete(&client, election.id).await;
         let filter = doc! {
-            "election_id": *election.id,
+            "election_id": election.id,
         };
-        assert_no_matches::<Election>(&db, election.id.as_doc()).await;
-        assert_no_matches::<Counter>(&db, election.id.as_doc()).await;
-        // Since the filter doesn't specify a state, using the FinishedBallot
-        // collection here actually includes unconfirmed ballots as well.
-        assert_no_matches::<FinishedBallot>(&db, filter.clone()).await;
+        assert_no_matches::<Election>(&db, u32_id_filter(election.id)).await;
+        assert_no_matches::<Counter>(&db, u32_id_filter(election.id)).await;
+        assert_no_matches::<AnyBallot>(&db, filter.clone()).await;
         assert_no_matches::<CandidateTotals>(&db, filter).await;
         let field_name = format!("allowed_questions.{}", election.id);
         let filter = doc! {
@@ -691,19 +685,19 @@ mod tests {
         // Create an election, publish it, and add votes.
         let spec = ElectionSpec::current_example();
         let election = create_election_for_spec(&client, &spec).await;
-        publish(&client, *election.id).await;
-        insert_ballots(&db, *election.id).await;
+        publish(&client, election.id).await;
+        insert_ballots(&db, election.id).await;
 
         // Check there are unconfirmed ballots.
         let unconfirmed_filter = doc! {
-            "election_id": *election.id,
+            "election_id": election.id,
             "state": Unconfirmed,
         };
         let unconfirmed =
             count_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
         assert_ne!(unconfirmed, 0);
         let audited_filter = doc! {
-            "election_id": *election.id,
+            "election_id": election.id,
             "state": Audited,
         };
         let audited = count_matches::<Ballot<Audited>>(&db, audited_filter.clone()).await;
@@ -713,7 +707,7 @@ mod tests {
         assert!(finalizers.lock().await.0.contains_key(&election.id));
 
         // Archive the election.
-        archive(&client, *election.id).await;
+        archive(&client, election.id).await;
         // Check the unconfirmed ballots have been audited, i.e. the finalizer was triggered.
         assert_no_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
         let final_audited = count_matches::<Ballot<Audited>>(&db, audited_filter).await;
@@ -725,24 +719,24 @@ mod tests {
         // Create an election in the past and add some votes.
         let spec = ElectionSpec::past_example();
         let election = create_election_for_spec(&client, &spec).await;
-        insert_ballots(&db, *election.id).await;
+        insert_ballots(&db, election.id).await;
 
         // Check there are unconfirmed ballots.
         let unconfirmed_filter = doc! {
-            "election_id": *election.id,
+            "election_id": election.id,
             "state": Unconfirmed,
         };
         let unconfirmed =
             count_matches::<Ballot<Unconfirmed>>(&db, unconfirmed_filter.clone()).await;
         assert_ne!(unconfirmed, 0);
         let audited_filter = doc! {
-            "election_id": *election.id,
+            "election_id": election.id,
             "state": Audited,
         };
         let audited = count_matches::<Ballot<Audited>>(&db, audited_filter.clone()).await;
 
         // Publish it, causing a finalizer to be scheduled that should immediately trigger.
-        publish(&client, *election.id).await;
+        publish(&client, election.id).await;
         // (hopefully not flaky) sleep to make sure the finalizers have gone through.
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
@@ -752,9 +746,9 @@ mod tests {
         assert_eq!(final_audited, audited + unconfirmed);
     }
 
-    async fn get_election_by_id(db: &Database, id: Id) -> Election {
+    async fn get_election_by_id(db: &Database, id: ElectionId) -> Election {
         Coll::<Election>::from_db(db)
-            .find_one(id.as_doc(), None)
+            .find_one(u32_id_filter(id), None)
             .await
             .unwrap()
             .unwrap()
@@ -800,7 +794,7 @@ mod tests {
 
     async fn modify_election_with_spec(
         client: &Client,
-        id: Id,
+        id: ElectionId,
         spec: &ElectionSpec,
     ) -> ElectionDescription {
         let response = modify_expect_status(client, id, spec, Status::Ok).await;
@@ -809,7 +803,7 @@ mod tests {
 
     async fn modify_expect_status<'c>(
         client: &'c Client,
-        id: Id,
+        id: ElectionId,
         spec: &ElectionSpec,
         status: Status,
     ) -> LocalResponse<'c> {
@@ -823,29 +817,29 @@ mod tests {
         response
     }
 
-    async fn publish(client: &Client, id: Id) {
+    async fn publish(client: &Client, id: ElectionId) {
         publish_expect_status(client, id, Status::Ok).await
     }
 
-    async fn publish_expect_status(client: &Client, id: Id, status: Status) {
+    async fn publish_expect_status(client: &Client, id: ElectionId, status: Status) {
         let response = client.post(uri!(publish_election(id))).dispatch().await;
         assert_eq!(response.status(), status);
     }
 
-    async fn archive(client: &Client, id: Id) {
+    async fn archive(client: &Client, id: ElectionId) {
         archive_expect_status(client, id, Status::Ok).await
     }
 
-    async fn archive_expect_status(client: &Client, id: Id, status: Status) {
+    async fn archive_expect_status(client: &Client, id: ElectionId, status: Status) {
         let response = client.post(uri!(archive_election(id))).dispatch().await;
         assert_eq!(response.status(), status);
     }
 
-    async fn delete(client: &Client, id: Id) {
+    async fn delete(client: &Client, id: ElectionId) {
         delete_expect_status(client, id, Status::Ok).await
     }
 
-    async fn delete_expect_status(client: &Client, id: Id, status: Status) {
+    async fn delete_expect_status(client: &Client, id: ElectionId, status: Status) {
         let response = client.delete(uri!(delete_election(id))).dispatch().await;
         assert_eq!(response.status(), status);
     }
@@ -854,7 +848,7 @@ mod tests {
     // the order of resolving the ballot ID increments depends on the order of
     // evaluating the vector elements. It's fine though - the order doesn't matter.
     #[allow(clippy::eval_order_dependence)]
-    async fn insert_ballots(db: &Database, election_id: Id) {
+    async fn insert_ballots(db: &Database, election_id: ElectionId) {
         let election = get_election_by_id(db, election_id).await;
         let q1 = election
             .questions
@@ -964,7 +958,11 @@ mod tests {
             .unwrap();
     }
 
-    async fn insert_allowed_questions(client: &Client, db: &Database, election_id: Id) -> Vec<Id> {
+    async fn insert_allowed_questions(
+        client: &Client,
+        db: &Database,
+        election_id: ElectionId,
+    ) -> Vec<Id> {
         let config = client.rocket().state::<Config>().unwrap();
         let election = get_election_by_id(db, election_id).await;
         let q1 = election
@@ -1024,7 +1022,7 @@ mod tests {
 
         // Fourth voter never even joined.
         let allowed_questions = HashMap::from_iter(vec![(
-            Id::new(),
+            rand::thread_rng().gen(),
             AllowedQuestions {
                 confirmed: HashMap::new(),
             },

@@ -69,6 +69,7 @@ where
 
         Cookie::build(AUTH_TOKEN_COOKIE, token)
             .max_age(time::Duration::seconds(config.auth_ttl().num_seconds()))
+            .http_only(true)
             .same_site(SameSite::Strict)
             .finish()
     }

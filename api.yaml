@@ -335,7 +335,7 @@ paths:
                 type: object
                 properties:
                   items:
-                    description: List of audited and confirmed ballot receipts.
+                    description: List of receipts.
                   pagination:
                     type: object
                     properties:
@@ -362,11 +362,11 @@ paths:
         - Public Endpoints
       responses:
         200:
-          description: Successfully fetched ballot receipt. May be a Confirmed or Audited receipt; the spec shows an Audited receipt.
+          description: Successfully fetched ballot receipt. May be any kind of receipt; the spec shows an Unconfirmed receipt.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuditedReceipt"
+                $ref: "#/components/schemas/UnconfirmedReceiptStub"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/{questionID}/totals:
@@ -374,7 +374,7 @@ paths:
       - $ref: "#/components/parameters/ElectionID"
       - $ref: "#/components/parameters/QuestionID"
     get:
-      summary: Fetch the candidate totals for this question.
+      summary: Fetch the candidate totals for this question. The election must have finished.
       security: [ ]  # No authentication needed.
       tags:
         - Public Endpoints
@@ -393,6 +393,7 @@ paths:
       - $ref: "#/components/parameters/QuestionID"
     get:
       summary: Dump the entire election state for this question.
+               Only includes candidate totals if the election has finished.
       security: [ ]  # No authentication needed.
       tags:
         - Public Endpoints
@@ -496,7 +497,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/UnconfirmedReceipt"
+                  $ref: "#/components/schemas/UnconfirmedReceiptFull"
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/audit:
@@ -567,9 +568,6 @@ components:
       name: auth_token
   # Payload Schemas
   schemas:
-    ID:
-      type: string
-      example: 6220e27c5f06ce6366456650
     AdminCredentials:
       type: object
       properties:
@@ -630,7 +628,7 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         description:
           type: string
         constraints:
@@ -647,7 +645,7 @@ components:
         - constraints
         - candidates
       example:
-        id: 6220e3b1069d947c996b5f7a
+        id: 12
         description: Course Representative (Computer Science)
         constraints:
           Courses:
@@ -683,7 +681,7 @@ components:
       type: object
       properties:
         id:
-          $ref: '#/components/schemas/ID'
+          type: integer
         name:
           type: string
         state:
@@ -698,7 +696,7 @@ components:
         - start_time
         - end_time
       example:
-        id: 6220e3b1069d947c996b5f7a
+        id: 5
         name: Course Representatives
         state: Published
         start_time: "2022-03-10T00:00:00Z"
@@ -751,7 +749,7 @@ components:
       type: object
       properties:
         id:
-          $ref: '#/components/schemas/ID'
+          type: integer
         name:
           type: string
         state:
@@ -789,14 +787,14 @@ components:
       type: object
       properties:
         question:
-          $ref: "#/components/schemas/ID"
+          type: integer
         candidate:
           type: string
       required:
         - question
         - candidate
       example:
-        question: 6220e27c5f06ce6366456650
+        question: 14
         candidate: Alice
     BallotSpecList:
       type: array
@@ -857,19 +855,50 @@ components:
         - R
         - Z
         - pwf
-    UnconfirmedReceipt:
+    UnconfirmedReceiptStub:
       type: object
       properties:
         ballot_id:
           type: integer
-          example: 12345
         election_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         question_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         state:
           type: string
           description: Always "Unconfirmed".
+        confirmation_code:
+          type: string
+        signature:
+          type: string
+      required:
+        - ballot_id
+        - election_id
+        - question_id
+        - state
+        - confirmation_code
+        - signature
+      example:
+        ballot_id: 12345
+        election_id: 123
+        question_id: 55
+        state: "Unconfirmed"
+        confirmation_code: "YNEDDW2KR3P2IWCIQK2PWL2265YODQFDXLKNBRT3A64AT2T3V2"
+        signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
+    UnconfirmedReceiptFull:
+      type: object
+      properties:
+        ballot_id:
+          type: integer
+        election_id:
+          type: integer
+        question_id:
+          type: integer
+        state:
+          type: string
+          description: Always "Unconfirmed".
+        confirmation_code:
+          type: string
         signature:
           type: string
         votes:
@@ -888,14 +917,16 @@ components:
         - election_id
         - question_id
         - state
+        - confirmation_code
         - signature
         - votes
         - pwf
       example:
         ballot_id: 12345
-        election_id: 6220e27fbacbe75634ff900
-        question_id: 6220e27fbacbe75634ff901
+        election_id: 56
+        question_id: 578
         state: "Unconfirmed"
+        confirmation_code: "YNEDDW2KR3P2IWCIQK2PWL2265YODQFDXLKNBRT3A64AT2T3V2"
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
         votes:
           Alice:
@@ -925,12 +956,14 @@ components:
           type: integer
           example: 12345
         election_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         question_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         state:
           type: string
           description: Always "Audited".
+        confirmation_code:
+          type: string
         signature:
           type: string
         votes:
@@ -949,14 +982,16 @@ components:
         - election_id
         - question_id
         - state
+        - confirmation_code
         - signature
         - votes
         - pwf
       example:
         ballot_id: 12345
-        election_id: 6220e27fbacbe75634ff900
-        question_id: 6220e27fbacbe75634ff901
+        election_id: 34
+        question_id: 9
         state: "Audited"
+        confirmation_code: "YNEDDW2KR3P2IWCIQK2PWL2265YODQFDXLKNBRT3A64AT2T3V2"
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
         votes:
           Alice:
@@ -990,12 +1025,14 @@ components:
           type: integer
           example: 12345
         election_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         question_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         state:
           type: string
           description: Always "Confirmed".
+        confirmation_code:
+          type: string
         signature:
           type: string
         votes:
@@ -1014,14 +1051,16 @@ components:
         - election_id
         - question_id
         - state
+        - confirmation_code
         - signature
         - votes
         - pwf
       example:
         ballot_id: 12345
-        election_id: 6220e27fbacbe75634ff900
-        question_id: 6220e27fbacbe75634ff901
+        election_id: 4356
+        question_id: 11
         state: "Confirmed"
+        confirmation_code: "YNEDDW2KR3P2IWCIQK2PWL2265YODQFDXLKNBRT3A64AT2T3V2"
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
         votes:
           Alice:
@@ -1049,14 +1088,14 @@ components:
       description: Object map from candidate names to cryptographic totals.
       example:
         Alice:
-          election_id: 6220f19eac8b8ef619e64b47
-          question_id: 6220f19eac8b8ef619e64b43
+          election_id: 7
+          question_id: 234
           candidate_name: Alice
           tally: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAI
           r_sum: sMKVUojysFflEY47ebE-9XmrRVtmPjQcpeLm33TUIxk
         Bob:
-          election_id: 6220f19eac8b8ef619e64b47
-          question_id: 6220f19eac8b8ef619e64b43
+          election_id: 34
+          question_id: 44
           candidate_name: Bob
           tally: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM
           r_sum: qJk5LeSZZcwnuvXKo0nbZ0g8k0a0dVb_Qw05FkmMoXI
@@ -1067,7 +1106,7 @@ components:
           type: integer
           example: 12345
         question_id:
-          $ref: "#/components/schemas/ID"
+          type: integer
         signature:
           type: string
       required:
@@ -1076,7 +1115,7 @@ components:
         - signature
       example:
         ballot_id: 12345
-        question_id: 6220e27fbacbe75634ff901
+        question_id: 5
         signature: "z2wqVsRsmXxWybZaUaW5ooHl0hlfVGH-Hy8ARAzQfe4p__ewCTvptUWt94dwQMFhoMvMtlexxSzGkPBm0AvIUQ"
     BallotRecallList:
       type: array
@@ -1103,6 +1142,10 @@ components:
         totals:
           type: object
           description: Object map from candidate names to totals.
+      required:
+        - election
+        - audited
+        - confirmed
   # Common parameters
   parameters:
     ElectionID:
@@ -1111,14 +1154,16 @@ components:
       required: true
       description: The ID of the election to operate on.
       schema:
-        $ref: "#/components/schemas/ID"
+        type: integer
+        example: 5
     QuestionID:
       name: questionID
       in: path
       required: true
       description: The ID of the election question to operate on.
       schema:
-        $ref: "#/components/schemas/ID"
+        type: integer
+        example: 12
     BallotID:
       name: ballotID
       in: path
