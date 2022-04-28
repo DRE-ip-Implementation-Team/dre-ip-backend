@@ -5,6 +5,9 @@
     "public_key": "A1uGHX6Nj5AvfxnRXOv0vRuGV9OXB1JSKdmLRIkvXsMo"
   },
   "audited": {
+    "11": {
+      "votes": {
+        "Parry Hotter": {
           "r": "b8L2BvthCaWAWkpSR2UJ0cm6Mz9Yrq7z8UEQp22b1rg",
           "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
           "R": "A_dtEuK-6aB8c-njNFIcBCCz_GmLCFIZVoKAoUvYJesV",
@@ -272,7 +275,7 @@
       "election_id": 946927538,
       "question_id": 1,
       "candidate_name": "Parry Hotter",
-      "tally": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAI",
+      "tally": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM",
       "r_sum": "FRT6izGcHEz8PhOV1bWk5qUjFReRF_jtiJFpVexdcjw"
     }
   }

@@ -10,9 +10,9 @@ use crate::model::{
     common::ballot::BallotState,
     db::{
         admin::{Admin, NewAdmin},
-        ballot::{Ballot, BallotCore, FinishedBallot},
+        ballot::{AnyBallot, Ballot, BallotCore},
         candidate_totals::{CandidateTotals, NewCandidateTotals},
-        election::{Election, ElectionMetadata, NewElection},
+        election::{Election, ElectionMetadata},
         voter::{NewVoter, Voter},
     },
 };
@@ -95,9 +95,6 @@ impl MongoCollection for Election {
 impl MongoCollection for ElectionMetadata {
     const NAME: &'static str = ELECTIONS;
 }
-impl MongoCollection for NewElection {
-    const NAME: &'static str = ELECTIONS;
-}
 
 // Ballot collections
 const BALLOTS: &str = "ballots";
@@ -107,7 +104,7 @@ impl<S: BallotState> MongoCollection for BallotCore<S> {
 impl<S: BallotState> MongoCollection for Ballot<S> {
     const NAME: &'static str = BALLOTS;
 }
-impl MongoCollection for FinishedBallot {
+impl MongoCollection for AnyBallot {
     const NAME: &'static str = BALLOTS;
 }
 
