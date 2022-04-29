@@ -56,7 +56,7 @@ pub async fn authenticate(
     Ok(())
 }
 
-#[cfg_attr(test, allow(unused_variables))]
+#[cfg_attr(any(not(feature = "otp"), test), allow(unused_variables))]
 #[get("/auth/voter/challenge?<sms>")]
 pub async fn challenge(
     sms: Sms,
@@ -66,7 +66,7 @@ pub async fn challenge(
 ) -> Result<()> {
     let challenge = Challenge::new(sms);
 
-    #[cfg(not(test))]
+    #[cfg(all(feature = "otp", not(test)))]
     sender
         .publish()
         .phone_number(challenge.sms.to_string())
@@ -85,6 +85,7 @@ pub async fn challenge(
     Ok(())
 }
 
+#[cfg_attr(not(feature = "otp"), allow(unused_variables))]
 #[post("/auth/voter/verify", data = "<code>", format = "json")]
 pub async fn verify(
     code: Json<Code>,
