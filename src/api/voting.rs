@@ -513,7 +513,7 @@ mod tests {
     use backend_test::backend_test;
     use chrono::{Duration, Utc};
     use dre_ip::{DreipPublicKey, DreipScalar, Serializable};
-    use mongodb::{bson::to_bson, Database};
+    use mongodb::Database;
     use rand::Rng;
     use rocket::{
         futures::{StreamExt, TryStreamExt},
@@ -572,7 +572,7 @@ mod tests {
         let mut voter = voters
             .find_one(
                 doc! {
-                    "sms_hmac": to_bson(&Sms::example_hmac(client)).unwrap(),
+                    "sms_hmac": Sms::example_hmac(client).to_bytestring(),
                 },
                 None,
             )
@@ -712,7 +712,7 @@ mod tests {
         // Check no questions are allowed.
         let sms_hmac = Sms::example_hmac(&client);
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
+            .find_one(doc! {"sms_hmac": sms_hmac.to_bytestring()}, None)
             .await
             .unwrap()
             .unwrap();
@@ -740,7 +740,7 @@ mod tests {
 
         // Check all questions are allowed.
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
+            .find_one(doc! {"sms_hmac": sms_hmac.to_bytestring()}, None)
             .await
             .unwrap()
             .unwrap();
@@ -763,7 +763,7 @@ mod tests {
         // Check no questions are allowed.
         let sms_hmac = Sms::example_hmac(&client);
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
+            .find_one(doc! {"sms_hmac": sms_hmac.to_bytestring()}, None)
             .await
             .unwrap()
             .unwrap();
@@ -785,7 +785,7 @@ mod tests {
 
         // Check the correct question is allowed.
         let voter = Coll::<Voter>::from_db(&db)
-            .find_one(doc! {"sms_hmac": to_bson(&sms_hmac).unwrap()}, None)
+            .find_one(doc! {"sms_hmac": sms_hmac.to_bytestring()}, None)
             .await
             .unwrap()
             .unwrap();
