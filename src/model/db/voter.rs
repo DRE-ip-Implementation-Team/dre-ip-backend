@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
-use hmac::{digest::Output, Hmac};
+use hmac::Hmac;
 use mongodb::bson::doc;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -21,7 +21,8 @@ pub type HmacSha256 = Hmac<Sha256>;
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VoterCore {
     /// Voter unique ID: the HMAC of their SMS number.
-    pub sms_hmac: Output<HmacSha256>,
+    #[serde(with = "dre_ip::group::serde_bytestring")]
+    pub sms_hmac: Vec<u8>,
     /// Maps election IDs to the IDs of questions the voter can answer for that election.
     /// This is populated according to their group constraints when they join an election.
     #[serde(with = "serde_string_map")]
