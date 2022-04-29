@@ -1,5 +1,6 @@
 use aws_sdk_sns::Client as SnsClient;
-use mongodb::bson::{doc, to_bson};
+use dre_ip::Serializable;
+use mongodb::bson::doc;
 use rocket::{
     http::{Cookie, CookieJar, Status},
     serde::json::Json,
@@ -56,7 +57,7 @@ pub async fn authenticate(
     Ok(())
 }
 
-#[cfg_attr(test, allow(unused_variables))]
+#[cfg_attr(any(not(feature = "otp"), test), allow(unused_variables))]
 #[get("/auth/voter/challenge?<sms>")]
 pub async fn challenge(
     sms: Sms,
@@ -66,7 +67,7 @@ pub async fn challenge(
 ) -> Result<()> {
     let challenge = Challenge::new(sms);
 
-    #[cfg(not(test))]
+    #[cfg(all(feature = "otp", not(test)))]
     sender
         .publish()
         .phone_number(challenge.sms.to_string())
@@ -85,6 +86,7 @@ pub async fn challenge(
     Ok(())
 }
 
+#[cfg_attr(not(feature = "otp"), allow(unused_variables))]
 #[post("/auth/voter/verify", data = "<code>", format = "json")]
 pub async fn verify(
     code: Json<Code>,
@@ -106,7 +108,7 @@ pub async fn verify(
     let voter = NewVoter::new(challenge.sms, config);
 
     let with_sms_hmac = doc! {
-        "sms_hmac": to_bson(&voter.sms_hmac).expect("HMAC serialization does not fail"),
+        "sms_hmac": voter.sms_hmac.to_bytestring(),
     };
 
     // We need an id to associate with the voter's interactions to ensure for instance that they
@@ -227,7 +229,7 @@ mod tests {
         // Check voter was inserted
         let voter = voters
             .find_one(
-                doc! { "sms_hmac": to_bson(&Sms::example_hmac(&client)).unwrap() },
+                doc! { "sms_hmac": Sms::example_hmac(&client).to_bytestring() },
                 None,
             )
             .await

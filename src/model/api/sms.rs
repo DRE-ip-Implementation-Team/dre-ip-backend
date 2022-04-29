@@ -1,6 +1,6 @@
 use std::{ops::Deref, str::FromStr};
 
-use hmac::{digest::Output, Mac};
+use hmac::Mac;
 use mongodb::bson::{to_bson, Bson};
 use phonenumber::PhoneNumber;
 use rocket::{
@@ -32,11 +32,11 @@ impl Deref for Sms {
 }
 
 impl Sms {
-    pub fn into_hmac(self, config: &Config) -> Output<HmacSha256> {
+    pub fn into_hmac(self, config: &Config) -> Vec<u8> {
         let mut hmac = HmacSha256::new_from_slice(config.hmac_secret())
             .expect("HMAC can take key of any size");
         hmac.update(self.to_string().as_bytes());
-        hmac.finalize().into_bytes()
+        hmac.finalize().into_bytes().to_vec()
     }
 }
 
@@ -114,7 +114,7 @@ mod examples {
             "+441234567890".parse().unwrap()
         }
 
-        pub fn example_hmac(client: &Client) -> Output<HmacSha256> {
+        pub fn example_hmac(client: &Client) -> Vec<u8> {
             Self::example().into_hmac(client.rocket().state::<Config>().unwrap())
         }
     }
