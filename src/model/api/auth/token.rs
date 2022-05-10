@@ -6,10 +6,10 @@ use rocket::{
     http::{Cookie, SameSite, Status},
     outcome::{try_outcome, IntoOutcome},
     request::{FromRequest, Outcome},
+    time::Duration,
     Request, State,
 };
 use serde::{Deserialize, Serialize};
-use time;
 
 use crate::error::Error;
 use crate::model::{
@@ -68,7 +68,7 @@ where
         .expect("JWT encoding is infallible with default settings");
 
         Cookie::build(AUTH_TOKEN_COOKIE, token)
-            .max_age(time::Duration::seconds(config.auth_ttl().num_seconds()))
+            .max_age(Duration::seconds(config.auth_ttl().num_seconds()))
             .http_only(true)
             .same_site(SameSite::Strict)
             .finish()

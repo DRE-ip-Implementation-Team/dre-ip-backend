@@ -7,6 +7,7 @@ use rocket::{
     http::{Cookie, SameSite, Status},
     outcome::{try_outcome, IntoOutcome},
     request::{self, FromRequest},
+    time::Duration,
     Request, State,
 };
 use serde::{Deserialize, Serialize};
@@ -51,7 +52,7 @@ impl Challenge {
             )
             .unwrap(),
         )
-        .max_age(time::Duration::seconds(config.otp_ttl().num_seconds()))
+        .max_age(Duration::seconds(config.otp_ttl().num_seconds()))
         .http_only(true)
         .same_site(SameSite::Strict)
         .finish()
