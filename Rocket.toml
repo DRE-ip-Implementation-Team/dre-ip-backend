@@ -1,4 +1,4 @@
-[global]
+[default]
 db_uri = "mongodb://localhost:27017"
 otp_ttl = 300
 auth_ttl = 3600
