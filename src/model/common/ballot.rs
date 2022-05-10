@@ -160,7 +160,7 @@ impl BallotState for Audited {
     /// If there is not, then the receipt is garbage and will not pass verification anyway,
     /// so we arbitrarily return the first candidate to avoid a panic.
     fn receipt_data(internal: &BallotCrypto<Self::InternalSecrets>) -> Self::ReceiptData {
-        for (candidate, vote) in internal.votes.iter() {
+        for (candidate, vote) in &internal.votes {
             if vote.secrets.v == <DreipGroup as DreipGroupTrait>::Scalar::one() {
                 return AuditExtraData {
                     candidate: candidate.clone(),

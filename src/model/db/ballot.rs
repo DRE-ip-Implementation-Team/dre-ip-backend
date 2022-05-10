@@ -143,7 +143,7 @@ impl<S: BallotState> DerefMut for Ballot<S> {
 }
 
 /// A ballot in any state.
-/// With the untagged representation, all Ballot<S: BallotState> can directly
+/// With the untagged representation, all `Ballot<S: BallotState>` can directly
 /// deserialize to this type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
