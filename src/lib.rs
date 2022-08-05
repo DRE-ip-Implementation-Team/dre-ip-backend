@@ -91,13 +91,21 @@ pub type ElectionFinalizers = Arc<Mutex<RawElectionFinalizers>>;
 
 #[derive(Deserialize)]
 pub struct Config {
+    hostname: String,
     otp_ttl: u32,
     jwt_secret: String,
     hmac_secret: String,
+    recaptcha_secret: String,
     auth_ttl: u32,
 }
 
 impl Config {
+    /// The hostname the site is running on.
+    /// Configured via `HOSTNAME`.
+    pub fn hostname(&self) -> &str {
+        &self.hostname
+    }
+
     /// Seconds until the OTP challenge expires.
     /// Configured via `OTP_TTL`.
     pub fn otp_ttl(&self) -> Duration {
@@ -114,6 +122,12 @@ impl Config {
     /// Configured via `HMAC_SECRET`.
     pub fn hmac_secret(&self) -> &[u8] {
         self.hmac_secret.as_bytes()
+    }
+
+    /// Secret key for reCAPTCHA verification.
+    /// Configured via `RECAPTCHA_SECRET`.
+    pub fn recaptcha_secret(&self) -> &str {
+        &self.recaptcha_secret
     }
 
     /// Seconds until the authentication token expires

@@ -67,9 +67,8 @@ pub async fn challenge(
     // Verify the reCAPTCHA.
     let sms = auth_request
         .0
-        .verify()
-        .await
-        .ok_or_else(|| Error::Status(Status::Unauthorized, "Invalid reCAPTCHA".to_string()))?;
+        .verify(config.recaptcha_secret(), config.hostname())
+        .await?;
 
     // Choose the OTP.
     let challenge = Challenge::new(sms);
