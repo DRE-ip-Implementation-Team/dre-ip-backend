@@ -81,6 +81,8 @@ paths:
                 $ref: "#/components/schemas/Challenge"
         401:
           description: Invalid reCAPTCHA token.
+        422:
+          description: Invalid phone number.
   /auth/voter/verify:
     post:
       summary: Verify SMS OTP challenge to authenticate as a voter.

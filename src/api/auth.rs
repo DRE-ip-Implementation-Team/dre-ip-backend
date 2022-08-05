@@ -12,9 +12,8 @@ use crate::{
     model::{
         api::{
             admin::AdminCredentials,
-            auth::{AuthToken, AUTH_TOKEN_COOKIE},
+            auth::{AuthRequest, AuthToken, AUTH_TOKEN_COOKIE},
             otp::{Challenge, Code, CHALLENGE_COOKIE},
-            sms::Sms,
         },
         db::{
             admin::Admin,
@@ -58,15 +57,24 @@ pub async fn authenticate(
 }
 
 #[cfg_attr(any(not(feature = "otp"), test), allow(unused_variables))]
-#[get("/auth/voter/challenge?<sms>")]
+#[post("/auth/voter/challenge", data = "<auth_request>", format = "json")]
 pub async fn challenge(
-    sms: Sms,
+    auth_request: Json<AuthRequest>,
     cookies: &CookieJar<'_>,
     config: &State<Config>,
     sender: &State<SnsClient>,
 ) -> Result<()> {
+    // Verify the reCAPTCHA.
+    let sms = auth_request
+        .0
+        .verify()
+        .await
+        .ok_or_else(|| Error::Status(Status::Unauthorized, "Invalid reCAPTCHA".to_string()))?;
+
+    // Choose the OTP.
     let challenge = Challenge::new(sms);
 
+    // Send the OTP.
     #[cfg(all(feature = "otp", not(test)))]
     sender
         .publish()
@@ -81,6 +89,7 @@ pub async fn challenge(
             )
         })?;
 
+    // Set the cookie.
     cookies.add_private(challenge.into_cookie(config));
 
     Ok(())
@@ -149,7 +158,10 @@ mod tests {
     use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
 
     use crate::model::{
-        api::otp::{Challenge, CODE_LENGTH},
+        api::{
+            otp::{Challenge, CODE_LENGTH},
+            sms::Sms,
+        },
         db::admin::NewAdmin,
     };
 
@@ -209,7 +221,13 @@ mod tests {
     #[backend_test]
     async fn voter_authenticate(client: Client, voters: Coll<NewVoter>) {
         // Request challenge
-        let response = client.get(uri!(challenge(Sms::example()))).dispatch().await;
+        let response = client
+            .post(uri!(challenge))
+            .header(ContentType::JSON)
+            .body(json!(AuthRequest::example()).to_string())
+            .dispatch()
+            .await;
+
         assert_eq!(Status::Ok, response.status());
 
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
@@ -245,12 +263,22 @@ mod tests {
     #[backend_test]
     async fn unique_challenges(client: Client) {
         // Request challenge
-        client.get(uri!(challenge(Sms::example()))).dispatch().await;
+        client
+            .post(uri!(challenge))
+            .header(ContentType::JSON)
+            .body(json!(AuthRequest::example()).to_string())
+            .dispatch()
+            .await;
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let challenge_value = cookie.value();
 
         // Re-request challenge
-        client.get(uri!(challenge(Sms::example()))).dispatch().await;
+        client
+            .post(uri!(challenge))
+            .header(ContentType::JSON)
+            .body(json!(AuthRequest::example()).to_string())
+            .dispatch()
+            .await;
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let next_challenge_value = cookie.value();
 
@@ -259,14 +287,38 @@ mod tests {
 
     #[backend_test]
     async fn invalid_voter_sms(client: Client) {
-        let response = client.get("/voter/challenge?5555555555").dispatch().await;
+        let mut body = json!(AuthRequest::example());
+        body["sms"] = json!("5555555555");
+        let response = client
+            .post(uri!(challenge))
+            .header(ContentType::JSON)
+            .body(body.to_string())
+            .dispatch()
+            .await;
 
-        assert_eq!(Status::NotFound, response.status());
+        assert_eq!(Status::UnprocessableEntity, response.status());
+    }
+
+    #[backend_test]
+    async fn invalid_recaptcha(client: Client) {
+        let response = client
+            .post(uri!(challenge))
+            .header(ContentType::JSON)
+            .body(json!(AuthRequest::example_invalid()).to_string())
+            .dispatch()
+            .await;
+
+        assert_eq!(Status::Unauthorized, response.status());
     }
 
     #[backend_test]
     async fn invalid_otp_code(client: Client) {
-        client.get(uri!(challenge(Sms::example()))).dispatch().await;
+        client
+            .post(uri!(challenge))
+            .header(ContentType::JSON)
+            .body(json!(AuthRequest::example()).to_string())
+            .dispatch()
+            .await;
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())
             .unwrap()
@@ -299,7 +351,12 @@ mod tests {
 
     #[backend_test]
     async fn logout_voter(client: Client) {
-        client.get(uri!(challenge(Sms::example()))).dispatch().await;
+        client
+            .post(uri!(challenge))
+            .header(ContentType::JSON)
+            .body(json!(AuthRequest::example()).to_string())
+            .dispatch()
+            .await;
 
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
         let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())

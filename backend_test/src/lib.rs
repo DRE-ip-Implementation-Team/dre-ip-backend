@@ -50,7 +50,9 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                     use crate::model::api::sms::Sms;
 
                     rocket_client
-                        .get(uri!(crate::api::auth::challenge(Sms::example())))
+                        .post(uri!(crate::api::auth::challenge))
+                        .header(rocket::http::ContentType::JSON)
+                        .body(rocket::serde::json::json!(crate::model::api::auth::AuthRequest::example()).to_string())
                         .dispatch()
                         .await;
 
