@@ -50,6 +50,10 @@ features = ["serde"]
 version = "0.14.4" # Need same version as `crypto-common`
 features = ["serde"]
 
+[dependencies.reqwest]
+version = "0.11.11"
+features = ["json"]
+
 [dependencies.clap]
 version = "3.0.10"
 optional = true
