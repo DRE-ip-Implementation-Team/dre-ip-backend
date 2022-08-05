@@ -43,22 +43,31 @@ paths:
         401:
           description: Invalid credentials.
   /auth/voter/challenge:
-    get:
+    post:
       summary: Request an SMS OTP challenge for voter authentication.
       description:
         Sets an encrypted JWT cookie claiming a randomly generated OTP and the given SMS number to which it is sent.
         The JWT and cookie expire simultaneously after a configurable duration.
-      parameters:
-        - in: query
-          name: sms
-          required: true
-          schema:
-            type: string
-            pattern: '^\+?[1-9]\d{1,14}$'
-            example: "+441234567890"
       security: [ ]  # No token needed before login.
       tags:
         - Authentication Endpoints
+      requestBody:
+        description: SMS and reCAPTCHA token.
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sms:
+                  type: string
+                  pattern: '^\+?[1-9]\d{1,14}$'
+                  example: "+441234567890"
+                g_recaptcha_response:
+                  type: string
+              required:
+                - sms
+                - g_recaptcha_response
       responses:
         200:
           description: Successfully sent OTP.
@@ -70,6 +79,8 @@ paths:
                 Cookie expires when JWT does.
               schema:
                 $ref: "#/components/schemas/Challenge"
+        401:
+          description: Invalid reCAPTCHA token.
   /auth/voter/verify:
     post:
       summary: Verify SMS OTP challenge to authenticate as a voter.
