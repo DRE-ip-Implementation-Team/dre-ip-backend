@@ -28,7 +28,8 @@ pub async fn build() -> Rocket<Build> {
 }
 
 pub(crate) async fn db_client() -> Client {
-    Client::with_uri_str(env!("db_uri")).await.unwrap()
+    let db_uri = std::env::var("db_uri").expect("db_uri envvar wasn't present");
+    Client::with_uri_str(db_uri).await.unwrap()
 }
 
 pub(crate) async fn notifier() -> SnsClient {
