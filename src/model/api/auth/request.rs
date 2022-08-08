@@ -44,18 +44,32 @@ impl AuthRequest {
                 .form(&parameters)
                 .send()
                 .await
-                .map_err(|_| RecaptchaError::ConnectionError)?
+                .map_err(|e| {
+                    eprintln!("{}", e);
+                    RecaptchaError::ConnectionError
+                })?
                 .json()
                 .await
-                .map_err(|_| RecaptchaError::ConnectionError)?;
+                .map_err(|e| {
+                    eprintln!("{}", e);
+                    RecaptchaError::ConnectionError
+                })?;
 
             if !response.success || !response.error_codes.is_empty() {
-                Err(RecaptchaError::InvalidToken)
-            } else if response.challenge_ts + Duration::minutes(MAX_TOKEN_LIFE_MINUTES) > Utc::now()
-            {
-                Err(RecaptchaError::OldToken)
-            } else if response.hostname != hostname {
-                Err(RecaptchaError::WrongHostname(response.hostname))
+                return Err(RecaptchaError::InvalidToken);
+            }
+            // Otherwise, we expect the other fields to be present.
+            let timestamp = response
+                .challenge_ts
+                .expect("challenge_ts was not present when success was true");
+            if timestamp + Duration::minutes(MAX_TOKEN_LIFE_MINUTES) > Utc::now() {
+                return Err(RecaptchaError::OldToken);
+            }
+            let actual_hostname = response
+                .hostname
+                .expect("hostname was not present when success was true");
+            if actual_hostname != hostname {
+                Err(RecaptchaError::WrongHostname(actual_hostname))
             } else {
                 Ok(self.sms)
             }
@@ -98,17 +112,26 @@ impl From<RecaptchaError> for Error {
     }
 }
 
+/// A reCAPTCHA verification request to send to the google API.
 #[derive(Serialize, Deserialize)]
 struct RecaptchaVerifyRequest {
+    /// API connection key.
     pub secret: String,
+    /// The reCAPTCHA token from the client.
     pub response: String,
 }
 
+/// A reCAPTCHA verification response from the google API.
 #[derive(Serialize, Deserialize)]
 struct RecaptchaVerifyResponse {
+    /// Did the reCAPTCHA successfully verify?
     pub success: bool,
-    pub challenge_ts: DateTime<Utc>,
-    pub hostname: String,
+    /// When was the challenge loaded?
+    pub challenge_ts: Option<DateTime<Utc>>,
+    /// What was the hostname of the site where the reCAPTCHA was solved?
+    pub hostname: Option<String>,
+    /// Any error codes.
+    #[serde(default)]
     pub error_codes: Vec<String>,
 }
 
