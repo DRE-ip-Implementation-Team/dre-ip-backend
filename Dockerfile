@@ -35,6 +35,11 @@ RUN apt-get update \
 COPY --from=build ${BUILD_DIR}/target/release/dreip-backend ${APP_DIR}/dreip-backend
 RUN chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
 
+# Copy AWS template
+RUN mkdir -p /home/${APP_USER}/.aws
+COPY ./credentials /home/${APP_USER}/.aws/credentials
+RUN chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/.aws
+
 # Configure runtime
 ENV ROCKET_ADDRESS=0.0.0.0
 EXPOSE 8000
