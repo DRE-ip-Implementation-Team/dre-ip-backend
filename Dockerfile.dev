@@ -38,11 +38,15 @@ RUN chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
 # Copy AWS template
 RUN mkdir -p /home/${APP_USER}/.aws
 COPY ./credentials /home/${APP_USER}/.aws/credentials
+COPY ./config /home/${APP_USER}/.aws/config
 RUN chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/.aws
+
+# Copy entrypoint code
+COPY ./entrypoint.sh ${APP_DIR}
 
 # Configure runtime
 ENV ROCKET_ADDRESS=0.0.0.0
 EXPOSE 8000
 USER ${APP_USER}
 WORKDIR ${APP_DIR}
-CMD ["./dreip-backend"]
+CMD bash -c "./entrypoint.sh && ./dreip-backend"
