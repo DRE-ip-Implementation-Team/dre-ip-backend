@@ -18,7 +18,7 @@ use crate::{model::db::voter::HmacSha256, Config};
 
 /// A voter's SMS number.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct Sms {
     inner: PhoneNumber,
 }
@@ -47,6 +47,20 @@ impl FromStr for Sms {
         Ok(Sms {
             inner: s.parse::<PhoneNumber>()?,
         })
+    }
+}
+
+impl TryFrom<String> for Sms {
+    type Error = phonenumber::ParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl From<Sms> for String {
+    fn from(sms: Sms) -> Self {
+        sms.to_string()
     }
 }
 

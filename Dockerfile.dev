@@ -23,7 +23,7 @@ ARG APP_USER=dreip
 
 # Create user and directory
 RUN groupadd ${APP_USER} \
-    && useradd -g ${APP_USER} ${APP_USER} \
+    && useradd -m -g ${APP_USER} ${APP_USER} \
     && mkdir -p ${APP_DIR}
 
 # Install certificates
@@ -35,9 +35,18 @@ RUN apt-get update \
 COPY --from=build ${BUILD_DIR}/target/debug/dreip-backend ${APP_DIR}/dreip-backend
 RUN chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
 
+# Copy AWS template
+RUN mkdir -p /home/${APP_USER}/.aws
+COPY ./credentials /home/${APP_USER}/.aws/credentials
+COPY ./config /home/${APP_USER}/.aws/config
+RUN chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/.aws
+
+# Copy entrypoint code
+COPY ./entrypoint.sh ${APP_DIR}
+
 # Configure runtime
 ENV ROCKET_ADDRESS=0.0.0.0
 EXPOSE 8000
 USER ${APP_USER}
 WORKDIR ${APP_DIR}
-CMD ["./dreip-backend"]
+CMD bash -c "./entrypoint.sh && ./dreip-backend"
