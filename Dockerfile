@@ -37,7 +37,7 @@ RUN chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
 
 # Copy AWS template
 RUN mkdir -p /home/${APP_USER}/.aws
-COPY ./credentials /home/${APP_USER}/.aws/credentials
+COPY ./credentials /home/${APP_USER}/.aws/credentials_template
 COPY ./config /home/${APP_USER}/.aws/config
 RUN chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/.aws
 
