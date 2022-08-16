@@ -62,7 +62,7 @@ impl AuthRequest {
             let timestamp = response
                 .challenge_ts
                 .expect("challenge_ts was not present when success was true");
-            if timestamp + Duration::minutes(MAX_TOKEN_LIFE_MINUTES) > Utc::now() {
+            if timestamp + Duration::minutes(MAX_TOKEN_LIFE_MINUTES) < Utc::now() {
                 return Err(RecaptchaError::OldToken);
             }
             let actual_hostname = response
