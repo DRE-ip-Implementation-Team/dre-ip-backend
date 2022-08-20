@@ -102,6 +102,8 @@ struct RecaptchaVerifyRequest {
 #[derive(Serialize, Deserialize)]
 struct RecaptchaVerifyResponse {
     /// Did the reCAPTCHA successfully verify?
+    ///
+    /// If `true`, `challenge_ts` and `hostname` are absent and vice versa
     pub success: bool,
     /// When was the challenge loaded?
     pub challenge_ts: Option<DateTime<Utc>>,
