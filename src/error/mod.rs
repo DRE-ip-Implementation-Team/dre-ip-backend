@@ -56,7 +56,7 @@ impl From<Error> for Status {
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
     fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
-        println!("{:?}", self);
+        eprintln!("{:?}", self);
         Err(self.into())
     }
 }
