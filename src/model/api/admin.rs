@@ -17,7 +17,7 @@ pub struct AdminCredentials {
 impl TryFrom<AdminCredentials> for NewAdmin {
     type Error = ();
 
-    /// Convert [`AdminCredentials`] to a new [`Admin`] by hashing the password.
+    /// Convert [`AdminCredentials`] to a new `Admin` by hashing the password.
     /// This enforces that the username is non-empty, and the password meets minimum length.
     fn try_from(cred: AdminCredentials) -> Result<Self, Self::Error> {
         // Check credentials are acceptable.
