@@ -1,5 +1,6 @@
 #[cfg_attr(test, allow(unused_imports))]
 use chrono::{DateTime, Duration, Utc};
+use reqwest;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -44,16 +45,10 @@ impl AuthRequest {
                 .form(&parameters)
                 .send()
                 .await
-                .map_err(|e| {
-                    eprintln!("{}", e);
-                    RecaptchaError::ConnectionError
-                })?
+                .map_err(RecaptchaError::ConnectionError)?
                 .json()
                 .await
-                .map_err(|e| {
-                    eprintln!("{}", e);
-                    RecaptchaError::ConnectionError
-                })?;
+                .map_err(RecaptchaError::ConnectionError)?;
 
             if !response.success || !response.error_codes.is_empty() {
                 return Err(RecaptchaError::InvalidToken);
@@ -78,15 +73,15 @@ impl AuthRequest {
 }
 
 /// Possible errors resulting from verifying a reCAPTCHA token.
-#[derive(Debug, Clone, Eq, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum RecaptchaError {
     /// Failed to contact the google verification API.
-    #[error("Failed to contact reCAPTCHA verification")]
-    ConnectionError,
+    #[error("Failed to contact reCAPTCHA verification. Details: {0}")]
+    ConnectionError(#[from] reqwest::Error),
     /// The token came back with errors.
     #[error("Invalid reCAPTCHA")]
     InvalidToken,
-    /// The token was more than MAX_TOKEN_LIFE minutes old.
+    /// The token was more than `MAX_TOKEN_LIFE` minutes old.
     #[error("Invalid reCAPTCHA (too old)")]
     OldToken,
     #[error("Invalid reCAPTCHA (bad hostname '{0}')")]

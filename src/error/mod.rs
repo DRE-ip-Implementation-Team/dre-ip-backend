@@ -46,7 +46,7 @@ impl From<Error> for Status {
                 _ => Status::BadRequest,
             },
             Error::Recaptcha(err) => match err {
-                RecaptchaError::ConnectionError => Status::InternalServerError,
+                RecaptchaError::ConnectionError(_) => Status::InternalServerError,
                 _ => Status::Unauthorized,
             },
             Error::Status(status, _) => status,
