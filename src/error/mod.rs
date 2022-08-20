@@ -1,3 +1,4 @@
+use crate::model::api::auth::RecaptchaError;
 use argon2::Error as Argon2Error;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use mongodb::{bson::oid::Error as OidError, error::Error as DbError};
@@ -16,6 +17,8 @@ pub enum Error {
     Jwt(#[from] JwtError),
     #[error(transparent)]
     Argon2(#[from] Argon2Error),
+    #[error(transparent)]
+    Recaptcha(#[from] RecaptchaError),
     #[error("{0}: {1}")]
     Status(Status, String),
 }
@@ -41,6 +44,10 @@ impl From<Error> for Status {
                     Status::Unauthorized
                 }
                 _ => Status::BadRequest,
+            },
+            Error::Recaptcha(err) => match err {
+                RecaptchaError::ConnectionError => Status::InternalServerError,
+                _ => Status::Unauthorized,
             },
             Error::Status(status, _) => status,
         }

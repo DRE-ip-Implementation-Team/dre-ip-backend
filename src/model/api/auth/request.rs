@@ -1,9 +1,9 @@
 #[cfg_attr(test, allow(unused_imports))]
 use chrono::{DateTime, Duration, Utc};
-use rocket::http::Status;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-use crate::{error::Error, model::api::sms::Sms};
+use crate::model::api::sms::Sms;
 
 #[cfg(test)]
 const TEST_RECAPTCHA_RESPONSE: &str = "this response will succeed in test mode";
@@ -78,38 +78,20 @@ impl AuthRequest {
 }
 
 /// Possible errors resulting from verifying a reCAPTCHA token.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
 pub enum RecaptchaError {
     /// Failed to contact the google verification API.
+    #[error("Failed to contact reCAPTCHA verification")]
     ConnectionError,
     /// The token came back with errors.
+    #[error("Invalid reCAPTCHA")]
     InvalidToken,
     /// The token was more than MAX_TOKEN_LIFE minutes old.
+    #[error("Invalid reCAPTCHA (too old)")]
     OldToken,
+    #[error("Invalid reCAPTCHA (bad hostname '{0}')")]
     /// The token came from the wrong site.
     WrongHostname(String),
-}
-
-impl From<RecaptchaError> for Error {
-    fn from(err: RecaptchaError) -> Self {
-        match err {
-            RecaptchaError::ConnectionError => Error::Status(
-                Status::InternalServerError,
-                "Failed to contact reCAPTCHA verification".to_string(),
-            ),
-            RecaptchaError::InvalidToken => {
-                Error::Status(Status::Unauthorized, "Invalid reCAPTCHA".to_string())
-            }
-            RecaptchaError::OldToken => Error::Status(
-                Status::Unauthorized,
-                "Invalid reCAPTCHA (too old)".to_string(),
-            ),
-            RecaptchaError::WrongHostname(hostname) => Error::Status(
-                Status::Unauthorized,
-                format!("Invalid reCAPTCHA (bad hostname '{}')", hostname),
-            ),
-        }
-    }
 }
 
 /// A reCAPTCHA verification request to send to the google API.
