@@ -10,7 +10,12 @@ use std::sync::Arc;
 use aws_sdk_sns::Client as SnsClient;
 use chrono::Duration;
 use mongodb::Client;
-use rocket::{fairing::AdHoc, tokio::sync::Mutex, Build, Rocket};
+use rocket::{
+    fairing::AdHoc,
+    shield::{NoSniff, Shield},
+    tokio::sync::Mutex,
+    Build, Rocket,
+};
 use serde::Deserialize;
 
 pub mod api;
@@ -79,6 +84,7 @@ pub(crate) async fn rocket_for_db_and_notifier(
 
     rocket::build()
         .mount("/", api::routes())
+        .attach(Shield::default().disable::<NoSniff>())
         .attach(AdHoc::config::<Config>())
         .manage(client)
         .manage(db)
