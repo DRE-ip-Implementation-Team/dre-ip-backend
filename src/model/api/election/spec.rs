@@ -105,6 +105,7 @@ mod examples {
                     QuestionSpec::example1(),
                     QuestionSpec::example2(),
                     QuestionSpec::example3(),
+                    QuestionSpec::example4(),
                 ],
             }
         }
@@ -171,6 +172,14 @@ mod examples {
                     ),
                 ]),
                 candidates: vec!["Yes".to_string(), "No".to_string()],
+            }
+        }
+
+        pub fn example4() -> Self {
+            Self {
+                description: "Should this question really be open to everyone?".to_string(),
+                constraints: HashMap::new(),
+                candidates: vec!["Definitely".to_string(), "Absolutely".to_string()],
             }
         }
     }

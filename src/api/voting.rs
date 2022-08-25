@@ -98,20 +98,24 @@ async fn join_election(
         .questions
         .iter()
         .filter_map(|(question_id, question)| {
-            // Index into join object is valid since electorates and groups in it and the question
-            // constraints are existence-checked
-            question
-                .constraints
-                .iter()
-                .any(|(electorate_name, groups)| {
-                    let electorate_joined = joins.get(electorate_name);
-                    if let Some(joined) = electorate_joined {
-                        !groups.is_disjoint(joined)
-                    } else {
-                        false
-                    }
-                })
-                .then(|| (*question_id, false))
+            // The question is allowed if it has no constraints, or if at least one of its constraints is satisfied.
+            let question_allowed = question.constraints.is_empty()
+                || question
+                    .constraints
+                    .iter()
+                    .any(|(electorate_name, groups)| {
+                        let electorate_joined = joins.get(electorate_name);
+                        if let Some(joined) = electorate_joined {
+                            !groups.is_disjoint(joined)
+                        } else {
+                            false
+                        }
+                    });
+            if question_allowed {
+                Some((*question_id, false))
+            } else {
+                None
+            }
         })
         .collect::<HashMap<_, _>>();
     let allowed_questions = AllowedQuestions {
@@ -783,7 +787,7 @@ mod tests {
         assert_eq!(response.status(), Status::Ok);
         assert!(response.body().is_none());
 
-        // Check the correct question is allowed.
+        // Check the correct questions are allowed.
         let voter = Coll::<Voter>::from_db(&db)
             .find_one(doc! {"sms_hmac": sms_hmac.to_bytestring()}, None)
             .await
@@ -796,13 +800,16 @@ mod tests {
             election
                 .questions
                 .iter()
-                .filter_map(
-                    |(id, q)| if q.description == QuestionSpec::example1().description {
+                .filter_map(|(id, q)| {
+                    // Example 1 is allowed by the group, and example 4 is open to all.
+                    if q.description == QuestionSpec::example1().description
+                        || q.description == QuestionSpec::example4().description
+                    {
                         Some(id)
                     } else {
                         None
                     }
-                )
+                })
                 .collect()
         );
     }
