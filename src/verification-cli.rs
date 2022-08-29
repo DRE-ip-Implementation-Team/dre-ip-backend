@@ -2,14 +2,19 @@
 //! This uses the internal server verification implementation, and is by definition
 //! compatible with the output of our API endpoints.
 
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::BufReader;
 
 use clap::{Arg, ArgMatches, Command};
+use dre_ip::{DreipGroup as DreipGroupTrait, Serializable};
 use rocket::serde::json::serde_json;
 
-use dreip_backend::model::api::election::{
-    BallotError, ElectionResults, ReceiptError, VerificationError, VoteError,
+use dreip_backend::model::{
+    api::election::{BallotError, ElectionResults, ReceiptError, VerificationError, VoteError},
+    common::election::DreipGroup,
 };
 
 const PROGRAM_NAME: &str = "verify-dreip";
@@ -46,24 +51,167 @@ enum Error {
     IO(String),
     /// Failed to decode the JSON dump.
     Format(String),
-    /// Verification failed for the described reason.
+    /// Verification failed due to the contained reason.
     Verification(VerificationError),
 }
 
+/// A friendly, u64-based representation of the results for a particular candidate.
+#[derive(Debug, Eq, PartialEq)]
+struct FriendlyResults {
+    pub candidate_name: String,
+    pub tally: Option<u64>, // Might not be present if election still running.
+    pub audited_votes: u64,
+}
+
+impl FriendlyResults {
+    pub fn new(name: String) -> Self {
+        Self {
+            candidate_name: name,
+            tally: None,
+            audited_votes: 0,
+        }
+    }
+}
+
+impl Display for FriendlyResults {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(tally) = self.tally {
+            write!(
+                f,
+                "{}: {} vote{} ({} audited ballot{})",
+                self.candidate_name,
+                tally,
+                if tally != 1 { "s" } else { "" },
+                self.audited_votes,
+                if self.audited_votes != 1 { "s" } else { "" }
+            )
+        } else {
+            write!(
+                f,
+                "{}: tally not available yet ({} audited ballot{} so far)",
+                self.candidate_name,
+                self.audited_votes,
+                if self.audited_votes != 1 { "s" } else { "" }
+            )
+        }
+    }
+}
+
+/// Convert a tally `Scalar` to a u64. We assume that it fits.
+fn tally_to_u64(tally_scalar: <DreipGroup as DreipGroupTrait>::Scalar) -> u64 {
+    // Convert to bytes.
+    let bytes = Serializable::to_bytes(&tally_scalar);
+
+    // Check it fits into a u64.
+    const BYTES: isize = 8;
+    let extra_bytes = isize::try_from(bytes.len()).expect("unreasonably big scalar") - BYTES;
+
+    let u64_bytes: [u8; 8] = match extra_bytes.cmp(&0) {
+        Ordering::Less => {
+            // We can pad.
+            let mut u64_bytes = [0; 8];
+            let padding = (-extra_bytes) as usize;
+            for (i, byte) in bytes.iter().enumerate() {
+                u64_bytes[i + padding] = *byte;
+            }
+            u64_bytes
+        }
+        Ordering::Equal => {
+            // We have exactly the right amount.
+            bytes[..].try_into().unwrap()
+        }
+        Ordering::Greater => {
+            for byte in &bytes[0..extra_bytes as usize] {
+                if *byte != 0 {
+                    // Too big for u64!
+                    panic!("Tally was so large that it didn't fit into 64 bits!")
+                }
+            }
+            // Excess bytes are all zero; we can just trim.
+            let start_index = bytes.len() - 8;
+            bytes[start_index..].try_into().unwrap()
+        }
+    };
+
+    u64::from_be_bytes(u64_bytes)
+}
+
 /// Run verification.
-fn verify(path: &str) -> Result<(), Error> {
+fn verify(path: &str) -> Result<Vec<FriendlyResults>, Error> {
+    // Load the file.
     let file = BufReader::new(File::open(path).map_err(|e| Error::IO(e.to_string()))?);
     let results: ElectionResults =
         serde_json::from_reader(file).map_err(|e| Error::Format(e.to_string()))?;
-    results.verify().map_err(Error::Verification)
+
+    // Run verification.
+    results.verify().map_err(Error::Verification)?;
+
+    // Assemble the friendly results.
+    // First, find all the candidates.
+    let candidates: Vec<String> = results
+        .confirmed // We might find the list in a confirmed ballot...
+        .values()
+        .next()
+        .map(|receipt| receipt.crypto.votes.keys().cloned().collect())
+        .or_else(|| {
+            results
+                .audited // ...or in an audited ballot...
+                .values()
+                .next()
+                .map(|receipt| receipt.crypto.votes.keys().cloned().collect())
+        })
+        .or_else(|| {
+            results
+                .totals // ...or in the tallies.
+                .as_ref()
+                .map(|totals| totals.keys().cloned().collect())
+        })
+        .unwrap_or_default(); // Otherwise, we have no data.
+
+    // Create the results for each candidate.
+    let mut friendly_results = HashMap::with_capacity(candidates.len());
+    for candidate in candidates {
+        friendly_results.insert(candidate.clone(), FriendlyResults::new(candidate));
+    }
+    // Count audited votes.
+    for receipt in results.audited.values() {
+        // Unwrap safe as we've already created all candidate entries.
+        friendly_results
+            .get_mut(&receipt.state_data.candidate)
+            .unwrap()
+            .audited_votes += 1;
+    }
+    // Plug in the tallies if present.
+    if let Some(tallies) = &results.totals {
+        for totals_desc in tallies.values() {
+            // Unwrap safe as we've already created all candidate entries.
+            friendly_results
+                .get_mut(&totals_desc.candidate_name)
+                .unwrap()
+                .tally = Some(tally_to_u64(totals_desc.tally));
+        }
+    }
+
+    // Turn into a list ordered by tally, then name.
+    let mut results_list = friendly_results.into_values().collect::<Vec<_>>();
+    results_list.sort_unstable_by(|a, b| a.candidate_name.cmp(&b.candidate_name));
+    if results.totals.is_some() {
+        // Unwrap is safe, as if `results.totals` exists, all tallies are filled in.
+        results_list.sort_by(|a, b| b.tally.unwrap().cmp(&a.tally.unwrap()));
+    }
+
+    Ok(results_list)
 }
 
 /// Run verification, report the result, and return the exit code.
 fn run(args: &ArgMatches) -> u8 {
     let path = args.value_of(RESULTS_PATH).unwrap(); // Required argument is guaranteed to be present.
     match verify(path) {
-        Ok(()) => {
+        Ok(friendly_results) => {
             println!("Verification succeeded.");
+            for result in friendly_results {
+                println!("{}", result);
+            }
             0
         }
         Err(Error::IO(msg)) => {
@@ -145,8 +293,36 @@ mod tests {
 
     #[test]
     fn verification() {
-        assert!(verify("example_dumps/election.json").is_ok());
-        assert!(verify("example_dumps/election_inprogress.json").is_ok());
+        let expected_results = vec![
+            FriendlyResults {
+                candidate_name: "Chris Riches".to_string(),
+                tally: Some(3),
+                audited_votes: 1,
+            },
+            FriendlyResults {
+                candidate_name: "Parry Hotter".to_string(),
+                tally: Some(2),
+                audited_votes: 1,
+            },
+        ];
+        assert_eq!(verify("example_dumps/election.json"), Ok(expected_results));
+
+        let expected_results = vec![
+            FriendlyResults {
+                candidate_name: "Chris Riches".to_string(),
+                tally: None,
+                audited_votes: 0,
+            },
+            FriendlyResults {
+                candidate_name: "Parry Hotter".to_string(),
+                tally: None,
+                audited_votes: 1,
+            },
+        ];
+        assert_eq!(
+            verify("example_dumps/election_inprogress.json"),
+            Ok(expected_results)
+        );
 
         assert_eq!(
             verify("example_dumps/election_invalid_candidate.json"),

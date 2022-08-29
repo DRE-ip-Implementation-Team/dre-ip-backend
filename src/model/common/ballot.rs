@@ -54,7 +54,7 @@ pub trait BallotState: Copy + AsRef<[u8]> {
 /// Extra candidate ID data for audited receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuditExtraData {
-    candidate: CandidateId,
+    pub candidate: CandidateId,
 }
 
 impl<'a> From<&'a AuditExtraData> for Vec<u8> {

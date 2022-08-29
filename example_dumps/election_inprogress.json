@@ -44,46 +44,6 @@
       "state": "Audited",
       "candidate": "Parry Hotter",
       "signature": "JDhvhaNUW_xYT0Lp20_ivuOiS36EpWIYutPC6HbFY7svRIjGpbnwe6SnpZvwCUUP8ceHlv8rXfjMdnMCWuAplQ"
-    },
-    "10": {
-      "votes": {
-        "Parry Hotter": {
-          "r": "rTRgGe5r5dlhO7bgebl6pJjWefoTgbKaw0iRr9_wVkE",
-          "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "R": "Avf8UPoFt6yy5qok-V8msn3a8w_YutupEpjPyt5WX6Dd",
-          "Z": "A7UkGGIqSER2OUqZ6yZNucdy0uJt-RTf3hgr5P5pFr-N",
-          "pwf": {
-            "c1": "VqR3yyoN97ZFkEwfjW1tOA_uzhSPD2N8h8R-l0cPwHw",
-            "c2": "mE54F6Oa0WHL0J7V3qCXUJ9oJ2rIqKVoofoRWLErQmE",
-            "r1": "z0slJOa5H-9AK2iX-lJPJJg27cG1KC8ELL-81jMmMFQ",
-            "r2": "Lcrdx8lF4cdzVDhsh_2VrV7H_EXbnfjy23v1r-XMi6k"
-          }
-        },
-        "Chris Riches": {
-          "r": "ti_gNKiGm4jX9hFu0Hql1k2y1fDNr11apgXzwSYQiag",
-          "v": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
-          "R": "A6HYdIKE4DI4SpNEAaJ5QRxwcq1QDgp2Hw1dX8yXF__t",
-          "Z": "A3hM_WEHL_PH6drw79q2rb_sB_BHKH9LN1EMkVATTa-o",
-          "pwf": {
-            "c1": "g2q5sJpKqcr5HnWeZwRxXp_FysvOx68_Cu1hPqsgrlw",
-            "c2": "lctMMxpV8cyqzh6UB8_rbO-8gfDA7H5Ep83fB5vJkR8",
-            "r1": "KCGfuVJNEk3PHLoeEH9WhK8RJsP39V4Qef9BH63HHXk",
-            "r2": "TUMzN-AV_TzCmjZ1n75a-KTTiHlZ_U9HMWrrnclGhvI"
-          }
-        }
-      },
-      "pwf": {
-        "a": "AgnltxpFzUp8dND-k3lWPJTvDDFZLk6ZSI9W2WmlDwla",
-        "b": "A028JGWsL5ONV1INGpNsP95zNO-_dPk5tIFVfasABtMx",
-        "r": "Rw20pf5r0XLBPwgvFrSeDrzq3tx8qRydhtYkHrCBTRw"
-      },
-      "ballot_id": 10,
-      "election_id": 946927538,
-      "question_id": 1,
-      "confirmation_code": "323XAPHCXRUXIDDKHBJMMAFOIZXA6MTFNDT52CJQ5OFO42LX7N",
-      "state": "Audited",
-      "candidate": "Chris Riches",
-      "signature": "M2qfbKic33QMrIePlwgGHoZoZpONTzBh7yFPQ8WrQtSrBEcb-yCjU6fFYAdHstUbzns70ZdEkyNlfJPL7lWLXA"
     }
   },
   "confirmed": {
