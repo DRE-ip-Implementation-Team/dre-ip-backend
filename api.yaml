@@ -496,7 +496,7 @@ paths:
       tags:
         - Voting Endpoints
       requestBody:
-        description: "List of votes: question-candidate ID pairs."
+        description: "List of ballots: question-candidate ID pairs."
         required: true
         content:
           application/json:
@@ -511,6 +511,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/UnconfirmedReceiptFull"
+        400:
+          description: Ballot list was empty.
         404:
           $ref: "#/components/responses/NotFound"
   /elections/{electionID}/votes/audit:

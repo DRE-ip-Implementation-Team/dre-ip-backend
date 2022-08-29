@@ -171,6 +171,14 @@ async fn cast_ballots(
     counters: Coll<Counter>,
     db_client: &State<Client>,
 ) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
+    // Check we actually have ballots to cast.
+    if ballot_specs.is_empty() {
+        return Err(Error::Status(
+            Status::BadRequest,
+            "Cannot cast an empty list of ballots".to_string(),
+        ));
+    }
+
     // Get the election.
     let election = active_election_by_id(election_id, &elections).await?;
 
@@ -1244,6 +1252,16 @@ mod tests {
     async fn bad_casts(client: Client, db: Database) {
         let (election_id, question_id) = insert_test_data(&client, &db).await;
 
+        // Try sending an empty vote payload.
+        let ballot_specs: Vec<BallotSpec> = Vec::new();
+        let response = client
+            .post(uri!(cast_ballots(election_id)))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&ballot_specs).unwrap())
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::BadRequest);
+
         // Try voting on a non-existent question.
         let ballot_specs = vec![BallotSpec {
             question: rand::thread_rng().gen(),
@@ -1328,7 +1346,7 @@ mod tests {
         let response = client
             .post(uri!(cast_ballots(rand::thread_rng().gen::<u32>())))
             .header(ContentType::JSON)
-            .body("[]")
+            .body(serde_json::to_string(&ballot_specs).unwrap())
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::NotFound);
