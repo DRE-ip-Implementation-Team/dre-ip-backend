@@ -25,11 +25,34 @@ use crate::{
 };
 
 pub fn routes() -> Vec<Route> {
-    routes![authenticate, challenge, verify, logout]
+    routes![
+        check_auth_admin,
+        check_auth_voter,
+        check_auth_none,
+        authenticate,
+        challenge,
+        verify,
+        logout,
+    ]
+}
+
+#[get("/auth/check", rank = 1)]
+async fn check_auth_admin(_token: AuthToken<Admin>) -> &'static str {
+    "Admin"
+}
+
+#[get("/auth/check", rank = 2)]
+async fn check_auth_voter(_token: AuthToken<Voter>) -> &'static str {
+    "Voter"
+}
+
+#[get("/auth/check", rank = 3)]
+async fn check_auth_none() -> &'static str {
+    "Unauthenticated"
 }
 
 #[post("/auth/admin", data = "<credentials>", format = "json")]
-pub async fn authenticate(
+async fn authenticate(
     cookies: &CookieJar<'_>,
     credentials: Json<AdminCredentials>,
     admins: Coll<Admin>,
@@ -58,7 +81,7 @@ pub async fn authenticate(
 
 #[cfg_attr(any(not(feature = "otp"), test), allow(unused_variables))]
 #[post("/auth/voter/challenge", data = "<auth_request>", format = "json")]
-pub async fn challenge(
+async fn challenge(
     auth_request: Json<AuthRequest>,
     cookies: &CookieJar<'_>,
     config: &State<Config>,
@@ -96,7 +119,7 @@ pub async fn challenge(
 
 #[cfg_attr(not(feature = "otp"), allow(unused_variables))]
 #[post("/auth/voter/verify", data = "<code>", format = "json")]
-pub async fn verify(
+async fn verify(
     code: Json<Code>,
     challenge: Challenge,
     cookies: &CookieJar<'_>,
@@ -147,7 +170,7 @@ pub async fn verify(
 }
 
 #[delete("/auth")]
-pub fn logout(cookies: &CookieJar) -> Status {
+fn logout(cookies: &CookieJar) -> Status {
     cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
     Status::Ok
 }
@@ -165,6 +188,32 @@ mod tests {
     };
 
     use super::*;
+
+    #[backend_test(admin)]
+    async fn auth_check_admin(client: Client) {
+        let response = client.get(uri!(check_auth_admin)).dispatch().await;
+
+        assert_eq!(Status::Ok, response.status());
+        let body = response.into_string().await.unwrap();
+        assert_eq!(body, "Admin");
+    }
+
+    #[backend_test(voter)]
+    async fn auth_check_voter(client: Client) {
+        let response = client.get(uri!(check_auth_voter)).dispatch().await;
+
+        assert_eq!(Status::Ok, response.status());
+        let body = response.into_string().await.unwrap();
+        assert_eq!(body, "Voter");
+    }
+
+    #[backend_test]
+    async fn auth_check_none(client: Client) {
+        let response = client.get(uri!(check_auth_none)).dispatch().await;
+
+        assert_eq!(Status::Ok, response.status());
+        assert_eq!(response.into_string().await.unwrap(), "Unauthenticated");
+    }
 
     #[backend_test]
     async fn admin_authenticate_valid(client: Client, admins: Coll<NewAdmin>) {

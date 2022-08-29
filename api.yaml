@@ -24,6 +24,21 @@ tags:
     description: Retrieving public data about elections. Draft elections can only be seen with an *__admin__* `auth_token` cookie.
 
 paths:
+  /auth/check:
+    get:
+      summary: Check if you are currently authenticated.
+      security: [ ]  # No token needed, but different behaviour depending on it.
+      tags:
+        - Authentication Endpoints
+      responses:
+        200:
+          description:
+            "A string representing your current authentication status: either 'Admin', 'Voter', or 'Unauthenticated'."
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Voter
   /auth/admin:
     post:
       summary: Authenticate as an admin.
