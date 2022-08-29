@@ -1,9 +1,16 @@
 [package]
 name = "dreip-backend"
 version = "0.1.0"
+authors = ["Chris Riches", "Christian Dunn"]
 edition = "2021"
+description = "Backend server for our DRE-ip based voting system"
+readme = "README.md"
+repository = "https://github.com/DRE-ip-Implementation-Team/dre-ip-backend"
+license = "GNU AGPLv3"
 default-run = "dreip-backend"
 
+# Extra binary definition for the verification tool; the server itself
+# is auto-detected.
 [[bin]]
 name = "verification-cli"
 path = "src/verification-cli.rs"
@@ -11,54 +18,54 @@ required-features = ["verification"]
 
 [features]
 default = ["otp"]
-otp = []
-verification = ["clap"]
+otp = []                # Enable authenticated voter sign-in (on by default)
+verification = ["clap"] # Enable extra dependencies needed for verification tool compilation
 
 [dependencies]
-data-encoding = "2.3.2"
-serde = "1.0.130"
-phonenumber = "0.3.1"
-jsonwebtoken = "7.2.0"
-thiserror = "1.0.30"
-rand = "0.8.4"
-time = "0.2.11"
-serde_repr = "0.1"
-serde_unit_struct = "0.1"
-rust-argon2 = "0.8"
 aws-config = "0.6.0"
 aws-sdk-sns = "0.6.0"
+data-encoding = "2.3.2"
 hmac = "0.12.1"
+jsonwebtoken = "7.2.0"
+phonenumber = "0.3.1"
+rand = "0.8.4"
+rust-argon2 = "0.8"
+serde = "1.0.130"
+serde_repr = "0.1"
+serde_unit_struct = "0.1"
 sha2 = "0.10.2"
+thiserror = "1.0.30"
+time = "0.2.11"
 typenum = "1.15.0"
-
-[dependencies.dre-ip]
-path = "protocol"
-
-[dependencies.rocket]
-version = "=0.5.0-rc.2"
-features = ["secrets", "json"]
-
-[dependencies.mongodb]
-version = "2.0.1"
-features = ["bson-chrono-0_4"]
 
 [dependencies.chrono]
 version = "0.4.19"
 features = ["serde"]
 
+[dependencies.clap]
+version = "3.0.10"
+optional = true # Only needed by verification tool
+default_features = false
+features = ["cargo", "std"]
+
+[dependencies.dre-ip]
+path = "protocol" # Provided via git submodule
+
 [dependencies.generic-array]
 version = "0.14.4" # Need same version as `crypto-common`
 features = ["serde"]
+
+[dependencies.mongodb]
+version = "2.0.1"
+features = ["bson-chrono-0_4"]
 
 [dependencies.reqwest]
 version = "0.11.11"
 features = ["json"]
 
-[dependencies.clap]
-version = "3.0.10"
-optional = true
-default_features = false
-features = ["cargo", "std"]
+[dependencies.rocket]
+version = "=0.5.0-rc.2"
+features = ["secrets", "json"]
 
 [dev-dependencies]
 backend-test = { path = "backend_test" }
