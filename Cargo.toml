@@ -1,3 +1,6 @@
+[workspace]
+members = ["backend_test", "protocol"]
+
 [package]
 name = "dreip-backend"
 version = "0.1.0"
@@ -22,28 +25,28 @@ otp = []                # Enable authenticated voter sign-in (on by default)
 verification = ["clap"] # Enable extra dependencies needed for verification tool compilation
 
 [dependencies]
-aws-config = "0.6.0"
-aws-sdk-sns = "0.6.0"
+aws-config = "0.47.0"
+aws-sdk-sns = "0.17.0"
 data-encoding = "2.3.2"
 hmac = "0.12.1"
-jsonwebtoken = "7.2.0"
+jsonwebtoken = "8.1.1"
 phonenumber = "0.3.1"
-rand = "0.8.4"
-rust-argon2 = "0.8"
-serde = "1.0.130"
-serde_repr = "0.1"
-serde_unit_struct = "0.1"
+rand = "0.8.5"
+rust-argon2 = "1.0.0"
+serde = "1.0.144"
+serde_repr = "0.1.9"
+serde_unit_struct = "0.1.1"
 sha2 = "0.10.2"
-thiserror = "1.0.30"
-time = "0.2.11"
+thiserror = "1.0.32"
+time = "0.3.14"
 typenum = "1.15.0"
 
 [dependencies.chrono]
-version = "0.4.19"
+version = "0.4.22"
 features = ["serde"]
 
 [dependencies.clap]
-version = "3.0.10"
+version = "3.2.17"
 optional = true # Only needed by verification tool
 default_features = false
 features = ["cargo", "std"]
@@ -52,11 +55,11 @@ features = ["cargo", "std"]
 path = "protocol" # Provided via git submodule
 
 [dependencies.generic-array]
-version = "0.14.4" # Need same version as `crypto-common`
+version = "0.14.6" # Need same version as `crypto-common`
 features = ["serde"]
 
 [dependencies.mongodb]
-version = "2.0.1"
+version = "2.3.0"
 features = ["bson-chrono-0_4"]
 
 [dependencies.reqwest]
