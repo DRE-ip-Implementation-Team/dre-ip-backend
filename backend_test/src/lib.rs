@@ -150,6 +150,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Ensure the wrapped test is async, extract parameters to inject, and reject unknown parameters.
+#[allow(clippy::type_complexity)]
 fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident>), syn::Error> {
     if sig.asyncness.is_none() {
         return Err(syn::Error::new(sig.span(), "Test must be marked `async`"));
@@ -191,15 +192,13 @@ fn check_sig(sig: Signature) -> Result<(Vec<TokenStream2>, Vec<Ident>, Vec<Ident
                             if let PathArguments::AngleBracketed(generics) =
                                 &possible_collection.arguments
                             {
-                                if let Some(arg) = generics.args.first() {
-                                    if let GenericArgument::Type(ty) = arg {
-                                        if let Type::Path(ty_path) = ty {
-                                            if let Some(ty_ident) = ty_path.path.get_ident() {
-                                                collection_idents.push(pat_ident.ident.clone());
-                                                collection_types.push(ty_ident.clone());
-                                                continue;
-                                            }
-                                        }
+                                if let Some(GenericArgument::Type(Type::Path(type_path))) =
+                                    generics.args.first()
+                                {
+                                    if let Some(type_ident) = type_path.path.get_ident() {
+                                        collection_idents.push(pat_ident.ident.clone());
+                                        collection_types.push(type_ident.clone());
+                                        continue;
                                     }
                                 }
                             }

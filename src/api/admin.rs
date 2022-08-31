@@ -844,10 +844,6 @@ mod tests {
         assert_eq!(response.status(), status);
     }
 
-    // Clippy doesn't like the ballot!() macros inside the vec![] macro, since
-    // the order of resolving the ballot ID increments depends on the order of
-    // evaluating the vector elements. It's fine though - the order doesn't matter.
-    #[allow(clippy::eval_order_dependence)]
     async fn insert_ballots(db: &Database, election_id: ElectionId) {
         let election = get_election_by_id(db, election_id).await;
         let q1 = election
