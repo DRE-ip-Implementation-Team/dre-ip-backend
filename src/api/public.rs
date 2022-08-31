@@ -333,7 +333,11 @@ async fn metadata_for_elections(
 #[cfg(test)]
 mod tests {
     use mongodb::Database;
-    use rocket::{http::Status, local::asynchronous::Client, serde::json::serde_json};
+    use rocket::{
+        http::Status,
+        local::asynchronous::{Client, LocalResponse},
+        serde::json::serde_json,
+    };
     use std::collections::HashMap;
 
     use crate::model::{
@@ -342,11 +346,28 @@ mod tests {
         db::{
             ballot::{Ballot, BallotCore},
             candidate_totals::NewCandidateTotals,
-            election::Question,
+            election::{ElectionMetadata, Question},
         },
     };
 
     use super::*;
+
+    async fn check_response_has_elections(
+        response: LocalResponse<'_>,
+        expected: Vec<ElectionMetadata>,
+    ) {
+        assert_eq!(Status::Ok, response.status());
+        assert!(response.body().is_some());
+        let raw_response = response.into_string().await.unwrap();
+        let actual = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
+        assert_eq!(expected.len(), actual.len());
+        for (expected_election, actual_election) in std::iter::zip(expected, actual) {
+            assert_eq!(expected_election.name, actual_election.name);
+            assert_eq!(expected_election.state, actual_election.state);
+            assert_eq!(expected_election.start_time, actual_election.start_time);
+            assert_eq!(expected_election.end_time, actual_election.end_time);
+        }
+    }
 
     #[backend_test(admin)]
     async fn get_all_elections_as_admin(client: Client, db: Database) {
@@ -360,23 +381,14 @@ mod tests {
             .dispatch()
             .await;
 
-        assert_eq!(Status::Ok, response.status());
-        assert!(response.body().is_some());
-
-        let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
-
-        let expected = vec![
-            Election::published_example().metadata,
-            Election::draft_example().metadata,
-        ];
-        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
-            assert_eq!(actual.name, expected.name);
-            assert_eq!(actual.state, expected.state);
-            assert_eq!(actual.start_time, expected.start_time);
-            assert_eq!(actual.end_time, expected.end_time);
-        }
+        check_response_has_elections(
+            response,
+            vec![
+                Election::published_example().metadata,
+                Election::draft_example().metadata,
+            ],
+        )
+        .await;
     }
 
     #[backend_test]
@@ -391,21 +403,78 @@ mod tests {
             .dispatch()
             .await;
 
-        assert_eq!(Status::Ok, response.status());
-        assert!(response.body().is_some());
+        check_response_has_elections(response, vec![Election::published_example().metadata]).await;
+    }
 
-        let raw_response = response.into_string().await.unwrap();
+    #[backend_test]
+    async fn get_archived(client: Client, db: Database) {
+        insert_elections(&db).await;
 
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
+        // Try getting all archived.
+        let response = client
+            .get(uri!(elections_non_admin(
+                Some(true),
+                Option::<ElectionTiming>::None
+            )))
+            .dispatch()
+            .await;
 
-        let expected = vec![Election::published_example().metadata];
-        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
-            assert_eq!(actual.name, expected.name);
-            assert_eq!(actual.state, expected.state);
-            assert_eq!(actual.start_time, expected.start_time);
-            assert_eq!(actual.end_time, expected.end_time);
-        }
+        check_response_has_elections(response, vec![Election::archived_example().metadata]).await;
+    }
+
+    #[backend_test(admin)]
+    async fn get_specific_timings(client: Client, db: Database) {
+        insert_elections(&db).await;
+
+        // Get future (expect draft example).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(false),
+                Some(ElectionTiming::Future)
+            )))
+            .dispatch()
+            .await;
+        check_response_has_elections(response, vec![Election::draft_example().metadata]).await;
+
+        // Get current (expect published example).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(false),
+                Some(ElectionTiming::Current)
+            )))
+            .dispatch()
+            .await;
+        check_response_has_elections(response, vec![Election::published_example().metadata]).await;
+
+        // Get current archived (expect none).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(true),
+                Some(ElectionTiming::Current)
+            )))
+            .dispatch()
+            .await;
+        check_response_has_elections(response, vec![]).await;
+
+        // Get past (expect none).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(false),
+                Some(ElectionTiming::Past)
+            )))
+            .dispatch()
+            .await;
+        check_response_has_elections(response, vec![]).await;
+
+        // Get past archived (expect archived example).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(true),
+                Some(ElectionTiming::Past)
+            )))
+            .dispatch()
+            .await;
+        check_response_has_elections(response, vec![Election::archived_example().metadata]).await;
     }
 
     #[backend_test(admin)]
@@ -529,55 +598,14 @@ mod tests {
     }
 
     #[backend_test]
-    async fn fail_to_get_draft_election_as_non_admin(client: Client, db: Database) {
+    async fn get_archived_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        let election = get_election_for_spec(&db, ElectionSpec::future_example()).await;
-
-        let response = client
-            .get(uri!(election_non_admin(election.id)))
-            .dispatch()
-            .await;
-
-        assert_eq!(Status::NotFound, response.status());
-    }
-
-    #[backend_test]
-    async fn get_archived(client: Client, db: Database) {
-        insert_elections(&db).await;
-
-        // Try getting all archived.
-        let response = client
-            .get(uri!(elections_non_admin(
-                Some(true),
-                Option::<ElectionTiming>::None
-            )))
-            .dispatch()
-            .await;
-        assert_eq!(Status::Ok, response.status());
-        assert!(response.body().is_some());
-
-        let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
-
-        let expected = vec![Election::archived_example().metadata];
-        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
-            assert_eq!(actual.name, expected.name);
-            assert_eq!(actual.state, expected.state);
-            assert_eq!(actual.start_time, expected.start_time);
-            assert_eq!(actual.end_time, expected.end_time);
-        }
+        let election = get_election_for_spec(&db, ElectionSpec::past_example()).await;
 
         // Try getting a specific archived election.
-        let election_id = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
-            .unwrap()
-            .into_iter()
-            .next()
-            .unwrap()
-            .id;
         let response = client
-            .get(uri!(election_non_admin(election_id)))
+            .get(uri!(election_non_admin(election.id)))
             .dispatch()
             .await;
         assert_eq!(Status::Ok, response.status());
@@ -609,100 +637,18 @@ mod tests {
         }
     }
 
-    #[backend_test(admin)]
-    async fn get_specific_timings(client: Client, db: Database) {
+    #[backend_test]
+    async fn fail_to_get_draft_election_as_non_admin(client: Client, db: Database) {
         insert_elections(&db).await;
 
-        // Get future (expect draft example).
-        let response = client
-            .get(uri!(elections_admin(
-                Some(false),
-                Some(ElectionTiming::Future)
-            )))
-            .dispatch()
-            .await;
-        assert_eq!(Status::Ok, response.status());
-        let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
-        let expected = vec![Election::draft_example().metadata];
-        assert_eq!(fetched_elections.len(), expected.len());
-        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
-            assert_eq!(actual.name, expected.name);
-            assert_eq!(actual.state, expected.state);
-            assert_eq!(actual.start_time, expected.start_time);
-            assert_eq!(actual.end_time, expected.end_time);
-        }
+        let election = get_election_for_spec(&db, ElectionSpec::future_example()).await;
 
-        // Get current (expect current example).
         let response = client
-            .get(uri!(elections_admin(
-                Some(false),
-                Some(ElectionTiming::Current)
-            )))
+            .get(uri!(election_non_admin(election.id)))
             .dispatch()
             .await;
-        assert_eq!(Status::Ok, response.status());
-        let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
-        let expected = vec![Election::published_example().metadata];
-        assert_eq!(fetched_elections.len(), expected.len());
-        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
-            assert_eq!(actual.name, expected.name);
-            assert_eq!(actual.state, expected.state);
-            assert_eq!(actual.start_time, expected.start_time);
-            assert_eq!(actual.end_time, expected.end_time);
-        }
 
-        // Get current archived (expect none).
-        let response = client
-            .get(uri!(elections_admin(
-                Some(true),
-                Some(ElectionTiming::Current)
-            )))
-            .dispatch()
-            .await;
-        assert_eq!(Status::Ok, response.status());
-        let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
-        assert!(fetched_elections.is_empty());
-
-        // Get past (expect none).
-        let response = client
-            .get(uri!(elections_admin(
-                Some(false),
-                Some(ElectionTiming::Past)
-            )))
-            .dispatch()
-            .await;
-        assert_eq!(Status::Ok, response.status());
-        let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
-        assert!(fetched_elections.is_empty());
-
-        // Get past archived (expect archived example).
-        let response = client
-            .get(uri!(elections_admin(
-                Some(true),
-                Some(ElectionTiming::Past)
-            )))
-            .dispatch()
-            .await;
-        assert_eq!(Status::Ok, response.status());
-        let raw_response = response.into_string().await.unwrap();
-        let fetched_elections =
-            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
-        let expected = vec![Election::archived_example().metadata];
-        assert_eq!(fetched_elections.len(), expected.len());
-        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
-            assert_eq!(actual.name, expected.name);
-            assert_eq!(actual.state, expected.state);
-            assert_eq!(actual.start_time, expected.start_time);
-            assert_eq!(actual.end_time, expected.end_time);
-        }
+        assert_eq!(Status::NotFound, response.status());
     }
 
     #[backend_test]
