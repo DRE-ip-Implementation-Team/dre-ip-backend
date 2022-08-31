@@ -17,7 +17,7 @@ use crate::model::{
     api::{
         auth::AuthToken,
         candidate_totals::CandidateTotalsDesc,
-        election::{ElectionDescription, ElectionResults, ElectionSummary},
+        election::{ElectionDescription, ElectionResults, ElectionSummary, ElectionTiming},
         pagination::{Paginated, PaginationRequest},
         receipt::{PublicReceipt, Receipt},
     },
@@ -42,23 +42,25 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-#[get("/elections?<archived>", rank = 1)]
+#[get("/elections?<archived>&<timing>", rank = 1)]
 async fn elections_admin(
     _token: AuthToken<Admin>,
     archived: Option<bool>,
+    timing: Option<ElectionTiming>,
     elections: Coll<Election>,
 ) -> Result<Json<Vec<ElectionSummary>>> {
     let archived = archived.unwrap_or(false);
-    metadata_for_elections(elections, true, archived).await
+    metadata_for_elections(elections, true, archived, timing).await
 }
 
-#[get("/elections?<archived>", rank = 2)]
+#[get("/elections?<archived>&<timing>", rank = 2)]
 async fn elections_non_admin(
     archived: Option<bool>,
+    timing: Option<ElectionTiming>,
     elections: Coll<Election>,
 ) -> Result<Json<Vec<ElectionSummary>>> {
     let archived = archived.unwrap_or(false);
-    metadata_for_elections(elections, false, archived).await
+    metadata_for_elections(elections, false, archived, timing).await
 }
 
 #[get("/elections/<election_id>", rank = 1)]
@@ -293,12 +295,14 @@ async fn question_dump(
 /// Retrieve the metadata for elections.
 /// If `admin` is false, admin-only elections will be hidden.
 /// If `archived` is true, archived elections will be returned instead of non-archived ones.
+/// If `timing` is provided, only elections with that status will be returned.
 async fn metadata_for_elections(
     elections: Coll<Election>,
     admin: bool,
     archived: bool,
+    timing: Option<ElectionTiming>,
 ) -> Result<Json<Vec<ElectionSummary>>> {
-    let filter = if archived {
+    let mut filter = if archived {
         doc! {
             "state": ElectionState::Archived,
         }
@@ -311,6 +315,9 @@ async fn metadata_for_elections(
             "state": ElectionState::Published,
         }
     };
+    if let Some(timing) = timing {
+        filter.extend(timing.filter());
+    }
 
     let elections = elections
         .find(filter, None)
@@ -346,7 +353,10 @@ mod tests {
         insert_elections(&db).await;
 
         let response = client
-            .get(uri!(elections_admin(Some(false))))
+            .get(uri!(elections_admin(
+                Some(false),
+                Option::<ElectionTiming>::None
+            )))
             .dispatch()
             .await;
 
@@ -354,10 +364,8 @@ mod tests {
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let fetched_elections = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
-            .unwrap()
-            .into_iter()
-            .collect::<Vec<_>>();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
 
         let expected = vec![
             Election::published_example().metadata,
@@ -376,7 +384,10 @@ mod tests {
         insert_elections(&db).await;
 
         let response = client
-            .get(uri!(elections_non_admin(Some(false))))
+            .get(uri!(elections_non_admin(
+                Some(false),
+                Option::<ElectionTiming>::None
+            )))
             .dispatch()
             .await;
 
@@ -385,10 +396,8 @@ mod tests {
 
         let raw_response = response.into_string().await.unwrap();
 
-        let fetched_elections = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
-            .unwrap()
-            .into_iter()
-            .collect::<Vec<_>>();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
 
         let expected = vec![Election::published_example().metadata];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
@@ -539,17 +548,18 @@ mod tests {
 
         // Try getting all archived.
         let response = client
-            .get(uri!(elections_non_admin(Some(true))))
+            .get(uri!(elections_non_admin(
+                Some(true),
+                Option::<ElectionTiming>::None
+            )))
             .dispatch()
             .await;
         assert_eq!(Status::Ok, response.status());
         assert!(response.body().is_some());
 
         let raw_response = response.into_string().await.unwrap();
-        let fetched_elections = serde_json::from_str::<Vec<ElectionSummary>>(&raw_response)
-            .unwrap()
-            .into_iter()
-            .collect::<Vec<_>>();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
 
         let expected = vec![Election::archived_example().metadata];
         for (actual, expected) in std::iter::zip(fetched_elections, expected) {
@@ -596,6 +606,102 @@ mod tests {
                     && q.constraints == question.constraints
             });
             assert!(matching.is_some());
+        }
+    }
+
+    #[backend_test(admin)]
+    async fn get_specific_timings(client: Client, db: Database) {
+        insert_elections(&db).await;
+
+        // Get future (expect draft example).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(false),
+                Some(ElectionTiming::Future)
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(Status::Ok, response.status());
+        let raw_response = response.into_string().await.unwrap();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
+        let expected = vec![Election::draft_example().metadata];
+        assert_eq!(fetched_elections.len(), expected.len());
+        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
+            assert_eq!(actual.name, expected.name);
+            assert_eq!(actual.state, expected.state);
+            assert_eq!(actual.start_time, expected.start_time);
+            assert_eq!(actual.end_time, expected.end_time);
+        }
+
+        // Get current (expect current example).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(false),
+                Some(ElectionTiming::Current)
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(Status::Ok, response.status());
+        let raw_response = response.into_string().await.unwrap();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
+        let expected = vec![Election::published_example().metadata];
+        assert_eq!(fetched_elections.len(), expected.len());
+        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
+            assert_eq!(actual.name, expected.name);
+            assert_eq!(actual.state, expected.state);
+            assert_eq!(actual.start_time, expected.start_time);
+            assert_eq!(actual.end_time, expected.end_time);
+        }
+
+        // Get current archived (expect none).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(true),
+                Some(ElectionTiming::Current)
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(Status::Ok, response.status());
+        let raw_response = response.into_string().await.unwrap();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
+        assert!(fetched_elections.is_empty());
+
+        // Get past (expect none).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(false),
+                Some(ElectionTiming::Past)
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(Status::Ok, response.status());
+        let raw_response = response.into_string().await.unwrap();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
+        assert!(fetched_elections.is_empty());
+
+        // Get past archived (expect archived example).
+        let response = client
+            .get(uri!(elections_admin(
+                Some(true),
+                Some(ElectionTiming::Past)
+            )))
+            .dispatch()
+            .await;
+        assert_eq!(Status::Ok, response.status());
+        let raw_response = response.into_string().await.unwrap();
+        let fetched_elections =
+            serde_json::from_str::<Vec<ElectionSummary>>(&raw_response).unwrap();
+        let expected = vec![Election::archived_example().metadata];
+        assert_eq!(fetched_elections.len(), expected.len());
+        for (actual, expected) in std::iter::zip(fetched_elections, expected) {
+            assert_eq!(actual.name, expected.name);
+            assert_eq!(actual.state, expected.state);
+            assert_eq!(actual.start_time, expected.start_time);
+            assert_eq!(actual.end_time, expected.end_time);
         }
     }
 

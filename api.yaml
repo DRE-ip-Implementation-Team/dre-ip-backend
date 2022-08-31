@@ -235,6 +235,16 @@ paths:
             this will show _only_ archived elections.
           schema:
             type: boolean
+        - in: query
+          name: timing
+          required: false
+          description:
+            Optionally restrict the results to elections that are in the past, current, or in the future,
+            by passing `?timing=past`, `?timing=current`, or `?timing=future`.
+            This does not take the election's state into account.
+          schema:
+            type: string
+            example: current
       responses:
         200:
           description: Successfully fetched elections.

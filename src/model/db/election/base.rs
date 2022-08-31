@@ -82,11 +82,9 @@ pub struct Question {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Duration;
+    use super::*;
 
     use crate::model::api::election::ElectionSpec;
-
-    use super::*;
 
     impl Election {
         pub fn draft_example() -> Self {
@@ -104,10 +102,7 @@ mod tests {
 
         pub fn archived_example() -> Self {
             let mut rng = rand::thread_rng();
-            let mut example: Self =
-                ElectionSpec::current_example().into_election(rng.next_u32(), rng);
-            example.metadata.start_time = example.metadata.start_time - Duration::days(100);
-            example.metadata.end_time = example.metadata.end_time - Duration::days(100);
+            let mut example: Self = ElectionSpec::past_example().into_election(rng.next_u32(), rng);
             example.metadata.state = ElectionState::Archived;
             example
         }
