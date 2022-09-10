@@ -4,7 +4,7 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::model::api::sms::Sms;
+use crate::model::api::{otp::Code, sms::Sms};
 
 #[cfg(test)]
 const TEST_RECAPTCHA_RESPONSE: &str = "this response will succeed in test mode";
@@ -15,59 +15,88 @@ const MAX_TOKEN_LIFE_MINUTES: i64 = 3;
 
 /// An authentication request for a specific SMS number.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthRequest {
+pub struct VoterChallengeRequest {
     sms: Sms, // Deliberately not public, so it can only be extracted via `verify()`
     g_recaptcha_response: String,
 }
 
-impl AuthRequest {
+impl VoterChallengeRequest {
     /// Verify the reCAPTCHA, revealing the SMS if successful.
     /// This can only be attempted once, due to the reCAPTCHA API.
-    #[cfg_attr(test, allow(unused_variables))]
     pub async fn verify(self, secret: &str, hostname: &str) -> Result<Sms, RecaptchaError> {
-        // In test mode, just check the dummy value is equal to some string.
-        #[cfg(test)]
-        if self.g_recaptcha_response == TEST_RECAPTCHA_RESPONSE {
-            Ok(self.sms)
-        } else {
-            Err(RecaptchaError::InvalidToken)
-        }
-        // When doing it for real, contact the google API.
-        #[cfg(not(test))]
-        {
-            let client = reqwest::Client::new();
-            let parameters = RecaptchaVerifyRequest {
-                secret: secret.to_string(),
-                response: self.g_recaptcha_response,
-            };
-            let response: RecaptchaVerifyResponse = client
-                .post("https://www.google.com/recaptcha/api/siteverify")
-                .form(&parameters)
-                .send()
-                .await
-                .map_err(RecaptchaError::ConnectionError)?
-                .json()
-                .await
-                .map_err(RecaptchaError::ConnectionError)?;
+        verify_recaptcha(self.g_recaptcha_response, secret, hostname)
+            .await
+            .map(|_| self.sms)
+    }
+}
 
-            if !response.success || !response.error_codes.is_empty() {
-                return Err(RecaptchaError::InvalidToken);
-            }
-            // Otherwise, we expect the other fields to be present.
-            let timestamp = response
-                .challenge_ts
-                .expect("challenge_ts was not present when success was true");
-            if timestamp + Duration::minutes(MAX_TOKEN_LIFE_MINUTES) < Utc::now() {
-                return Err(RecaptchaError::OldToken);
-            }
-            let actual_hostname = response
-                .hostname
-                .expect("hostname was not present when success was true");
-            if actual_hostname != hostname {
-                Err(RecaptchaError::WrongHostname(actual_hostname))
-            } else {
-                Ok(self.sms)
-            }
+/// A stage-2 authentication request (OTP submit).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoterVerifyRequest {
+    #[serde(flatten)]
+    code: Code, // Deliberately not public, so it can only be extracted via `verify()`
+    g_recaptcha_response: String,
+}
+
+impl VoterVerifyRequest {
+    /// Verify the reCAPTCHA, revealing the code if successful.
+    /// This can only be attempted once, due to the reCAPTCHA API.
+    pub async fn verify(self, secret: &str, hostname: &str) -> Result<Code, RecaptchaError> {
+        verify_recaptcha(self.g_recaptcha_response, secret, hostname)
+            .await
+            .map(|_| self.code)
+    }
+}
+
+/// Verify the given reCAPTCHA response by contacting the google API.
+#[cfg_attr(test, allow(unused_variables))]
+async fn verify_recaptcha(
+    response: String,
+    secret: &str,
+    hostname: &str,
+) -> Result<(), RecaptchaError> {
+    // In test mode, just check the dummy value is equal to some string.
+    #[cfg(test)]
+    if response == TEST_RECAPTCHA_RESPONSE {
+        Ok(())
+    } else {
+        Err(RecaptchaError::InvalidToken)
+    }
+    // When doing it for real, contact the google API.
+    #[cfg(not(test))]
+    {
+        let client = reqwest::Client::new();
+        let parameters = RecaptchaVerifyRequest {
+            secret: secret.to_string(),
+            response,
+        };
+        let response: RecaptchaVerifyResponse = client
+            .post("https://www.google.com/recaptcha/api/siteverify")
+            .form(&parameters)
+            .send()
+            .await
+            .map_err(RecaptchaError::ConnectionError)?
+            .json()
+            .await
+            .map_err(RecaptchaError::ConnectionError)?;
+
+        if !response.success || !response.error_codes.is_empty() {
+            return Err(RecaptchaError::InvalidToken);
+        }
+        // Otherwise, we expect the other fields to be present.
+        let timestamp = response
+            .challenge_ts
+            .expect("challenge_ts was not present when success was true");
+        if timestamp + Duration::minutes(MAX_TOKEN_LIFE_MINUTES) < Utc::now() {
+            return Err(RecaptchaError::OldToken);
+        }
+        let actual_hostname = response
+            .hostname
+            .expect("hostname was not present when success was true");
+        if actual_hostname != hostname {
+            Err(RecaptchaError::WrongHostname(actual_hostname))
+        } else {
+            Ok(())
         }
     }
 }
@@ -118,7 +147,7 @@ struct RecaptchaVerifyResponse {
 mod examples {
     use super::*;
 
-    impl AuthRequest {
+    impl VoterChallengeRequest {
         pub fn example() -> Self {
             Self {
                 sms: Sms::example(),
@@ -130,6 +159,15 @@ mod examples {
             Self {
                 sms: Sms::example(),
                 g_recaptcha_response: "not valid".to_string(),
+            }
+        }
+    }
+
+    impl VoterVerifyRequest {
+        pub fn example(code: Code) -> Self {
+            Self {
+                code,
+                g_recaptcha_response: TEST_RECAPTCHA_RESPONSE.to_string(),
             }
         }
     }

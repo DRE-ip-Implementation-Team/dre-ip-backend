@@ -12,8 +12,8 @@ use crate::{
     model::{
         api::{
             admin::AdminCredentials,
-            auth::{AuthRequest, AuthToken, AUTH_TOKEN_COOKIE},
-            otp::{Challenge, Code, CHALLENGE_COOKIE},
+            auth::{AuthToken, VoterChallengeRequest, VoterVerifyRequest, AUTH_TOKEN_COOKIE},
+            otp::{Challenge, CHALLENGE_COOKIE},
         },
         db::{
             admin::Admin,
@@ -82,7 +82,7 @@ async fn authenticate(
 #[cfg_attr(any(not(feature = "otp"), test), allow(unused_variables))]
 #[post("/auth/voter/challenge", data = "<auth_request>", format = "json")]
 async fn challenge(
-    auth_request: Json<AuthRequest>,
+    auth_request: Json<VoterChallengeRequest>,
     cookies: &CookieJar<'_>,
     config: &State<Config>,
     sender: &State<SnsClient>,
@@ -118,9 +118,9 @@ async fn challenge(
 }
 
 #[cfg_attr(not(feature = "otp"), allow(unused_variables))]
-#[post("/auth/voter/verify", data = "<code>", format = "json")]
+#[post("/auth/voter/verify", data = "<auth_request>", format = "json")]
 async fn verify(
-    code: Json<Code>,
+    auth_request: Json<VoterVerifyRequest>,
     challenge: Challenge,
     cookies: &CookieJar<'_>,
     voters: Coll<Voter>,
@@ -128,12 +128,18 @@ async fn verify(
     config: &State<Config>,
 ) -> Result<()> {
     #[cfg(feature = "otp")]
-    if challenge.code != *code {
-        // Submitted code is invalid and so the verification fails
-        return Err(Error::Status(
-            Status::Unauthorized,
-            format!("Incorrect OTP code {:?}", code),
-        ));
+    {
+        let code = auth_request
+            .0
+            .verify(config.recaptcha_secret(), config.hostname())
+            .await?;
+        if challenge.code != code {
+            // Submitted code is invalid and so the verification fails
+            return Err(Error::Status(
+                Status::Unauthorized,
+                format!("Incorrect OTP code {:?}", code),
+            ));
+        }
     }
 
     let voter = NewVoter::new(challenge.sms, config);
@@ -178,10 +184,11 @@ fn logout(cookies: &CookieJar) -> Status {
 #[cfg(test)]
 mod tests {
     use rocket::{http::ContentType, local::asynchronous::Client, serde::json::serde_json::json};
+    use std::str::FromStr;
 
     use crate::model::{
         api::{
-            otp::{Challenge, CODE_LENGTH},
+            otp::{Challenge, Code, CODE_LENGTH},
             sms::Sms,
         },
         db::admin::NewAdmin,
@@ -272,20 +279,22 @@ mod tests {
         let response = client
             .post(uri!(challenge))
             .header(ContentType::JSON)
-            .body(json!(AuthRequest::example()).to_string())
+            .body(json!(VoterChallengeRequest::example()).to_string())
             .dispatch()
             .await;
 
         assert_eq!(Status::Ok, response.status());
 
-        let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
-
         // Submit verification
-        let challenge = Challenge::from_cookie(&cookie, client.rocket().state().unwrap()).unwrap();
+        let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
+        let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())
+            .unwrap()
+            .code;
+        let verify_request = VoterVerifyRequest::example(code);
         let response = client
             .post(uri!(verify))
             .header(ContentType::JSON)
-            .body(json!(challenge.code).to_string())
+            .body(json!(verify_request).to_string())
             .dispatch()
             .await;
 
@@ -314,7 +323,7 @@ mod tests {
         client
             .post(uri!(challenge))
             .header(ContentType::JSON)
-            .body(json!(AuthRequest::example()).to_string())
+            .body(json!(VoterChallengeRequest::example()).to_string())
             .dispatch()
             .await;
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
@@ -324,7 +333,7 @@ mod tests {
         client
             .post(uri!(challenge))
             .header(ContentType::JSON)
-            .body(json!(AuthRequest::example()).to_string())
+            .body(json!(VoterChallengeRequest::example()).to_string())
             .dispatch()
             .await;
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
@@ -335,7 +344,7 @@ mod tests {
 
     #[backend_test]
     async fn invalid_voter_sms(client: Client) {
-        let mut body = json!(AuthRequest::example());
+        let mut body = json!(VoterChallengeRequest::example());
         body["sms"] = json!("5555555555");
         let response = client
             .post(uri!(challenge))
@@ -348,11 +357,11 @@ mod tests {
     }
 
     #[backend_test]
-    async fn invalid_recaptcha(client: Client) {
+    async fn invalid_recaptcha_challenge(client: Client) {
         let response = client
             .post(uri!(challenge))
             .header(ContentType::JSON)
-            .body(json!(AuthRequest::example_invalid()).to_string())
+            .body(json!(VoterChallengeRequest::example_invalid()).to_string())
             .dispatch()
             .await;
 
@@ -364,7 +373,7 @@ mod tests {
         client
             .post(uri!(challenge))
             .header(ContentType::JSON)
-            .body(json!(AuthRequest::example()).to_string())
+            .body(json!(VoterChallengeRequest::example()).to_string())
             .dispatch()
             .await;
         let cookie = client.cookies().get_private(CHALLENGE_COOKIE).unwrap();
@@ -378,11 +387,12 @@ mod tests {
             .into_iter()
             .map(|digit| char::from_digit(digit as u32, 10).unwrap())
             .collect::<String>();
+        let verify_request = VoterVerifyRequest::example(Code::from_str(&wrong_code).unwrap());
 
         let response = client
             .post(uri!(verify))
             .header(ContentType::JSON)
-            .body(json!({ "code": wrong_code }).to_string())
+            .body(json!(verify_request).to_string())
             .dispatch()
             .await;
 
@@ -402,7 +412,7 @@ mod tests {
         client
             .post(uri!(challenge))
             .header(ContentType::JSON)
-            .body(json!(AuthRequest::example()).to_string())
+            .body(json!(VoterChallengeRequest::example()).to_string())
             .dispatch()
             .await;
 
@@ -410,11 +420,12 @@ mod tests {
         let code = Challenge::from_cookie(&cookie, client.rocket().state().unwrap())
             .unwrap()
             .code;
+        let verify_request = VoterVerifyRequest::example(code);
 
         client
             .post(uri!(verify))
             .header(ContentType::JSON)
-            .body(json!(code).to_string())
+            .body(json!(verify_request).to_string())
             .dispatch()
             .await;
 

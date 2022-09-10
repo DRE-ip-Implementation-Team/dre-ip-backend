@@ -52,7 +52,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                     rocket_client
                         .post(uri!(crate::api::auth::challenge))
                         .header(rocket::http::ContentType::JSON)
-                        .body(rocket::serde::json::json!(crate::model::api::auth::AuthRequest::example()).to_string())
+                        .body(rocket::serde::json::json!(crate::model::api::auth::VoterChallengeRequest::example()).to_string())
                         .dispatch()
                         .await;
 
@@ -60,12 +60,12 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                     let cookie = cookies.get_private(crate::model::api::otp::CHALLENGE_COOKIE).unwrap();
                     let config = rocket_client.rocket().state::<crate::Config>().unwrap();
                     let challenge = crate::model::api::otp::Challenge::from_cookie(&cookie, config).unwrap();
-                    let code = challenge.code;
+                    let challenge_response = crate::model::api::auth::VoterVerifyRequest::example(challenge.code);
 
                     rocket_client
                         .post(uri!(crate::api::auth::verify))
                         .header(rocket::http::ContentType::JSON)
-                        .body(rocket::serde::json::json!(code).to_string())
+                        .body(rocket::serde::json::json!(challenge_response).to_string())
                         .dispatch()
                         .await;
                 })
