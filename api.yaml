@@ -67,7 +67,7 @@ paths:
       tags:
         - Authentication Endpoints
       requestBody:
-        description: SMS and reCAPTCHA token.
+        description: SMS and reCAPTCHA token
         required: true
         content:
           application/json:
@@ -113,31 +113,33 @@ paths:
       tags:
         - Authentication Endpoints
       requestBody:
-        description: Submitted OTP.
+        description: OTP and reCAPTCHA token
         required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                otp:
+                code:
                   type: string
                   minLength: 6
                   maxLength: 6
+                  example: "123456"
+                g_recaptcha_response:
+                  type: string
               required:
-                - otp
-              example:
-                otp: "123456"
+                - code
+                - g_recaptcha_response
       responses:
         200:
           $ref: "#/components/responses/AuthToken"
         401:
-          description: Incorrect OTP.
+          description: Incorrect OTP or invalid reCAPTCHA token.
   /auth:
     delete:
       summary: Remove authentication; log out.
       description: Removes the `auth_token` cookie.
-      security: [ ] # No token needed to logout
+      security: [ ] # No token needed to log out
       tags:
         - Authentication Endpoints
       responses:

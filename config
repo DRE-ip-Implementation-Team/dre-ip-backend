@@ -1,2 +1,2 @@
 [default]
-region=eu-west-2 # Europe (London)
+region=AWS_REGION

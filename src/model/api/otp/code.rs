@@ -138,14 +138,14 @@ pub enum ParseError {
     InvalidChar(char),
 }
 
-impl From<ParseError> for form::error::ErrorKind<'_> {
+impl From<ParseError> for ErrorKind<'_> {
     fn from(err: ParseError) -> Self {
         match err {
-            ParseError::InvalidLength(_) => form::error::ErrorKind::InvalidLength {
+            ParseError::InvalidLength(_) => ErrorKind::InvalidLength {
                 min: Some(LENGTH as u64),
                 max: Some(LENGTH as u64),
             },
-            ParseError::InvalidChar(c) => form::error::ErrorKind::Validation(Cow::Owned(format!(
+            ParseError::InvalidChar(c) => ErrorKind::Validation(Cow::Owned(format!(
                 "OTP code must only consist of digit characters. Found non-digit character: '{}'",
                 c
             ))),

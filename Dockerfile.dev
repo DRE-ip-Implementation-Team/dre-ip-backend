@@ -38,7 +38,7 @@ RUN chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
 # Copy AWS template
 RUN mkdir -p /home/${APP_USER}/.aws
 COPY ./credentials /home/${APP_USER}/.aws/credentials_template
-COPY ./config /home/${APP_USER}/.aws/config
+COPY ./config /home/${APP_USER}/.aws/config_template
 RUN chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/.aws
 
 # Copy entrypoint code
