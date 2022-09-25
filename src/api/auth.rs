@@ -24,6 +24,9 @@ use crate::{
     Config,
 };
 
+#[cfg(feature = "otp")]
+use crate::model::api::{otp::Code, sms::Sms};
+
 pub fn routes() -> Vec<Route> {
     routes![
         check_auth_admin,
@@ -94,27 +97,58 @@ async fn challenge(
         .await?;
 
     // Choose the OTP.
-    let challenge = Challenge::new(sms);
+    #[cfg_attr(any(not(feature = "otp"), test), allow(clippy::redundant_clone))]
+    let challenge = Challenge::new(sms.clone());
 
     // Send the OTP.
     #[cfg(all(feature = "otp", not(test)))]
-    sender
-        .publish()
-        .phone_number(challenge.sms.to_string())
-        .message(format!("Voter registration code: {}", challenge.code))
-        .send()
-        .await
-        .map_err(|_| {
-            Error::Status(
-                Status::InternalServerError,
-                "Failed to send message".to_string(),
-            )
-        })?;
+    {
+        use phonenumber::metadata::DATABASE;
+
+        match sms.metadata(&DATABASE).unwrap().country_code() {
+            91 => {
+                let sms_url = india_sms_url(
+                    &config.sms.userid,
+                    &config.sms.password,
+                    &challenge.code,
+                    &challenge.sms,
+                );
+                reqwest::get(sms_url).await.map_err(|err| {
+                    Error::Status(
+                        Status::new(err.status().unwrap().as_u16()),
+                        "Querying New Town SMS Server failed.".to_string(),
+                    )
+                })?;
+            }
+            _ => {
+                sender
+                    .publish()
+                    .phone_number(challenge.sms.to_string())
+                    .message(format!("Voter registration code: {}", challenge.code))
+                    .send()
+                    .await
+                    .map_err(|_| {
+                        Error::Status(
+                            Status::InternalServerError,
+                            "Failed to send message".to_string(),
+                        )
+                    })?;
+            }
+        }
+    }
 
     // Set the cookie.
     cookies.add_private(challenge.into_cookie(config));
 
     Ok(())
+}
+
+#[cfg(feature = "otp")]
+fn india_sms_url(userid: &str, password: &str, otp: &Code, sms: &Sms) -> String {
+    use phonenumber::Mode;
+
+    format!("http://esms.maxmobility.in/esms/templatemessaging.asp?userid={}&password={}&F1={}&TempId=83611&phonenumber={}",
+            userid, password, otp, sms.format().mode(Mode::E164)) // Mode E164 has no spaces as required.
 }
 
 #[cfg_attr(not(feature = "otp"), allow(unused_variables))]
@@ -195,6 +229,19 @@ mod tests {
     };
 
     use super::*;
+
+    #[cfg(feature = "otp")]
+    #[test]
+    fn india_url_formatting() {
+        let otp = Code::from_str("123456").unwrap();
+        let sms = Sms::from_str("+910123456789").unwrap();
+        let userid = "testuser";
+        let password = "testpassword";
+
+        let formatted_url = india_sms_url(userid, password, &otp, &sms);
+        let expected_url = "http://esms.maxmobility.in/esms/templatemessaging.asp?userid=testuser&password=testpassword&F1=123456&TempId=83611&phonenumber=+910123456789";
+        assert_eq!(formatted_url, expected_url);
+    }
 
     #[backend_test(admin)]
     async fn auth_check_admin(client: Client) {

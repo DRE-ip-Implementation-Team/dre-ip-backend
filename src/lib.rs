@@ -107,6 +107,9 @@ pub struct Config {
     hmac_secret: String,
     recaptcha_secret: String,
     auth_ttl: u32,
+    #[cfg(all(feature = "otp", not(test)))]
+    #[serde(flatten)]
+    sms: SmsConfig,
 }
 
 impl Config {
@@ -145,4 +148,11 @@ impl Config {
     pub fn auth_ttl(&self) -> Duration {
         Duration::seconds(self.auth_ttl.into())
     }
+}
+
+#[derive(Deserialize)]
+#[cfg_attr(any(not(feature = "otp"), test), allow(dead_code))]
+struct SmsConfig {
+    userid: String,
+    password: String,
 }
