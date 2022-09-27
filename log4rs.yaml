@@ -1,0 +1,39 @@
+# Reload the config file on this period; useful for adjusting logging without restarting the application.
+refresh_rate: 1 minute
+
+appenders:
+  console_appender:
+    kind: console
+    target: stdout
+    tty_only: false
+    encoder:
+      kind: pattern
+      pattern: "{d(%Y-%m-%d %H:%M:%S)(utc)} {h({l:<5})} {m}{n}"
+  console_appender_indented:
+    kind: console
+    target: stdout
+    tty_only: false
+    encoder:
+      kind: pattern
+      pattern: "{d(%Y-%m-%d %H:%M:%S)(utc)} {h({l:<5})}   - {m}{n}"
+
+# Disable the root logger.
+root:
+  level: off
+
+# Selectively enable logging from our crate, plus rocket errors.
+loggers:
+  dreip_backend:
+    level: info
+    appenders:
+      - console_appender
+  rocket:
+    level: error
+    appenders:
+      - console_appender
+  # Weirdly, rocket sends some messages to the `_` target.
+  # These are supposed to be indented inside a log to the `rocket` target.
+  _:
+    level: error
+    appenders:
+      - console_appender_indented

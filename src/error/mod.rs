@@ -1,9 +1,13 @@
-use crate::model::api::auth::RecaptchaError;
 use argon2::Error as Argon2Error;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use mongodb::{bson::oid::Error as OidError, error::Error as DbError};
-use rocket::{http::Status, response::Responder};
+use rocket::{
+    http::{Status, StatusClass},
+    response::Responder,
+};
 use thiserror::Error;
+
+use crate::{logging::RequestId, model::api::auth::RecaptchaError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -32,14 +36,13 @@ impl Error {
     pub fn not_found(cause: String) -> Self {
         Self::Status(Status::NotFound, cause)
     }
-}
 
-impl From<Error> for Status {
-    fn from(error: Error) -> Self {
-        match error {
+    /// Get the HTTP response status associated with this error.
+    pub fn status(&self) -> Status {
+        match self {
             Error::Db(_) => Status::InternalServerError,
             Error::Oid(_) | Error::Argon2(_) => Status::BadRequest,
-            Error::Jwt(err) => match err.into_kind() {
+            Error::Jwt(err) => match err.kind() {
                 JwtErrorKind::ExpiredSignature | JwtErrorKind::ImmatureSignature => {
                     Status::Unauthorized
                 }
@@ -49,14 +52,21 @@ impl From<Error> for Status {
                 RecaptchaError::ConnectionError(_) => Status::InternalServerError,
                 _ => Status::Unauthorized,
             },
-            Error::Status(status, _) => status,
+            Error::Status(status, _) => *status,
         }
     }
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
-    fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
-        eprintln!("{:?}", self);
-        Err(self.into())
+    fn respond_to(self, req: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
+        let status = self.status();
+        let id = req.local_cache(RequestId::next);
+        let log_msg = format!("  req{id} {self}");
+        if status.class() == StatusClass::ServerError {
+            error!("{log_msg}");
+        } else {
+            warn!("{log_msg}");
+        }
+        Err(status)
     }
 }

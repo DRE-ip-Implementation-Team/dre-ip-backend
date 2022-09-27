@@ -1,11 +1,12 @@
 use mongodb::{
     bson::doc,
+    error::Error as DbError,
     options::{FindOneAndUpdateOptions, ReturnDocument, UpdateOptions},
 };
 use rocket::http::Status;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
+use crate::error::Error;
 use crate::model::{
     common::election::{ElectionId, QuestionId},
     mongodb::Coll,
@@ -29,12 +30,12 @@ pub struct Counter {
 
 impl Counter {
     /// Atomically retrieve the next value of the counter with the given ID.
-    pub async fn next(counters: &Coll<Self>, id: &str) -> Result<u32> {
+    pub async fn next(counters: &Coll<Self>, id: &str) -> Result<u32, Error> {
         Self::reserve(counters, id, 1).await
     }
 
     /// Reserve `count` unique IDs, starting at the returned value.
-    pub async fn reserve(counters: &Coll<Self>, id: &str, count: u32) -> Result<u32> {
+    pub async fn reserve(counters: &Coll<Self>, id: &str, count: u32) -> Result<u32, Error> {
         let filter = doc! {
             "_id": id
         };
@@ -58,7 +59,7 @@ impl Counter {
 }
 
 /// Create the global election ID counter if it does not already exist.
-pub async fn ensure_election_id_counter_exists(counters: &Coll<Counter>) -> Result<()> {
+pub async fn ensure_election_id_counter_exists(counters: &Coll<Counter>) -> Result<(), DbError> {
     let filter = doc! {
         "_id": ELECTION_ID_COUNTER_ID,
     };

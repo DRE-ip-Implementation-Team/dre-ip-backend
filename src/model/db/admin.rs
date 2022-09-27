@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use mongodb::error::Error as MongoError;
+use mongodb::error::Error as DbError;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -66,7 +66,7 @@ impl DerefMut for Admin {
 
 /// Ensure at least one admin user exists. If none do, create a default admin
 /// with known credentials, allowing the system to be bootstrapped.
-pub async fn ensure_admin_exists(admins: &Coll<NewAdmin>) -> Result<(), MongoError> {
+pub async fn ensure_admin_exists(admins: &Coll<NewAdmin>) -> Result<(), DbError> {
     let num_admins = admins.count_documents(None, None).await?;
     if num_admins == 0 {
         let admin = NewAdmin::default();

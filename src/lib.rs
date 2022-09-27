@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use aws_sdk_sns::Client as SnsClient;
 use chrono::Duration;
-use mongodb::Client;
+use mongodb::{error::Error as DbError, Client};
 use rocket::{
     fairing::AdHoc,
     shield::{NoSniff, Shield},
@@ -20,6 +20,7 @@ use serde::Deserialize;
 
 pub mod api;
 pub mod error;
+pub mod logging;
 pub mod model;
 pub mod scheduled_task;
 
@@ -28,17 +29,21 @@ use crate::model::{
     mongodb::{ensure_election_id_counter_exists, Coll},
 };
 
-pub async fn build() -> Rocket<Build> {
-    rocket_for_db_and_notifier(db_client().await, &database(), notifier().await).await
+pub async fn build() -> Result<Rocket<Build>, DbError> {
+    rocket_for_db_and_sns_client(db_client().await, &database(), sns_client().await).await
 }
 
 pub(crate) async fn db_client() -> Client {
     let db_uri = std::env::var("db_uri").expect("db_uri envvar wasn't present");
-    Client::with_uri_str(db_uri).await.unwrap()
+    let client = Client::with_uri_str(db_uri).await.unwrap();
+    info!("Loaded database config");
+    client
 }
 
-pub(crate) async fn notifier() -> SnsClient {
-    SnsClient::new(&aws_config::load_from_env().await)
+pub(crate) async fn sns_client() -> SnsClient {
+    let client = SnsClient::new(&aws_config::load_from_env().await);
+    info!("Loaded Amazon SNS config");
+    client
 }
 
 /// Get the name of the database to use.
@@ -50,46 +55,45 @@ fn database() -> String {
     #[cfg(test)]
     {
         let random: u32 = rand::random();
-        let db = format!("test{}", random);
-        println!("Using database {}", db);
+        let db = format!("test{random}");
+        info!("Using database {db}");
         db
     }
 }
 
 /// Used in both the application entry point and the `backend_test` macro
-pub(crate) async fn rocket_for_db_and_notifier(
+pub(crate) async fn rocket_for_db_and_sns_client(
     client: Client,
     db: &str,
-    notifier: SnsClient,
-) -> Rocket<Build> {
+    sns_client: SnsClient,
+) -> Result<Rocket<Build>, DbError> {
     // Create the database reference.
     let db = client.database(db);
 
+    info!("Synchronising with database...");
+
     // Create an election finalizer for every election that needs one.
     let mut election_finalizers = RawElectionFinalizers::new();
-    election_finalizers
-        .schedule_elections(&db)
-        .await
-        .expect("Failed to contact database during election finalizer init");
+    election_finalizers.schedule_elections(&db).await?;
 
     // Ensure there is at least one admin user.
-    ensure_admin_exists(&Coll::from_db(&db))
-        .await
-        .expect("Failed to contact database during admin user init");
+    ensure_admin_exists(&Coll::from_db(&db)).await?;
 
     // Ensure the global election ID counter exists.
-    ensure_election_id_counter_exists(&Coll::from_db(&db))
-        .await
-        .expect("Failed to contact database during election id counter init");
+    ensure_election_id_counter_exists(&Coll::from_db(&db)).await?;
 
-    rocket::build()
+    info!("...database synchronisation complete!");
+    info!("Mounting routes, fairings, and state");
+
+    Ok(rocket::build()
         .mount("/", api::routes())
         .attach(Shield::default().disable::<NoSniff>())
         .attach(AdHoc::config::<Config>())
+        .attach(logging::RequestLogger)
         .manage(client)
         .manage(db)
-        .manage(notifier)
-        .manage(Arc::new(Mutex::new(election_finalizers)))
+        .manage(sns_client)
+        .manage(Arc::new(Mutex::new(election_finalizers))))
 }
 
 /// Convenient synonym for accessing state.

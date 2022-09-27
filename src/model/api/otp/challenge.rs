@@ -31,7 +31,6 @@ impl Challenge {
     /// Create a new challenge with a random code.
     pub fn new(sms: Sms) -> Self {
         let code = Code::random();
-        println!("{}", code);
         Self { sms, code }
     }
 

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use mongodb::{bson::doc, Database};
+use mongodb::{bson::doc, error::Error as DbError, Database};
 use rocket::futures::TryStreamExt;
 use rocket::http::Status;
 
-use crate::error::{Error, Result};
+use crate::error::Error;
 use crate::model::{
     common::{
         ballot::{Audited, Unconfirmed},
@@ -16,7 +16,7 @@ use crate::model::{
 use crate::scheduled_task::ScheduledTask;
 
 /// Election finalizers: scheduled tasks for auditing unconfirmed ballots at the end of an election.
-pub struct ElectionFinalizers(pub HashMap<ElectionId, ScheduledTask<Result<()>>>);
+pub struct ElectionFinalizers(pub HashMap<ElectionId, ScheduledTask<Result<(), Error>>>);
 
 impl ElectionFinalizers {
     /// Create an empty set of election finalizers.
@@ -25,7 +25,7 @@ impl ElectionFinalizers {
     }
 
     /// Schedule a finalizer for every published and archived election.
-    pub async fn schedule_elections(&mut self, db: &Database) -> Result<()> {
+    pub async fn schedule_elections(&mut self, db: &Database) -> Result<(), DbError> {
         // Get all the relevant elections.
         let filter = doc! {
             "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
@@ -60,7 +60,7 @@ impl ElectionFinalizers {
 
     /// Immediately trigger the finalizer for the given election.
     /// If the finalizer was not previously scheduled, this will have no effect.
-    pub async fn finalize_election(&mut self, election_id: ElectionId) -> Result<()> {
+    pub async fn finalize_election(&mut self, election_id: ElectionId) -> Result<(), Error> {
         match self.0.remove(&election_id) {
             Some(finalizer) => {
                 finalizer.trigger_now();
@@ -80,7 +80,7 @@ impl ElectionFinalizers {
         election_id: ElectionId,
         unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
         audited_ballots: Coll<Ballot<Audited>>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         // Get all unconfirmed ballots.
         let filter = doc! {
             "election_id": election_id,

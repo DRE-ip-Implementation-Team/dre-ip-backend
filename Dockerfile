@@ -44,6 +44,9 @@ RUN chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/.aws
 # Copy entrypoint code
 COPY ./entrypoint.sh ${APP_DIR}
 
+# Copy logging config
+COPY ./log4rs.yaml ${APP_DIR}
+
 # Configure runtime
 ENV ROCKET_ADDRESS=0.0.0.0
 EXPOSE 8000
