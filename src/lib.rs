@@ -89,7 +89,7 @@ pub(crate) async fn rocket_for_db_and_sns_client(
         .mount("/", api::routes())
         .attach(Shield::default().disable::<NoSniff>())
         .attach(AdHoc::config::<Config>())
-        .attach(logging::RequestLogger)
+        .attach(logging::Logger)
         .manage(client)
         .manage(db)
         .manage(sns_client)

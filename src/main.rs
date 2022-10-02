@@ -16,14 +16,6 @@ async fn run() -> Result<(), Error> {
     info!("Configuring server...");
     let rocket = dreip_backend::build().await?.ignite().await?;
     info!("...server configured!");
-    let protocol = rocket
-        .config()
-        .tls_enabled()
-        .then(|| "https")
-        .unwrap_or("http");
-    let ip = &rocket.config().address;
-    let port = &rocket.config().port;
-    info!("Server launched on {protocol}://{ip}:{port}");
     // Disable rocket logging from now on.
     log4rs_dynamic_filters::DynamicLevelFilter::set("rocket", LevelFilter::Off);
     let _ = rocket.launch().await?;
@@ -33,8 +25,11 @@ async fn run() -> Result<(), Error> {
 #[rocket::main]
 async fn main() {
     // Set up logging.
-    log4rs::init_file("log4rs.yaml", log4rs_dynamic_filters::default_deserializers())
-        .expect("Failed to initialise logging");
+    log4rs::init_file(
+        "log4rs.yaml",
+        log4rs_dynamic_filters::default_deserializers(),
+    )
+    .expect("Failed to initialise logging");
     info!("Initialised logging");
 
     // Launch server.

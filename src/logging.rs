@@ -2,12 +2,10 @@ use rocket::{
     fairing::{Fairing, Info, Kind},
     http::StatusClass,
     request::{FromRequest, Outcome},
-    Data, Request, Response,
+    Data, Orbit, Request, Response, Rocket,
 };
 use std::fmt::{Display, Formatter};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A unique identifier for a particular request.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -37,18 +35,28 @@ impl<'r> FromRequest<'r> for &'r RequestId {
     }
 }
 
-/// A rocket fairing that logs incoming requests and outgoing responses.
-/// It also tags them with a unique integer identifier to make tracking them easier.
+/// A rocket fairing that does global logging, e.g. logging every request and response.
 #[derive(Debug, Copy, Clone)]
-pub struct RequestLogger;
+pub struct Logger;
 
 #[rocket::async_trait]
-impl Fairing for RequestLogger {
+impl Fairing for Logger {
     fn info(&self) -> Info {
         Info {
-            name: "Request/Response Logger",
-            kind: Kind::Request | Kind::Response,
+            name: "Logger",
+            kind: Kind::Liftoff | Kind::Request | Kind::Response | Kind::Shutdown,
         }
+    }
+
+    async fn on_liftoff(&self, rocket: &Rocket<Orbit>) {
+        let protocol = rocket
+            .config()
+            .tls_enabled()
+            .then(|| "https")
+            .unwrap_or("http");
+        let ip = &rocket.config().address;
+        let port = &rocket.config().port;
+        info!("Server launched on {protocol}://{ip}:{port}");
     }
 
     async fn on_request(&self, req: &mut Request<'_>, _data: &mut Data<'_>) {
@@ -85,5 +93,9 @@ impl Fairing for RequestLogger {
             StatusClass::ClientError => warn!("{log_msg}"),
             _ => info!("{log_msg}"),
         }
+    }
+
+    async fn on_shutdown(&self, _rocket: &Rocket<Orbit>) {
+        warn!("Shutdown requested, stopping gracefully...");
     }
 }
