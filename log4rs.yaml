@@ -6,34 +6,47 @@ appenders:
     kind: console
     target: stdout
     tty_only: false
-    encoder:
+    encoder: &main_pattern
       kind: pattern
       pattern: "{d(%Y-%m-%d %H:%M:%S)(utc)} {h({l:<5})} {m}{n}"
-  console_appender_indented:
+  rocket_console_appender:
+    kind: console
+    target: stdout
+    tty_only: false
+    encoder: *main_pattern
+    filters: &rocket_filter
+      - kind: dynamic_level
+        name: rocket
+        default: info
+  rocket_console_appender_indented:
     kind: console
     target: stdout
     tty_only: false
     encoder:
       kind: pattern
       pattern: "{d(%Y-%m-%d %H:%M:%S)(utc)} {h({l:<5})}   - {m}{n}"
+    filters: *rocket_filter
 
 # Disable the root logger.
 root:
   level: off
 
-# Selectively enable logging from our crate, plus rocket errors.
+# Selectively enable logging from our crate and rocket.
+# Logging from rocket is controlled by a DynamicLevelFilter which filters the messages
+# at a level set by the server itself, not this config. This is used to log verbosely
+# during startup and then disable rocket logging whilst running.
 loggers:
   dreip_backend:
     level: info
     appenders:
       - console_appender
   rocket:
-    level: error
+    level: info
     appenders:
-      - console_appender
+      - rocket_console_appender
   # Weirdly, rocket sends some messages to the `_` target.
   # These are supposed to be indented inside a log to the `rocket` target.
   _:
-    level: error
+    level: info
     appenders:
-      - console_appender_indented
+      - rocket_console_appender_indented

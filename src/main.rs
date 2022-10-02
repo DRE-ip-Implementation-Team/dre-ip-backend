@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::{error, info, LevelFilter};
 use mongodb::error::Error as DbError;
 use rocket::Error as RocketError;
 use thiserror::Error;
@@ -24,6 +24,8 @@ async fn run() -> Result<(), Error> {
     let ip = &rocket.config().address;
     let port = &rocket.config().port;
     info!("Server launched on {protocol}://{ip}:{port}");
+    // Disable rocket logging from now on.
+    log4rs_dynamic_filters::DynamicLevelFilter::set("rocket", LevelFilter::Off);
     let _ = rocket.launch().await?;
     Ok(())
 }
@@ -31,7 +33,8 @@ async fn run() -> Result<(), Error> {
 #[rocket::main]
 async fn main() {
     // Set up logging.
-    log4rs::init_file("log4rs.yaml", Default::default()).expect("Failed to initialise logging");
+    log4rs::init_file("log4rs.yaml", log4rs_dynamic_filters::default_deserializers())
+        .expect("Failed to initialise logging");
     info!("Initialised logging");
 
     // Launch server.

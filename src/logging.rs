@@ -5,7 +5,9 @@ use rocket::{
     Data, Request, Response,
 };
 use std::fmt::{Display, Formatter};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+};
 
 /// A unique identifier for a particular request.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -52,17 +54,12 @@ impl Fairing for RequestLogger {
     async fn on_request(&self, req: &mut Request<'_>, _data: &mut Data<'_>) {
         // Assign an ID.
         let id = req.local_cache(RequestId::next);
-        // Get the source IP.
-        let ip = req
-            .client_ip()
-            .map(|ip| ip.to_string())
-            .unwrap_or_else(|| "unknown ip".to_string());
         // Get the HTTP method.
         let method = req.method();
         // Get the request URI.
         let uri = req.uri();
         // Log the incoming request.
-        info!("->req{} {} {} {}", id, ip, method, uri);
+        info!("->req{id} {method} {uri}");
     }
 
     async fn on_response<'r>(&self, req: &'r Request<'_>, res: &mut Response<'r>) {
@@ -75,14 +72,14 @@ impl Fairing for RequestLogger {
             Some(r) => {
                 let mut str = r.uri.to_string();
                 if let Some(ref name) = r.name {
-                    str = format!("{} ({})", name, str);
+                    str = format!("{name} ({str})");
                 }
                 str
             }
             None => "UNKNOWN ROUTE".to_string(),
         };
         // Log the outgoing response.
-        let log_msg = format!("<-rsp{} {} {}", id, code, route);
+        let log_msg = format!("<-rsp{id} {code} {route}");
         match code.class() {
             StatusClass::ServerError => error!("{log_msg}"),
             StatusClass::ClientError => warn!("{log_msg}"),
