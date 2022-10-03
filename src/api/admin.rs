@@ -18,12 +18,11 @@ use crate::{
             admin::{Admin, NewAdmin},
             ballot::{AnyBallot, Ballot},
             candidate_totals::CandidateTotals,
-            election::Election,
+            election::{Election, ElectionFinalizers},
             voter::Voter,
         },
         mongodb::{ballot_counter_id, u32_id_filter, Coll, Counter, ELECTION_ID_COUNTER_ID},
     },
-    ElectionFinalizers,
 };
 
 pub fn routes() -> Vec<Route> {
@@ -353,25 +352,27 @@ mod tests {
         tokio,
     };
 
-    use crate::model::{
-        api::{
-            election::{ElectionSpec, QuestionSpec},
-            sms::Sms,
+    use crate::{
+        config::Config,
+        model::{
+            api::{
+                election::{ElectionSpec, QuestionSpec},
+                sms::Sms,
+            },
+            common::{
+                allowed_questions::AllowedQuestions,
+                ballot::{Audited, Confirmed, Unconfirmed},
+            },
+            db::{
+                admin::DEFAULT_ADMIN_USERNAME,
+                ballot::{Ballot, BallotCore},
+                candidate_totals::NewCandidateTotals,
+                election::ElectionMetadata,
+                voter::NewVoter,
+            },
+            mongodb::{Id, MongoCollection},
         },
-        common::{
-            allowed_questions::AllowedQuestions,
-            ballot::{Audited, Confirmed, Unconfirmed},
-        },
-        db::{
-            admin::DEFAULT_ADMIN_USERNAME,
-            ballot::{Ballot, BallotCore},
-            candidate_totals::NewCandidateTotals,
-            election::ElectionMetadata,
-            voter::NewVoter,
-        },
-        mongodb::{Id, MongoCollection},
     };
-    use crate::Config;
 
     use super::*;
 

@@ -11,12 +11,12 @@ use rocket::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::config::Config;
 use crate::error::Error;
 use crate::model::{
     db::{admin::Admin, voter::Voter},
     mongodb::{Coll, Id},
 };
-use crate::Config;
 
 use super::user::{Rights, User};
 

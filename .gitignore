@@ -12,5 +12,6 @@ tags*
 
 # Local environment variables
 /env
+/.env
 
 *.key

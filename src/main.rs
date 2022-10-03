@@ -1,20 +1,9 @@
 use log::{error, info, LevelFilter};
-use mongodb::error::Error as DbError;
 use rocket::Error as RocketError;
-use thiserror::Error;
 
-/// Errors that are critical to the entire server.
-#[derive(Debug, Error)]
-enum Error {
-    #[error("Failed to contact database during launch: {0}")]
-    DbLaunchError(#[from] DbError),
-    #[error(transparent)]
-    RocketError(#[from] RocketError),
-}
-
-async fn run() -> Result<(), Error> {
+async fn run() -> Result<(), RocketError> {
     info!("Configuring server...");
-    let rocket = dreip_backend::build().await?.ignite().await?;
+    let rocket = dreip_backend::build().ignite().await?;
     info!("...server configured!");
     // Disable rocket logging from now on.
     log4rs_dynamic_filters::DynamicLevelFilter::set("rocket", LevelFilter::Off);

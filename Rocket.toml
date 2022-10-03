@@ -1,4 +1,22 @@
 [default]
-db_uri = "mongodb://localhost:27017"
+ident = false  # Do not self-identify as Rocket on responses.
+hostname = "localhost"
 otp_ttl = 300
 auth_ttl = 3600
+
+# ===Other config needed===
+# Most likely, you want to set these via environment variables, e.g. ROCKET_DB_URI.
+# You can also write them in this file on a production system, but obviously NEVER
+# check secrets into version control.
+
+# Non-secret connection information:
+# aws_region            (AWS region string, e.g. eu-west-2)
+# aws_access_key_id     (AWS user ID)
+
+# Secrets:
+# db_uri                (mongodb connection URI, contains password if needed)
+# jwt_secret            (arbitrary bytes to form the JWT secret key)
+# recaptcha_secret      (the recaptcha secret access token)
+# hmac_secret           (arbitrary bytes to form the HMAC secret key)
+# secret_key            (a full key for Rocket's built-in encryption, 44 base64-encoded characters)
+# aws_secret_access_key (the AWS secret access token)

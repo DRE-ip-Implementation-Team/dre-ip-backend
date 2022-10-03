@@ -845,6 +845,7 @@ version = "0.1.0"
 dependencies = [
  "aws-config",
  "aws-sdk-sns",
+ "aws-types",
  "backend-test",
  "chrono",
  "clap",

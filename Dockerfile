@@ -31,25 +31,17 @@ RUN apt-get update \
     && apt-get install -y ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy config
+COPY ./Rocket.toml ${APP_DIR}
+COPY ./log4rs.yaml ${APP_DIR}
+
 # Copy executable from build stage
 COPY --from=build ${BUILD_DIR}/target/release/dreip-backend ${APP_DIR}/dreip-backend
 RUN chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
-
-# Copy AWS template
-RUN mkdir -p /home/${APP_USER}/.aws
-COPY ./credentials /home/${APP_USER}/.aws/credentials_template
-COPY ./config /home/${APP_USER}/.aws/config_template
-RUN chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/.aws
-
-# Copy entrypoint code
-COPY ./entrypoint.sh ${APP_DIR}
-
-# Copy logging config
-COPY ./log4rs.yaml ${APP_DIR}
 
 # Configure runtime
 ENV ROCKET_ADDRESS=0.0.0.0
 EXPOSE 8000
 USER ${APP_USER}
 WORKDIR ${APP_DIR}
-CMD bash -c "./entrypoint.sh && ./dreip-backend"
+CMD ["./dreip-backend"]

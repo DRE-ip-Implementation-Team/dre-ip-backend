@@ -37,10 +37,10 @@ impl<'r> FromRequest<'r> for &'r RequestId {
 
 /// A rocket fairing that does global logging, e.g. logging every request and response.
 #[derive(Debug, Copy, Clone)]
-pub struct Logger;
+pub struct LoggerFairing;
 
 #[rocket::async_trait]
-impl Fairing for Logger {
+impl Fairing for LoggerFairing {
     fn info(&self) -> Info {
         Info {
             name: "Logger",

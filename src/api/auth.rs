@@ -8,6 +8,7 @@ use rocket::{
 };
 
 use crate::{
+    config::Config,
     error::{Error, Result},
     model::{
         api::{
@@ -21,7 +22,6 @@ use crate::{
         },
         mongodb::{Coll, Id},
     },
-    Config,
 };
 
 pub fn routes() -> Vec<Route> {

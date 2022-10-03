@@ -2,7 +2,13 @@ use std::collections::HashMap;
 
 use mongodb::{bson::doc, error::Error as DbError, Database};
 use rocket::futures::TryStreamExt;
-use rocket::http::Status;
+use rocket::{
+    fairing::{Fairing, Info, Kind},
+    http::Status,
+    tokio::sync::Mutex,
+    Build, Rocket,
+};
+use std::sync::Arc;
 
 use crate::error::Error;
 use crate::model::{
@@ -16,9 +22,12 @@ use crate::model::{
 use crate::scheduled_task::ScheduledTask;
 
 /// Election finalizers: scheduled tasks for auditing unconfirmed ballots at the end of an election.
-pub struct ElectionFinalizers(pub HashMap<ElectionId, ScheduledTask<Result<(), Error>>>);
+pub struct RawElectionFinalizers(pub HashMap<ElectionId, ScheduledTask<Result<(), Error>>>);
 
-impl ElectionFinalizers {
+/// `ElectionFinalizers` are always accessed behind an Arc-Mutex for thread safety.
+pub type ElectionFinalizers = Arc<Mutex<RawElectionFinalizers>>;
+
+impl RawElectionFinalizers {
     /// Create an empty set of election finalizers.
     pub fn new() -> Self {
         Self(HashMap::new())
@@ -104,8 +113,46 @@ impl ElectionFinalizers {
     }
 }
 
-impl Default for ElectionFinalizers {
+impl Default for RawElectionFinalizers {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// A fairing that schedules finalizers for all applicable elections
+/// during Rocket ignition, and places an `ElectionFinalizers` into managed state.
+/// This fairing depends on the database being available in managed state,
+/// and so must be attached after the fairing responsible for that.
+pub struct ElectionFinalizerFairing;
+
+#[rocket::async_trait]
+impl Fairing for ElectionFinalizerFairing {
+    fn info(&self) -> Info {
+        Info {
+            name: "Election Finalizers",
+            kind: Kind::Ignite,
+        }
+    }
+
+    async fn on_ignite(&self, mut rocket: Rocket<Build>) -> rocket::fairing::Result {
+        // Create an election finalizer for every election that needs one.
+        info!("Scheduling election finalizers...");
+        let mut election_finalizers = RawElectionFinalizers::new();
+        let db = match rocket.state::<Database>() {
+            Some(db) => db,
+            None => {
+                error!("Database was not available when scheduling finalizers");
+                return Err(rocket);
+            }
+        };
+        if let Err(e) = election_finalizers.schedule_elections(db).await {
+            error!("Failed to schedule election finalizers: {e}");
+            return Err(rocket);
+        }
+        info!("...election finalizers scheduled!");
+
+        // Manage the state.
+        rocket = rocket.manage(Arc::new(Mutex::new(election_finalizers)));
+        Ok(rocket)
     }
 }

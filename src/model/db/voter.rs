@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::{
+    config::Config,
     model::{
         api::sms::Sms,
         common::{allowed_questions::AllowedQuestions, election::ElectionId},
         mongodb::{serde_string_map, Id},
     },
-    Config,
 };
 
 pub type HmacSha256 = Hmac<Sha256>;
