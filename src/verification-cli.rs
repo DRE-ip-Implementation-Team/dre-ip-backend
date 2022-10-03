@@ -8,7 +8,7 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::BufReader;
 
-use clap::{Arg, ArgMatches, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use dre_ip::{DreipGroup as DreipGroupTrait, Serializable};
 use rocket::serde::json::serde_json;
 
@@ -28,18 +28,18 @@ EXIT CODES:
 
 const RESULTS_PATH: &str = "RESULTS_PATH";
 
-const RESULTS_PATH_HELP: &str = "The path to a JSON dump of a specific question, \
+const RESULTS_PATH_HELP: &str = "The path to a JSON dump of a specific question,\n\
 as returned by `GET /elections/<election_id>/<question_id>/dump`";
 
 /// Construct the CLI configuration.
-fn cli() -> Command<'static> {
+fn cli() -> Command {
     // Make the build dirty when the toml changes.
     include_str!("../Cargo.toml");
 
     clap::command!(PROGRAM_NAME).about(ABOUT_TEXT).arg(
         Arg::new(RESULTS_PATH)
             .help(RESULTS_PATH_HELP)
-            .takes_value(true)
+            .action(ArgAction::Set)
             .required(true),
     )
 }
@@ -205,7 +205,7 @@ fn verify(path: &str) -> Result<Vec<FriendlyResults>, Error> {
 
 /// Run verification, report the result, and return the exit code.
 fn run(args: &ArgMatches) -> u8 {
-    let path = args.value_of(RESULTS_PATH).unwrap(); // Required argument is guaranteed to be present.
+    let path: &String = args.get_one(RESULTS_PATH).unwrap(); // Required argument is guaranteed to be present.
     match verify(path) {
         Ok(friendly_results) => {
             println!("Verification succeeded.");

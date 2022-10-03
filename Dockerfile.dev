@@ -1,5 +1,5 @@
 # Stage 1: build
-FROM rust:1.62-bullseye as build
+FROM rust:1.64-bullseye as build
 ARG BUILD_DIR=/app
 
 # Build dependencies only (separated for caching)
@@ -13,7 +13,7 @@ RUN rm -r src
 
 # Build app
 COPY ./src ./src
-RUN cargo build
+RUN cargo build --no-default-features  # Disable OTP authentication.
 
 # Stage 2: run
 FROM debian:bullseye-slim

@@ -1,5 +1,5 @@
 # Stage 1: build
-FROM rust:1.62-bullseye as build
+FROM rust:1.64-bullseye as build
 ARG BUILD_DIR=/app
 
 # Build dependencies only (separated for caching)
