@@ -49,11 +49,11 @@ impl Fairing for LoggerFairing {
     }
 
     async fn on_liftoff(&self, rocket: &Rocket<Orbit>) {
-        let protocol = rocket
-            .config()
-            .tls_enabled()
-            .then(|| "https")
-            .unwrap_or("http");
+        let protocol = if rocket.config().tls_enabled() {
+            "https"
+        } else {
+            "http"
+        };
         let ip = &rocket.config().address;
         let port = &rocket.config().port;
         info!("Server launched on {protocol}://{ip}:{port}");

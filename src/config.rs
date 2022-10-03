@@ -152,7 +152,7 @@ impl Fairing for DatabaseFairing {
 /// Get the name of the database to use (production version).
 #[cfg(not(test))]
 fn get_database_name() -> String {
-    return "dreip".to_string();
+    "dreip".to_string()
 }
 
 /// Get the name of the database to use (test version).
