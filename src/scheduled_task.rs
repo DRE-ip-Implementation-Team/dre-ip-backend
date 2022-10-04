@@ -36,6 +36,7 @@ where
         let task_signal = signal.clone();
         let task_handle = tokio::spawn(async move {
             task_signal.notified().await;
+            trace!("Triggering task that was scheduled for {}", run_at);
             task.await
         });
 
@@ -56,13 +57,21 @@ where
 
     /// Cancel the task. Returns true iff it had already completed before we could cancel it.
     pub async fn cancel(self) -> bool {
+        trace!("Cancelling scheduled task...");
         self.task_handle.abort();
         self.wait_handle.abort();
-        self.task_handle.await.is_ok()
+        let result = self.task_handle.await.is_ok();
+        if result {
+            trace!("...but it had already completed");
+        } else {
+            trace!("...scheduled task cancelled");
+        }
+        result
     }
 
     /// Trigger the task now instead of waiting till the original time.
     pub fn trigger_now(&self) {
+        trace!("Manually triggering scheduled task");
         self.wait_handle.abort();
         self.signal.notify_one();
     }

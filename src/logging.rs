@@ -20,18 +20,18 @@ impl Display for RequestId {
 impl RequestId {
     /// Atomically get the next ID. This wraps around back to zero if you somehow exceed a usize.
     pub fn next() -> RequestId {
-        static REQUEST_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        static REQUEST_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
         RequestId(REQUEST_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
     }
 }
 
 /// Allow the ID to be accessed via request guard.
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for &'r RequestId {
+impl<'r> FromRequest<'r> for RequestId {
     type Error = (); // No errors possible, use the `!` type once stabilised.
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        Outcome::Success(req.local_cache(RequestId::next))
+        Outcome::Success(*req.local_cache(RequestId::next))
     }
 }
 

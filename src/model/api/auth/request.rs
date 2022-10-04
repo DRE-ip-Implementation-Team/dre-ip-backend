@@ -113,8 +113,8 @@ pub enum RecaptchaError {
     /// The token was more than `MAX_TOKEN_LIFE` minutes old.
     #[error("Invalid reCAPTCHA (too old)")]
     OldToken,
-    #[error("Invalid reCAPTCHA (bad hostname '{0}')")]
     /// The token came from the wrong site.
+    #[error("Invalid reCAPTCHA (bad hostname '{0}')")]
     WrongHostname(String),
 }
 

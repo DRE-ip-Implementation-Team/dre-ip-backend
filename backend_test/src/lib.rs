@@ -33,11 +33,13 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         .and_then(|arg| {
             if arg == "admin" {
                 Some(quote! {
+                    log::trace!("Inserting admin into database");
                     crate::model::mongodb::Coll::<crate::model::db::admin::NewAdmin>::from_db(&db)
                         .insert_one(crate::model::db::admin::NewAdmin::example(), None)
                         .await
                         .unwrap();
 
+                    log::trace!("Pre-authenticating as admin");
                     rocket_client
                         .post(uri!(crate::api::auth::authenticate))
                         .header(rocket::http::ContentType::JSON)
@@ -49,6 +51,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                 Some(quote! {
                     use crate::model::api::sms::Sms;
 
+                    log::trace!("Pre-authenticating as voter (stage 1)");
                     rocket_client
                         .post(uri!(crate::api::auth::challenge))
                         .header(rocket::http::ContentType::JSON)
@@ -62,6 +65,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                     let challenge = crate::model::api::otp::Challenge::from_cookie(&cookie, config).unwrap();
                     let challenge_response = crate::model::api::auth::VoterVerifyRequest::example(challenge.code);
 
+                    log::trace!("Pre-authenticating as voter (stage 2)");
                     rocket_client
                         .post(uri!(crate::api::auth::verify))
                         .header(rocket::http::ContentType::JSON)
@@ -81,12 +85,15 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
         fn #name() {
             /// Test setup.
             async fn setup() -> (rocket::local::asynchronous::Client, mongodb::Database) {
+                log::debug!("Performing test setup...");
                 let rocket_client = rocket::local::asynchronous::Client::tracked(crate::build())
                     .await
                     .unwrap();
                 let db = rocket_client.rocket().state::<mongodb::Database>().unwrap().clone();
 
                 #maybe_login
+
+                log::debug!("...test setup complete!");
 
                 (rocket_client, db)
             }
@@ -96,7 +103,9 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
 
             /// Test cleanup.
             async fn cleanup(db: mongodb::Database) {
+                log::debug!("Performing test cleanup...");
                 db.drop(None).await.unwrap();
+                log::debug!("...test cleanup complete!");
             }
 
             // Create an async runtime. We need a separate one for inside and

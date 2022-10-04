@@ -10,16 +10,18 @@ use rocket::{
 };
 use std::sync::Arc;
 
-use crate::error::Error;
-use crate::model::{
-    common::{
-        ballot::{Audited, Unconfirmed},
-        election::{ElectionId, ElectionState},
+use crate::{
+    error::Error,
+    model::{
+        common::{
+            ballot::{Audited, Unconfirmed},
+            election::{ElectionId, ElectionState},
+        },
+        db::{ballot::Ballot, election::Election},
+        mongodb::Coll,
     },
-    db::{ballot::Ballot, election::Election},
-    mongodb::Coll,
+    scheduled_task::ScheduledTask,
 };
-use crate::scheduled_task::ScheduledTask;
 
 /// Election finalizers: scheduled tasks for auditing unconfirmed ballots at the end of an election.
 pub struct RawElectionFinalizers(pub HashMap<ElectionId, ScheduledTask<Result<(), Error>>>);
@@ -90,26 +92,50 @@ impl RawElectionFinalizers {
         unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
         audited_ballots: Coll<Ballot<Audited>>,
     ) -> Result<(), Error> {
-        // Get all unconfirmed ballots.
-        let filter = doc! {
-            "election_id": election_id,
-            "state": Unconfirmed,
-        };
-        let ballots: Vec<_> = unconfirmed_ballots
-            .find(filter, None)
-            .await?
-            .try_collect()
-            .await?;
-        // Audit them. Bulk operation support isn't in rust-mongodb yet,
-        // so we have to do them individually.
-        for ballot in ballots {
-            let ballot = ballot.audit();
-            let result = audited_ballots
-                .replace_one(ballot.internal_id.as_doc(), &ballot, None)
+        /// Nested function for error handling.
+        async fn finalize(
+            election_id: ElectionId,
+            unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
+            audited_ballots: Coll<Ballot<Audited>>,
+        ) -> Result<(), Error> {
+            debug!("Running finalizer for election {election_id}");
+            // Get all unconfirmed ballots.
+            let filter = doc! {
+                "election_id": election_id,
+                "state": Unconfirmed,
+            };
+            let ballots: Vec<_> = unconfirmed_ballots
+                .find(filter, None)
+                .await?
+                .try_collect()
                 .await?;
-            assert_eq!(result.modified_count, 1);
+            // Audit them. Bulk operation support isn't in rust-mongodb yet,
+            // so we have to do them individually.
+            // We deliberately do not do this in a transaction as a partial
+            // audit is still better than nothing.
+            let num_ballots = ballots.len();
+            for ballot in ballots {
+                let ballot = ballot.audit();
+                let result = audited_ballots
+                    .replace_one(ballot.internal_id.as_doc(), &ballot, None)
+                    .await?;
+                assert_eq!(result.modified_count, 1);
+            }
+            if num_ballots > 0 {
+                warn!("Finalized election {election_id}, audited {num_ballots} ballots");
+            } else {
+                debug!("Finalizer for election {election_id} had nothing to do");
+            }
+            Ok(())
         }
-        Ok(())
+
+        let result = finalize(election_id, unconfirmed_ballots, audited_ballots).await;
+        if let Err(ref e) = result {
+            error!("Finalizer for election {election_id} failed, unconfirmed ballots might be leaked: {e}");
+            error!("Failed finalizer will be retried on next server boot");
+            // TODO: retry automatically
+        }
+        result
     }
 }
 

@@ -4,6 +4,7 @@ use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, Stat
 
 use crate::{
     error::{Error, Result},
+    logging::RequestId,
     model::{
         api::{
             admin::AdminCredentials,
@@ -39,7 +40,12 @@ pub fn routes() -> Vec<Route> {
 }
 
 #[get("/admins")]
-async fn get_admins(_token: AuthToken<Admin>, admins: Coll<Admin>) -> Result<Json<Vec<String>>> {
+async fn get_admins(
+    token: AuthToken<Admin>,
+    admins: Coll<Admin>,
+    request_id: RequestId,
+) -> Result<Json<Vec<String>>> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     let admin_list: Vec<Admin> = admins.find(None, None).await?.try_collect().await?;
     let admin_names = admin_list
         .into_iter()
@@ -50,10 +56,12 @@ async fn get_admins(_token: AuthToken<Admin>, admins: Coll<Admin>) -> Result<Jso
 
 #[post("/admins", data = "<new_admin>", format = "json")]
 async fn create_admin(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     new_admin: Json<AdminCredentials>,
     admins: Coll<NewAdmin>,
+    request_id: RequestId,
 ) -> Result<()> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     // Check username uniqueness.
     let filter = doc! {
         "username": &new_admin.username,
@@ -71,16 +79,22 @@ async fn create_admin(
         .0
         .try_into()
         .map_err(|_| Error::Status(Status::BadRequest, "Illegal admin credentials".to_string()))?;
-    admins.insert_one(admin, None).await?;
+    admins.insert_one(&admin, None).await?;
+    warn!(
+        "  req{} Created new admin user: {}",
+        request_id, admin.username
+    );
     Ok(())
 }
 
 #[delete("/admins/<username>")]
 async fn delete_admin(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     username: String,
     admins: Coll<Admin>,
+    request_id: RequestId,
 ) -> Result<()> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     // Prevent deleting the last admin.
     let count = admins.count_documents(None, None).await?;
     if count == 1 {
@@ -97,30 +111,41 @@ async fn delete_admin(
     if result.deleted_count == 0 {
         Err(Error::not_found(format!("Admin {}", username)))
     } else {
+        warn!("  req{request_id} Deleted admin user: {username}");
         Ok(())
     }
 }
 
 #[post("/elections", data = "<spec>", format = "json")]
 async fn create_election(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     spec: Json<ElectionSpec>,
     elections: Coll<Election>,
     counters: Coll<Counter>,
     db_client: &State<Client>,
+    request_id: RequestId,
 ) -> Result<Json<ElectionDescription>> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     let election = {
         let mut session = db_client.start_session(None).await?;
         session.start_transaction(None).await?;
 
         // Obtain a unique election ID.
         let election_id = Counter::next(&counters, ELECTION_ID_COUNTER_ID).await?;
+        trace!("  req{request_id} Obtained election id {election_id}");
 
         // Create and insert the election.
         let election = spec.0.into_election(election_id, rand::thread_rng());
         elections
             .insert_one_with_session(&election, None, &mut session)
             .await?;
+        debug!(
+            "  req{} Inserted election {} with {} electorates and {} questions",
+            request_id,
+            election.id,
+            election.electorates.len(),
+            election.questions.len()
+        );
 
         // Create and insert a counter for each question.
         let new_counters = election
@@ -134,8 +159,17 @@ async fn create_election(
         counters
             .insert_many_with_session(&new_counters, None, &mut session)
             .await?;
+        trace!(
+            "  req{} Inserted {} ballot counters",
+            request_id,
+            new_counters.len()
+        );
 
         session.commit_transaction().await?;
+        warn!(
+            "  req{} Created {:?} election {} - {}",
+            request_id, election.metadata.state, election.id, election.metadata.name
+        );
         election
     };
 
@@ -144,11 +178,13 @@ async fn create_election(
 
 #[put("/elections/<election_id>", data = "<spec>", format = "json")]
 async fn modify_election(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     election_id: ElectionId,
     spec: Json<ElectionSpec>,
     elections: Coll<Election>,
+    request_id: RequestId,
 ) -> Result<Json<ElectionDescription>> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     // Get the existing election.
     let election = elections
         .find_one(u32_id_filter(election_id), None)
@@ -173,19 +209,22 @@ async fn modify_election(
         .replace_one(u32_id_filter(election_id), &new_election, None)
         .await?;
     assert_eq!(result.modified_count, 1);
+    warn!("  req{request_id} Modified election {election_id}");
 
     Ok(Json(new_election.into()))
 }
 
 #[post("/elections/<election_id>/publish")]
 async fn publish_election(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     election_id: ElectionId,
     elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     audited_ballots: Coll<Ballot<Audited>>,
     election_finalizers: &State<ElectionFinalizers>,
+    request_id: RequestId,
 ) -> Result<()> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     // Update the state.
     let filter = doc! {
         "_id": election_id,
@@ -217,17 +256,20 @@ async fn publish_election(
         audited_ballots,
         &election,
     );
+    warn!("  req{request_id} Published election {election_id}");
 
     Ok(())
 }
 
 #[post("/elections/<election_id>/archive")]
 async fn archive_election(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     election_id: ElectionId,
     elections: Coll<Election>,
     election_finalizers: &State<ElectionFinalizers>,
+    request_id: RequestId,
 ) -> Result<()> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     // Update the state.
     let filter = doc! {
         "_id": election_id,
@@ -255,6 +297,7 @@ async fn archive_election(
         .await
         .finalize_election(election_id)
         .await?;
+    warn!("  req{request_id} Archived election {election_id}");
 
     Ok(())
 }
@@ -262,7 +305,7 @@ async fn archive_election(
 #[delete("/elections/<election_id>")]
 #[allow(clippy::too_many_arguments)]
 async fn delete_election(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     election_id: ElectionId,
     elections: Coll<Election>,
     ballots: Coll<AnyBallot>,
@@ -270,7 +313,9 @@ async fn delete_election(
     voters: Coll<Voter>,
     counters: Coll<Counter>,
     db_client: &State<Client>,
+    request_id: RequestId,
 ) -> Result<()> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     // Get the election.
     let election = elections
         .find_one(u32_id_filter(election_id), None)
@@ -297,17 +342,30 @@ async fn delete_election(
             .delete_one_with_session(u32_id_filter(election_id), None, &mut session)
             .await?;
         assert_eq!(result.deleted_count, 1);
+        trace!("  req{request_id} Deleted election {election_id}");
 
         // Delete all ballots and totals.
         let filter = doc! {
             "election_id": election_id,
         };
-        ballots
+        let result = ballots
             .delete_many_with_session(filter.clone(), None, &mut session)
             .await?;
-        totals
+        trace!(
+            "  req{} Deleted {} ballots for election {}",
+            request_id,
+            result.deleted_count,
+            election_id
+        );
+        let result = totals
             .delete_many_with_session(filter, None, &mut session)
             .await?;
+        trace!(
+            "  req{} Deleted {} totals for election {}",
+            request_id,
+            result.deleted_count,
+            election_id
+        );
 
         // Remove the election from all voters' allowed questions.
         let field_to_remove = format!("allowed_questions.{}", election_id);
@@ -316,9 +374,15 @@ async fn delete_election(
                 &field_to_remove: "",
             }
         };
-        voters
+        let result = voters
             .update_many_with_session(doc! {}, update, None, &mut session)
             .await?;
+        trace!(
+            "  req{} Removed election {} from {} voters",
+            request_id,
+            election_id,
+            result.modified_count
+        );
 
         // Delete the counters.
         for question_id in election.questions.keys() {
@@ -331,9 +395,19 @@ async fn delete_election(
                 .await?;
             assert_eq!(result.deleted_count, 1);
         }
+        trace!(
+            "  req{} Deleted {} ballot counters for election {}",
+            request_id,
+            election.questions.len(),
+            election_id
+        );
 
         session.commit_transaction().await?;
     }
+    warn!(
+        "  req{} Permanently deleted election {} - {}",
+        request_id, election.id, election.metadata.name
+    );
 
     Ok(())
 }

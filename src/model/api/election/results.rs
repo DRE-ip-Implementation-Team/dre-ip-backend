@@ -95,6 +95,7 @@ impl ElectionResults {
     pub fn verify(&self) -> Result<(), VerificationError> {
         // See if we have the totals or not.
         if let Some(totals) = &self.totals {
+            debug!("Candidate totals are present");
             // Verify the confirmed ballots and candidate totals.
             let confirmed = self
                 .confirmed
@@ -117,22 +118,27 @@ impl ElectionResults {
 
             // Verify the ballot-specific data and the totals.
             dre_ip::verify_election(self.election.g1, self.election.g2, &confirmed, &totals)?;
+            debug!("Verified confirmed ballots and candidate totals");
 
             // Verify the receipt-specific data.
             for receipt in self.confirmed.values() {
                 verify_receipt_extras(receipt, &self.election)?;
             }
+            debug!("Verified confirmed receipts");
         } else {
+            debug!("Candidate totals are not present");
             // Verify all the confirmed receipts.
             for receipt in self.confirmed.values() {
                 verify_receipt_full(receipt, &self.election)?;
             }
+            debug!("Verified confirmed ballots and receipts");
         }
 
         // Verify all the audited receipts.
         for receipt in self.audited.values() {
             verify_receipt_full(receipt, &self.election)?;
         }
+        debug!("Verified audited ballots and receipts");
 
         Ok(())
     }

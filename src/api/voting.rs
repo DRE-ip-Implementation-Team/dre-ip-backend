@@ -4,25 +4,28 @@ use chrono::Utc;
 use mongodb::{bson::doc, options::ReplaceOptions, Client};
 use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
 
-use crate::error::{Error, Result};
-use crate::model::{
-    api::{
-        auth::AuthToken,
-        ballot::{BallotRecall, BallotSpec},
-        receipt::Receipt,
+use crate::{
+    error::{Error, Result},
+    logging::RequestId,
+    model::{
+        api::{
+            auth::AuthToken,
+            ballot::{BallotRecall, BallotSpec},
+            receipt::Receipt,
+        },
+        common::{
+            allowed_questions::AllowedQuestions,
+            ballot::{Audited, Confirmed, Unconfirmed},
+            election::{ElectionId, ElectionState},
+        },
+        db::{
+            ballot::{Ballot, NewBallot},
+            candidate_totals::{CandidateTotals, NewCandidateTotals},
+            election::Election,
+            voter::Voter,
+        },
+        mongodb::{ballot_counter_id, Coll, Counter, Id},
     },
-    common::{
-        allowed_questions::AllowedQuestions,
-        ballot::{Audited, Confirmed, Unconfirmed},
-        election::{ElectionId, ElectionState},
-    },
-    db::{
-        ballot::{Ballot, NewBallot},
-        candidate_totals::{CandidateTotals, NewCandidateTotals},
-        election::Election,
-        voter::Voter,
-    },
-    mongodb::{ballot_counter_id, Coll, Counter, Id},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -53,8 +56,13 @@ async fn join_election(
     joins: Json<HashMap<String, HashSet<String>>>,
     elections: Coll<Election>,
     voters: Coll<Voter>,
+    request_id: RequestId,
 ) -> Result<()> {
     let voter = voter_by_id(token.id, &voters).await?;
+    info!(
+        "  req{} Voter {} joining election {}",
+        request_id, token.id, election_id
+    );
     // Reject if voter has already joined the election
     if voter.allowed_questions.contains_key(&election_id) {
         return Err(Error::Status(
@@ -121,6 +129,12 @@ async fn join_election(
     let allowed_questions = AllowedQuestions {
         confirmed: allowed_questions,
     };
+    let num_allowed = allowed_questions.confirmed.len();
+    if num_allowed > 0 {
+        debug!("  req{request_id} Voter has {num_allowed} allowed questions");
+    } else {
+        warn!("  req{request_id} Voter has no allowed questions");
+    }
     let allowed_questions = mongodb::bson::to_bson(&allowed_questions).unwrap(); // Cannot fail.
 
     // Join the election by adding the voter's unanswered questions
@@ -162,14 +176,16 @@ async fn get_allowed(
     data = "<ballot_specs>",
     format = "json"
 )]
+#[allow(clippy::too_many_arguments)]
 async fn cast_ballots(
-    _token: AuthToken<Voter>,
+    token: AuthToken<Voter>,
     election_id: ElectionId,
     ballot_specs: Json<Vec<BallotSpec>>,
     elections: Coll<Election>,
     ballots: Coll<NewBallot>,
     counters: Coll<Counter>,
     db_client: &State<Client>,
+    request_id: RequestId,
 ) -> Result<Json<Vec<Receipt<Unconfirmed>>>> {
     // Check we actually have ballots to cast.
     if ballot_specs.is_empty() {
@@ -178,6 +194,13 @@ async fn cast_ballots(
             "Cannot cast an empty list of ballots".to_string(),
         ));
     }
+    info!(
+        "  req{} Voter {} casting {} ballots for election {}",
+        request_id,
+        token.id,
+        ballot_specs.len(),
+        election_id
+    );
 
     // Get the election.
     let election = active_election_by_id(election_id, &elections).await?;
@@ -235,6 +258,10 @@ async fn cast_ballots(
                     format!("Duplicate candidates for question {}", question.id),
                 )
             })?;
+            debug!(
+                "  req{} Created ballot {} for question {}",
+                request_id, ballot.ballot_id, ballot.question_id
+            );
             new_ballots.push(ballot);
         }
     }
@@ -248,6 +275,7 @@ async fn cast_ballots(
             .await?;
         session.commit_transaction().await?;
     }
+    trace!("  req{request_id} Committed ballots to database");
 
     // Return receipts.
     let receipts = new_ballots
@@ -263,15 +291,28 @@ async fn cast_ballots(
     data = "<ballot_recalls>",
     format = "json"
 )]
+#[allow(clippy::too_many_arguments)]
 async fn audit_ballots(
-    _token: AuthToken<Voter>,
+    token: AuthToken<Voter>,
     election_id: ElectionId,
     ballot_recalls: Json<Vec<BallotRecall>>,
     elections: Coll<Election>,
     unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
     audited_ballots: Coll<Ballot<Audited>>,
     db_client: &State<Client>,
+    request_id: RequestId,
 ) -> Result<Json<Vec<Receipt<Audited>>>> {
+    if ballot_recalls.is_empty() {
+        info!("  req{} Voter {} auditing no ballots", request_id, token.id);
+        return Ok(Json(Vec::new()));
+    }
+    info!(
+        "  req{} Voter {} auditing {} ballots",
+        request_id,
+        token.id,
+        ballot_recalls.len()
+    );
+
     // Get the election and ballots.
     let election = active_election_by_id(election_id, &elections).await?;
     let recalled_ballots =
@@ -295,11 +336,16 @@ async fn audit_ballots(
                 .replace_one_with_session(filter, &audited, None, &mut session)
                 .await?;
             assert_eq!(result.modified_count, 1);
+            debug!(
+                "  req{} Audited ballot {} for question {}",
+                request_id, audited.ballot_id, audited.question_id
+            );
             new_ballots.push(audited);
         }
 
         session.commit_transaction().await?;
     }
+    trace!("  req{request_id} Committed changes to database");
 
     // Return receipts.
     let receipts = new_ballots
@@ -326,7 +372,22 @@ async fn confirm_ballots(
     confirmed_ballots: Coll<Ballot<Confirmed>>,
     candidate_totals: Coll<CandidateTotals>,
     db_client: &State<Client>,
+    request_id: RequestId,
 ) -> Result<Json<Vec<Receipt<Confirmed>>>> {
+    if ballot_recalls.is_empty() {
+        info!(
+            "  req{} Voter {} confirming no ballots",
+            request_id, token.id
+        );
+        return Ok(Json(Vec::new()));
+    }
+    info!(
+        "  req{} Voter {} confirming {} ballots",
+        request_id,
+        token.id,
+        ballot_recalls.len()
+    );
+
     let mut voter = voter_by_id(token.id, &voters).await?;
     // Get the election and ballots.
     let election = active_election_by_id(election_id, &elections).await?;
@@ -386,6 +447,11 @@ async fn confirm_ballots(
                     ),
                 ));
             }
+            trace!(
+                "  req{} Marked question {} as confirmed",
+                request_id,
+                ballot.question_id
+            );
 
             // Get candidate totals.
             let filter = doc! {
@@ -400,6 +466,10 @@ async fn confirm_ballots(
             // If the totals don't exist yet, we need to create them.
             if totals.len() != ballot.crypto.votes.len() {
                 assert_eq!(totals.len(), 0);
+                debug!(
+                    "  req{} Creating candidate totals for question {}",
+                    request_id, ballot.question_id
+                );
                 let question = election.questions.get(&ballot.question_id).unwrap();
                 for candidate in &question.candidates {
                     totals.push(CandidateTotals {
@@ -431,6 +501,10 @@ async fn confirm_ballots(
                 .replace_one_with_session(filter, &confirmed, None, &mut session)
                 .await?;
             assert_eq!(result.modified_count, 1);
+            debug!(
+                "  req{} Confirmed ballot {} for question {}",
+                request_id, confirmed.ballot_id, confirmed.question_id
+            );
 
             // Write updated candidate totals.
             for t in totals {
@@ -445,12 +519,14 @@ async fn confirm_ballots(
                     .await?;
                 assert!(result.modified_count == 1 || result.upserted_id.is_some());
             }
+            trace!("  req{request_id} Wrote new candidate totals");
 
             new_ballots.push(confirmed);
         }
 
         session.commit_transaction().await?;
     }
+    trace!("  req{request_id} Committed changes to database");
 
     // Return receipts.
     let receipts = new_ballots

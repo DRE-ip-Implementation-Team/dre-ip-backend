@@ -10,6 +10,7 @@ use rocket::{
 use crate::{
     config::Config,
     error::{Error, Result},
+    logging::RequestId,
     model::{
         api::{
             admin::AdminCredentials,
@@ -32,7 +33,9 @@ pub fn routes() -> Vec<Route> {
         authenticate,
         challenge,
         verify,
-        logout,
+        logout_admin,
+        logout_voter,
+        logout_none,
     ]
 }
 
@@ -57,6 +60,7 @@ async fn authenticate(
     credentials: Json<AdminCredentials>,
     admins: Coll<Admin>,
     config: &State<Config>,
+    request_id: RequestId,
 ) -> Result<()> {
     let with_username = doc! {
         "username": &credentials.username
@@ -67,6 +71,10 @@ async fn authenticate(
         .await?
         .filter(|admin| admin.verify_password(&credentials.password))
         .ok_or_else(|| {
+            warn!(
+                "  req{} Failed login attempt for admin {}",
+                request_id, credentials.username
+            );
             Error::Status(
                 Status::Unauthorized,
                 "No admin found with the provided username and password combination.".to_string(),
@@ -75,6 +83,10 @@ async fn authenticate(
 
     let token = AuthToken::new(&admin);
     cookies.add(token.into_cookie(config));
+    info!(
+        "  req{} Admin {} ({}) successfully authenticated",
+        request_id, credentials.username, admin.id
+    );
 
     Ok(())
 }
@@ -126,6 +138,7 @@ async fn verify(
     voters: Coll<Voter>,
     new_voters: Coll<NewVoter>,
     config: &State<Config>,
+    request_id: RequestId,
 ) -> Result<()> {
     #[cfg(feature = "otp")]
     {
@@ -148,10 +161,13 @@ async fn verify(
         "sms_hmac": voter.sms_hmac.to_bytestring(),
     };
 
+    trace!("  req{request_id} OTP verified");
+
     // We need an id to associate with the voter's interactions to ensure for instance that they
     // have not already voted for a certain question
     let db_voter = if let Some(voter) = voters.find_one(with_sms_hmac, None).await? {
         // Voter already exists.
+        debug!("  req{request_id} Voter already exists");
         voter
     } else {
         // Voter doesn't exist yet.
@@ -162,21 +178,41 @@ async fn verify(
             .as_object_id()
             .unwrap() // Safe because the ID comes directly from the database.
             .into();
-        voters.find_one(new_id.as_doc(), None).await?.unwrap()
+        let voter = voters.find_one(new_id.as_doc(), None).await?.unwrap();
+        info!("  req{request_id} Created new voter");
+        voter
     };
 
-    // Ensure the voter is authenticated
+    // Create the auth token cookie.
     let claims = AuthToken::new(&db_voter);
     cookies.add(claims.into_cookie(config));
 
-    // We no longer need the OTP challenge
+    // We no longer need the OTP challenge.
     cookies.remove(Cookie::named(CHALLENGE_COOKIE));
 
+    info!(
+        "  req{} Voter {} successfully authenticated",
+        request_id, db_voter.id
+    );
     Ok(())
 }
 
-#[delete("/auth")]
-fn logout(cookies: &CookieJar) -> Status {
+#[delete("/auth", rank = 1)]
+fn logout_admin(token: AuthToken<Admin>, cookies: &CookieJar, request_id: RequestId) -> Status {
+    info!("  req{} Admin {} logging out", request_id, token.id);
+    cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
+    Status::Ok
+}
+
+#[delete("/auth", rank = 2)]
+fn logout_voter(token: AuthToken<Voter>, cookies: &CookieJar, request_id: RequestId) -> Status {
+    info!("  req{} Voter {} logging out", request_id, token.id);
+    cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
+    Status::Ok
+}
+
+#[delete("/auth", rank = 3)]
+fn logout_none(cookies: &CookieJar) -> Status {
     cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
     Status::Ok
 }
@@ -401,7 +437,7 @@ mod tests {
 
     #[backend_test(admin)]
     async fn logout_admin(client: Client) {
-        let response = client.delete(uri!(logout)).dispatch().await;
+        let response = client.delete(uri!(logout_admin)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
         assert_eq!(None, client.cookies().get(AUTH_TOKEN_COOKIE));
@@ -431,7 +467,7 @@ mod tests {
 
         assert!(client.cookies().get(AUTH_TOKEN_COOKIE).is_some());
 
-        let response = client.delete(uri!(logout)).dispatch().await;
+        let response = client.delete(uri!(logout_voter)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
         assert_eq!(None, client.cookies().get(AUTH_TOKEN_COOKIE));
@@ -439,7 +475,7 @@ mod tests {
 
     #[backend_test]
     async fn logout_not_logged_in(client: Client) {
-        let response = client.delete(uri!(logout)).dispatch().await;
+        let response = client.delete(uri!(logout_none)).dispatch().await;
 
         assert_eq!(Status::Ok, response.status());
     }

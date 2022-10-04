@@ -12,21 +12,26 @@ use rocket::{
     Route, State,
 };
 
-use crate::error::{Error, Result};
-use crate::model::{
-    api::{
-        auth::AuthToken,
-        candidate_totals::CandidateTotalsDesc,
-        election::{ElectionDescription, ElectionResults, ElectionSummary, ElectionTiming},
-        pagination::{Paginated, PaginationRequest},
-        receipt::{PublicReceipt, Receipt},
+use crate::{
+    error::{Error, Result},
+    logging::RequestId,
+    model::{
+        api::{
+            auth::AuthToken,
+            candidate_totals::CandidateTotalsDesc,
+            election::{ElectionDescription, ElectionResults, ElectionSummary, ElectionTiming},
+            pagination::{Paginated, PaginationRequest},
+            receipt::{PublicReceipt, Receipt},
+        },
+        common::{
+            ballot::{Audited, BallotId, Confirmed},
+            election::{CandidateId, ElectionId, ElectionState, QuestionId},
+        },
+        db::{
+            admin::Admin, ballot::AnyBallot, candidate_totals::CandidateTotals, election::Election,
+        },
+        mongodb::{u32_id_filter, Coll},
     },
-    common::{
-        ballot::{Audited, BallotId, Confirmed},
-        election::{CandidateId, ElectionId, ElectionState, QuestionId},
-    },
-    db::{admin::Admin, ballot::AnyBallot, candidate_totals::CandidateTotals, election::Election},
-    mongodb::{u32_id_filter, Coll},
 };
 
 pub fn routes() -> Vec<Route> {
@@ -44,13 +49,15 @@ pub fn routes() -> Vec<Route> {
 
 #[get("/elections?<archived>&<timing>", rank = 1)]
 async fn elections_admin(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     archived: Option<bool>,
     timing: Option<ElectionTiming>,
     elections: Coll<Election>,
+    request_id: RequestId,
 ) -> Result<Json<Vec<ElectionSummary>>> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     let archived = archived.unwrap_or(false);
-    metadata_for_elections(elections, true, archived, timing).await
+    metadata_for_elections(request_id, elections, true, archived, timing).await
 }
 
 #[get("/elections?<archived>&<timing>", rank = 2)]
@@ -58,17 +65,20 @@ async fn elections_non_admin(
     archived: Option<bool>,
     timing: Option<ElectionTiming>,
     elections: Coll<Election>,
+    request_id: RequestId,
 ) -> Result<Json<Vec<ElectionSummary>>> {
     let archived = archived.unwrap_or(false);
-    metadata_for_elections(elections, false, archived, timing).await
+    metadata_for_elections(request_id, elections, false, archived, timing).await
 }
 
 #[get("/elections/<election_id>", rank = 1)]
 async fn election_admin(
-    _token: AuthToken<Admin>,
+    token: AuthToken<Admin>,
     election_id: ElectionId,
     elections: Coll<Election>,
+    request_id: RequestId,
 ) -> Result<Json<ElectionDescription>> {
+    info!("  req{} Admin {} acting", request_id, token.id);
     let election = elections
         .find_one(u32_id_filter(election_id), None)
         .await?
@@ -102,6 +112,7 @@ async fn election_question_ballots(
     pagination: PaginationRequest,
     elections: Coll<Election>,
     ballots: Coll<AnyBallot>,
+    request_id: RequestId,
 ) -> Result<Json<Paginated<PublicReceipt>>> {
     // No need to filter our drafts if non-admin, since draft elections cannot have ballots.
     let election = elections
@@ -129,6 +140,11 @@ async fn election_question_ballots(
         .skip(u64::from(pagination.skip()))
         .limit(i64::from(pagination.page_size()))
         .build();
+    trace!(
+        "  req{} Using page size {}",
+        request_id,
+        pagination.page_size()
+    );
 
     let ballots_page = ballots
         .find(filter.clone(), pagination_options)
@@ -140,6 +156,12 @@ async fn election_question_ballots(
     let total_ballots = ballots.count_documents(filter, None).await?;
 
     let paginated = pagination.to_paginated(total_ballots, ballots_page);
+    debug!(
+        "  req{} Returning {} ballots of {} total",
+        request_id,
+        paginated.items.len(),
+        paginated.pagination.total
+    );
     Ok(Json(paginated))
 }
 
@@ -220,13 +242,14 @@ async fn question_dump(
     totals: Coll<CandidateTotals>,
     ballots: Coll<AnyBallot>,
     db_client: &State<Client>,
+    request_id: RequestId,
 ) -> Result<Json<ElectionResults>> {
-    // Ensure we read a consistent snapshot of the election data.
     let election;
     let mut candidate_totals = None;
     let mut audited_receipts = HashMap::new();
     let mut confirmed_receipts = HashMap::new();
     {
+        // Ensure we read a consistent snapshot of the election data.
         let session_options = SessionOptions::builder().snapshot(true).build();
         let mut session = db_client.start_session(Some(session_options)).await?;
 
@@ -243,6 +266,7 @@ async fn question_dump(
         if election.metadata.state == ElectionState::Archived
             || Utc::now() > election.metadata.end_time
         {
+            info!("  req{request_id} Election finished, including totals");
             let totals_filter = doc! {
                 "election_id": election_id,
                 "question_id": question_id,
@@ -258,6 +282,8 @@ async fn question_dump(
                 }
                 candidate_totals
             });
+        } else {
+            info!("  req{request_id} Election ongoing, excluding totals");
         }
 
         let ballots_filter = doc! {
@@ -288,6 +314,13 @@ async fn question_dump(
         confirmed: confirmed_receipts,
         totals: candidate_totals,
     };
+    debug!(
+        "  req{} Created dump of election {} with {} audited, {} confirmed",
+        request_id,
+        election_id,
+        dump.audited.len(),
+        dump.confirmed.len()
+    );
 
     Ok(Json(dump))
 }
@@ -297,6 +330,7 @@ async fn question_dump(
 /// If `archived` is true, archived elections will be returned instead of non-archived ones.
 /// If `timing` is provided, only elections with that status will be returned.
 async fn metadata_for_elections(
+    request_id: RequestId,
     elections: Coll<Election>,
     admin: bool,
     archived: bool,
@@ -325,7 +359,8 @@ async fn metadata_for_elections(
         .try_collect::<Vec<_>>()
         .await?;
 
-    let metadata = elections.into_iter().map(Into::into).collect();
+    let metadata = elections.into_iter().map(Into::into).collect::<Vec<_>>();
+    debug!("  req{} Found {} elections", request_id, metadata.len());
 
     Ok(Json(metadata))
 }
