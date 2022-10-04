@@ -459,8 +459,9 @@ async fn confirm_ballots(
                 "question_id": ballot.question_id,
             };
             let mut totals = candidate_totals
-                .find(filter, None)
+                .find_with_session(filter, None, &mut session)
                 .await?
+                .stream(&mut session)
                 .try_collect::<Vec<_>>()
                 .await?;
             // If the totals don't exist yet, we need to create them.
