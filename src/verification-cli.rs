@@ -293,6 +293,13 @@ mod tests {
 
     #[test]
     fn verification() {
+        // This test actually enters backend code, so enable logging.
+        log4rs_test_utils::test_logging::init_logging_once_for(
+            ["dre_ip", "dreip_backend"],
+            None,
+            None,
+        );
+
         let expected_results = vec![
             FriendlyResults {
                 candidate_name: "Chris Riches".to_string(),

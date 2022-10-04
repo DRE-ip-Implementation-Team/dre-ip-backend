@@ -115,6 +115,7 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                 .unwrap();
 
             // Run the setup.
+            crate::logging::init_test_logging();
             let (rocket_client, db) = outer_runtime.block_on(setup());
 
             // Run the test, catching any panics.

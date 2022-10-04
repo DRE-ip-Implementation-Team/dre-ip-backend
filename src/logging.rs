@@ -99,3 +99,11 @@ impl Fairing for LoggerFairing {
         warn!("Shutdown requested, stopping gracefully...");
     }
 }
+
+/// Initialise the test logger, if not already done so.
+#[cfg(test)]
+#[inline(always)]
+pub(crate) fn init_test_logging() {
+    const TARGETS: &[&str] = &["dre_ip", "dreip_backend"];
+    log4rs_test_utils::test_logging::init_logging_once_for(TARGETS.iter().cloned(), None, None);
+}

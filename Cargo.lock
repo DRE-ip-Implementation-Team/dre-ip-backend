@@ -861,6 +861,7 @@ dependencies = [
  "log",
  "log4rs",
  "log4rs_dynamic_filters",
+ "log4rs_test_utils",
  "mongodb",
  "phonenumber",
  "rand",
@@ -1575,6 +1576,17 @@ dependencies = [
  "log",
  "log4rs",
  "serde",
+]
+
+[[package]]
+name = "log4rs_test_utils"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4269f0d4f4ad09847738fb5376c292776efdafbf85ade84e0b9a62bd29dbfc8"
+dependencies = [
+ "anyhow",
+ "log",
+ "log4rs",
 ]
 
 [[package]]
