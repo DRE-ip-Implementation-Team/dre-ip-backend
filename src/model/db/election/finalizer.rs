@@ -1,13 +1,14 @@
-use std::collections::HashMap;
-
+use chrono::{Duration, Utc};
 use mongodb::{bson::doc, error::Error as DbError, Database};
 use rocket::futures::TryStreamExt;
 use rocket::{
     fairing::{Fairing, Info, Kind},
+    futures::future::{BoxFuture, FutureExt},
     http::Status,
     tokio::sync::Mutex,
     Build, Rocket,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::{
@@ -23,20 +24,29 @@ use crate::{
     scheduled_task::ScheduledTask,
 };
 
+/// Map from election IDs to finalizer tasks.
+type TaskMap = HashMap<ElectionId, ScheduledTask<Result<(), Error>>>;
+
 /// Election finalizers: scheduled tasks for auditing unconfirmed ballots at the end of an election.
-pub struct RawElectionFinalizers(pub HashMap<ElectionId, ScheduledTask<Result<(), Error>>>);
+pub struct ElectionFinalizers {
+    tasks: Arc<Mutex<TaskMap>>,
+}
 
-/// `ElectionFinalizers` are always accessed behind an Arc-Mutex for thread safety.
-pub type ElectionFinalizers = Arc<Mutex<RawElectionFinalizers>>;
-
-impl RawElectionFinalizers {
+impl ElectionFinalizers {
     /// Create an empty set of election finalizers.
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self {
+            tasks: Default::default(),
+        }
+    }
+
+    /// Does the given election have a finalizer scheduled?
+    pub async fn has_finalizer(&self, election: ElectionId) -> bool {
+        self.tasks.lock().await.contains_key(&election)
     }
 
     /// Schedule a finalizer for every published and archived election.
-    pub async fn schedule_elections(&mut self, db: &Database) -> Result<(), DbError> {
+    pub async fn schedule_elections(&self, db: &Database) -> Result<(), DbError> {
         // Get all the relevant elections.
         let filter = doc! {
             "$or": [{"state": ElectionState::Published}, {"state": ElectionState::Archived}],
@@ -50,29 +60,40 @@ impl RawElectionFinalizers {
         for election in all_elections {
             let unconfirmed_ballots = Coll::<Ballot<Unconfirmed>>::from_db(db);
             let audited_ballots = Coll::<Ballot<Audited>>::from_db(db);
-            self.schedule_election(unconfirmed_ballots, audited_ballots, &election);
+            self.schedule_election(unconfirmed_ballots, audited_ballots, &election)
+                .await;
         }
 
         Ok(())
     }
 
     /// Schedule a finalizer for the given election.
-    pub fn schedule_election(
-        &mut self,
+    pub async fn schedule_election(
+        &self,
         unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
         audited_ballots: Coll<Ballot<Audited>>,
         election: &Election,
     ) {
-        let finalizer = Self::finalizer(election.id, unconfirmed_ballots, audited_ballots);
+        let finalizer = Self::finalizer(
+            election.id,
+            unconfirmed_ballots,
+            audited_ballots,
+            self.tasks.clone(),
+        );
         // Schedule the finalizer and keep track of it.
+        let mut tasks_locked = self.tasks.lock().await;
         let finalizer_task = ScheduledTask::new(finalizer, election.metadata.end_time);
-        self.0.insert(election.id, finalizer_task);
+        tasks_locked.insert(election.id, finalizer_task);
     }
 
     /// Immediately trigger the finalizer for the given election.
-    /// If the finalizer was not previously scheduled, this will have no effect.
-    pub async fn finalize_election(&mut self, election_id: ElectionId) -> Result<(), Error> {
-        match self.0.remove(&election_id) {
+    /// If the finalizer was not previously scheduled (or already completed),
+    /// this will have no effect.
+    pub async fn finalize_election(&self, election_id: ElectionId) -> Result<(), Error> {
+        let mut tasks_locked = self.tasks.lock().await;
+        let task = tasks_locked.remove(&election_id);
+        drop(tasks_locked); // Avoid deadlock, as the finalizer needs the lock too.
+        match task {
             Some(finalizer) => {
                 finalizer.trigger_now();
                 finalizer.await.unwrap_or_else(|_| {
@@ -87,11 +108,14 @@ impl RawElectionFinalizers {
     }
 
     /// Finalize the given election by auditing all unconfirmed ballots.
-    async fn finalizer(
+    /// Since this is a recursive async function, we must use `BoxFuture` to
+    /// avoid an infinitely-recursive state machine.
+    fn finalizer(
         election_id: ElectionId,
         unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
         audited_ballots: Coll<Ballot<Audited>>,
-    ) -> Result<(), Error> {
+        tasks: Arc<Mutex<TaskMap>>,
+    ) -> BoxFuture<'static, Result<(), Error>> {
         /// Nested function for error handling.
         async fn finalize(
             election_id: ElectionId,
@@ -129,17 +153,36 @@ impl RawElectionFinalizers {
             Ok(())
         }
 
-        let result = finalize(election_id, unconfirmed_ballots, audited_ballots).await;
-        if let Err(ref e) = result {
-            error!("Finalizer for election {election_id} failed, unconfirmed ballots might be leaked: {e}");
-            error!("Failed finalizer will be retried on next server boot");
-            // TODO: retry automatically
-        }
-        result
+        async move {
+            let result = finalize(election_id, unconfirmed_ballots.clone(), audited_ballots.clone()).await;
+            match result {
+                Ok(()) => {
+                    tasks.lock().await.remove(&election_id);
+                    trace!("Finalizer completed; removed self from list");
+                }
+                Err(ref e) => {
+                    error!("Finalizer for election {election_id} failed, unconfirmed ballots might be leaked: {e}");
+                    // Re-schedule the finalizer.
+                    let retry = Self::finalizer(
+                        election_id,
+                        unconfirmed_ballots,
+                        audited_ballots,
+                        tasks.clone(),
+                    );
+                    const RETRY_INTERVAL_SECONDS: i64 = 300;
+                    let retry_time = Utc::now() + Duration::seconds(RETRY_INTERVAL_SECONDS);
+                    let mut tasks_locked = tasks.lock().await;
+                    let finalizer_task = ScheduledTask::new(retry, retry_time);
+                    tasks_locked.insert(election_id, finalizer_task);
+                    warn!("Failed finalizer will be retried in {RETRY_INTERVAL_SECONDS} seconds");
+                }
+            }
+            result
+        }.boxed()
     }
 }
 
-impl Default for RawElectionFinalizers {
+impl Default for ElectionFinalizers {
     fn default() -> Self {
         Self::new()
     }
@@ -163,7 +206,7 @@ impl Fairing for ElectionFinalizerFairing {
     async fn on_ignite(&self, mut rocket: Rocket<Build>) -> rocket::fairing::Result {
         // Create an election finalizer for every election that needs one.
         info!("Scheduling election finalizers...");
-        let mut election_finalizers = RawElectionFinalizers::new();
+        let election_finalizers = ElectionFinalizers::new();
         let db = match rocket.state::<Database>() {
             Some(db) => db,
             None => {
@@ -178,7 +221,7 @@ impl Fairing for ElectionFinalizerFairing {
         info!("...election finalizers scheduled!");
 
         // Manage the state.
-        rocket = rocket.manage(Arc::new(Mutex::new(election_finalizers)));
+        rocket = rocket.manage(election_finalizers);
         Ok(rocket)
     }
 }

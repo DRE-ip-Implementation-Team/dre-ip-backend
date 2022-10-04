@@ -251,11 +251,9 @@ async fn publish_election(
         .find_one(u32_id_filter(election_id), None)
         .await?
         .unwrap(); // Presence already checked.
-    election_finalizers.lock().await.schedule_election(
-        unconfirmed_ballots,
-        audited_ballots,
-        &election,
-    );
+    election_finalizers
+        .schedule_election(unconfirmed_ballots, audited_ballots, &election)
+        .await;
     warn!("  req{request_id} Published election {election_id}");
 
     Ok(())
@@ -292,11 +290,7 @@ async fn archive_election(
     }
 
     // Run the election finalizer.
-    election_finalizers
-        .lock()
-        .await
-        .finalize_election(election_id)
-        .await?;
+    election_finalizers.finalize_election(election_id).await?;
     warn!("  req{request_id} Archived election {election_id}");
 
     Ok(())
@@ -779,7 +773,7 @@ mod tests {
 
         // Check a finalizer has been scheduled.
         let finalizers = client.rocket().state::<ElectionFinalizers>().unwrap();
-        assert!(finalizers.lock().await.0.contains_key(&election.id));
+        assert!(finalizers.has_finalizer(election.id).await);
 
         // Archive the election.
         archive(&client, election.id).await;
