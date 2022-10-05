@@ -68,6 +68,7 @@ impl ElectionFinalizers {
     }
 
     /// Schedule a finalizer for the given election.
+    /// If one already exists, it will be rescheduled.
     pub async fn schedule_election(
         &self,
         unconfirmed_ballots: Coll<Ballot<Unconfirmed>>,
@@ -82,6 +83,17 @@ impl ElectionFinalizers {
         );
         // Schedule the finalizer and keep track of it.
         let mut tasks_locked = self.tasks.lock().await;
+        if let Some(task) = tasks_locked.remove(&election.id) {
+            let already_completed = task.cancel().await;
+            if already_completed {
+                // This should never happen, since a task can only complete by either:
+                // * erroring, in which case it is replaced before returning.
+                // * succeeding, in which case it is removed before returning.
+                warn!("schedule_election: unexpected code path. This is not a bug in itself, \
+but hints that assumptions made elsewhere might be incorrect");
+                return;
+            }
+        }
         let finalizer_task = ScheduledTask::new(finalizer, election.metadata.end_time);
         tasks_locked.insert(election.id, finalizer_task);
     }
