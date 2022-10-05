@@ -89,8 +89,10 @@ impl ElectionFinalizers {
                 // This should never happen, since a task can only complete by either:
                 // * erroring, in which case it is replaced before returning.
                 // * succeeding, in which case it is removed before returning.
-                warn!("schedule_election: unexpected code path. This is not a bug in itself, \
-but hints that assumptions made elsewhere might be incorrect");
+                warn!(
+                    "schedule_election: unexpected code path. This is not a bug in itself, \
+but hints that assumptions made elsewhere might be incorrect"
+                );
                 return;
             }
         }
