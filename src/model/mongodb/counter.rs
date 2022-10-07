@@ -60,6 +60,7 @@ impl Counter {
 
 /// Create the global election ID counter if it does not already exist.
 pub async fn ensure_election_id_counter_exists(counters: &Coll<Counter>) -> Result<(), DbError> {
+    debug!("Ensuring election ID counter exists");
     let filter = doc! {
         "_id": ELECTION_ID_COUNTER_ID,
     };
@@ -70,7 +71,10 @@ pub async fn ensure_election_id_counter_exists(counters: &Coll<Counter>) -> Resu
         }
     };
     let options: UpdateOptions = UpdateOptions::builder().upsert(true).build();
-    counters.update_one(filter, update, options).await?;
+    let result = counters.update_one(filter, update, options).await?;
+    if result.upserted_id.is_some() {
+        warn!("The database looks empty; created election ID counter");
+    }
     Ok(())
 }
 

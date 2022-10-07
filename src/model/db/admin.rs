@@ -67,10 +67,12 @@ impl DerefMut for Admin {
 /// Ensure at least one admin user exists. If none do, create a default admin
 /// with known credentials, allowing the system to be bootstrapped.
 pub async fn ensure_admin_exists(admins: &Coll<NewAdmin>) -> Result<(), DbError> {
+    debug!("Ensuring at least one admin user exists");
     let num_admins = admins.count_documents(None, None).await?;
     if num_admins == 0 {
         let admin = NewAdmin::default();
         admins.insert_one(admin, None).await?;
+        warn!("Created default admin user - this must be replaced ASAP");
     }
 
     Ok(())

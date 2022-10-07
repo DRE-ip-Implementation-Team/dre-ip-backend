@@ -126,10 +126,16 @@ impl Fairing for DatabaseFairing {
                 return Err(rocket);
             }
         };
-        // Construct the connection.
-        let client = MongoClient::with_uri_str(config.db_uri).await.unwrap();
-        let db = client.database(&get_database_name());
         info!("Loaded database config, connecting...");
+        // Construct the connection.
+        let client = match MongoClient::with_uri_str(config.db_uri).await {
+            Ok(client) => client,
+            Err(e) => {
+                error!("Failed to connect to database: {e}");
+                return Err(rocket);
+            }
+        };
+        let db = client.database(&get_database_name());
 
         // Ensure there is at least one admin user and the global election ID counter exists.
         let admins = Coll::from_db(&db);
@@ -138,7 +144,7 @@ impl Fairing for DatabaseFairing {
             .and_then(|_| ensure_election_id_counter_exists(&counters))
             .await
         {
-            error!("Failed to contact database during launch: {e}");
+            error!("Failed to connect to database: {e}");
             return Err(rocket);
         }
         info!("...database connection online!");
