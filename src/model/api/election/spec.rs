@@ -90,11 +90,22 @@ impl QuestionSpec {
 mod examples {
     use super::*;
 
-    use chrono::{Duration, Utc};
+    use chrono::{Duration, Timelike, Utc};
+
+    macro_rules! midnight_today {
+        () => {{
+            Utc::now()
+                .with_hour(0)
+                .and_then(|t| t.with_minute(0))
+                .and_then(|t| t.with_second(0))
+                .and_then(|t| t.with_nanosecond(0))
+                .unwrap()
+        }};
+    }
 
     impl ElectionSpec {
         pub fn current_example() -> Self {
-            let start_time = Utc::today().and_hms(0, 0, 0);
+            let start_time = midnight_today!();
             let end_time = start_time + Duration::days(30);
             Self {
                 name: "Test Election 1".to_string(),
@@ -111,7 +122,7 @@ mod examples {
         }
 
         pub fn future_example() -> Self {
-            let start_time = Utc::today().and_hms(0, 0, 0) + Duration::days(30);
+            let start_time = midnight_today!() + Duration::days(30);
             let end_time = start_time + Duration::days(30);
             Self {
                 name: "Test Election 2".to_string(),
@@ -123,7 +134,7 @@ mod examples {
         }
 
         pub fn past_example() -> Self {
-            let start_time = Utc::today().and_hms(0, 0, 0) - Duration::days(30);
+            let start_time = midnight_today!() - Duration::days(30);
             let end_time = start_time + Duration::days(7);
             Self {
                 name: "Test Election 3".to_string(),
