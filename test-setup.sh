@@ -10,8 +10,9 @@ readonly TESTDB_PASSWORD='password'
 
 # Exit with an intelligent message when any command fails.
 last_command=""
+readonly errtrap=$'printf "\n%s\n" "Command \'$last_command\' failed with exit code $?"'
 trap 'last_command=$BASH_COMMAND' DEBUG
-trap $'echo "Command \'$last_command\' failed with exit code $?"' ERR
+trap "$errtrap" ERR
 set -e
 
 # Manually die with message.
@@ -33,6 +34,11 @@ echo -n "Checking docker... "
 which docker &>/dev/null || die "Docker could not be found; is it on the path?"
 docker ps &>/dev/null || die "Docker could not be reached; is it running and do we have permission?"
 echo "docker available"
+
+# Check we have access to mongosh.
+echo -n "Checking mongosh... "
+which mongosh &>/dev/null || die "mongosh could not be found; is it on the path?"
+echo "mongosh available"
 
 # Get rid of the container if it already exists.
 name_matches=$(docker ps -a --filter name="^$TESTDB_CONTAINER$" | wc -l)
@@ -82,15 +88,20 @@ echo -n "Configuring replica set... "
 ./db/wait-for-it.sh "$ip_addr:27017" &>/dev/null
 remaining_attempts=10
 set +e
-while [[ $remaining_attempts -gt 0 ]]; do
+trap - ERR
+while true; do
   ((remaining_attempts--))
   if [[ $remaining_attempts -eq 0 ]]; then
     # Die if the last attempt fails.
     set -e
+    trap "$errtrap" ERR
   fi
   mongosh "$mongo_uri" \
     --eval "cfg = rs.conf(); cfg.members[0].host = '$ip_addr'; rs.reconfig(cfg)" \
-    &>/dev/null && break
+    &>/dev/null
+  # An `&& break` would stop the mongosh invocation from triggering `set -e`, so
+  # test the return code afterwards.
+  test $? -eq 0 && break
   sleep 1
 done
 echo "done"
