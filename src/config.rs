@@ -1,6 +1,9 @@
 use aws_config::SdkConfig;
 use aws_credential_types::provider::SharedCredentialsProvider;
-use aws_sdk_sns::{Client as SnsClient, Credentials, Region};
+use aws_sdk_sns::{
+    config::{Credentials, Region},
+    Client as SnsClient,
+};
 use chrono::Duration;
 use mongodb::Client as MongoClient;
 use rocket::futures::TryFutureExt;
