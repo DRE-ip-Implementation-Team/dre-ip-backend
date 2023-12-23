@@ -47,7 +47,7 @@ if [[ "$name_matches" -gt 1 ]]; then
   echo "Container $TESTDB_CONTAINER exists and will be destroyed."
   echo "Or answer [r]euse to keep the existing one."
 
-  read -rp "Continue? [y/N/r]: " response
+  read -rp "Continue? [y/N/r]: " response 2>&1
   if [[ $response == y || $response == Y ]]; then
     reuse_container=false
   elif [[ $response == r || $response == R ]]; then
