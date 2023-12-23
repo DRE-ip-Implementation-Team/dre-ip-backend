@@ -1,4 +1,4 @@
-#[cfg_attr(test, allow(unused_imports))]
+#[cfg_attr(any(not(feature = "otp"), test), allow(unused_imports))]
 use chrono::{DateTime, Duration, Utc};
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -6,11 +6,11 @@ use thiserror::Error;
 
 use crate::model::api::{otp::Code, sms::Sms};
 
-#[cfg(test)]
+#[cfg(any(not(feature = "otp"), test))]
 const TEST_RECAPTCHA_RESPONSE: &str = "this response will succeed in test mode";
 
 /// reCAPTCHA tokens older than this many minutes are not accepted.
-#[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(any(not(feature = "otp"), test), allow(dead_code))]
 const MAX_TOKEN_LIFE_MINUTES: i64 = 3;
 
 /// An authentication request for a specific SMS number.
@@ -49,21 +49,21 @@ impl VoterVerifyRequest {
 }
 
 /// Verify the given reCAPTCHA response by contacting the google API.
-#[cfg_attr(test, allow(unused_variables))]
+#[cfg_attr(any(not(feature = "otp"), test), allow(unused_variables))]
 async fn verify_recaptcha(
     response: String,
     secret: &str,
     hostname: &str,
 ) -> Result<(), RecaptchaError> {
     // In test mode, just check the dummy value is equal to some string.
-    #[cfg(test)]
+    #[cfg(any(not(feature = "otp"), test))]
     if response == TEST_RECAPTCHA_RESPONSE {
         Ok(())
     } else {
         Err(RecaptchaError::InvalidToken)
     }
     // When doing it for real, contact the google API.
-    #[cfg(not(test))]
+    #[cfg(all(feature = "otp", not(test)))]
     {
         let client = reqwest::Client::new();
         let parameters = RecaptchaVerifyRequest {
