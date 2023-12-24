@@ -117,6 +117,26 @@ if [[ $reuse_container != true ]]; then
     sleep 1
   done
   echo "done"
+
+  # Wait for DB init to complete.
+  echo -n "Waiting for init scripts... "
+  remaining_attempts=10
+  set +e
+  trap - ERR
+  while true; do
+    ((remaining_attempts--))
+    if [[ $remaining_attempts -eq 0 ]]; then
+      # Die if the last attempt fails.
+      set -e
+      trap "$errtrap" ERR
+    fi
+    mongosh "$mongo_uri" --quiet --eval 'use flags' \
+        --eval "db.flags.findOne({init_complete: true})" 2>/dev/null \
+            | grep -qF 'init_complete: true'
+    test $? -eq 0 && break
+    sleep 1
+  done
+  echo "done"
 fi
 
 echo
