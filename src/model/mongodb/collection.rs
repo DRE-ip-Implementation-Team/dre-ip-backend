@@ -1,6 +1,8 @@
 use std::ops::Deref;
 
-use mongodb::{Collection, Database};
+use mongodb::{
+    bson::doc, error::Error as DbError, options::IndexOptions, Collection, Database, IndexModel,
+};
 use rocket::{
     request::{self, FromRequest, Request},
     State,
@@ -121,4 +123,51 @@ impl MongoCollection for NewCandidateTotals {
 const COUNTERS: &str = "counters";
 impl MongoCollection for Counter {
     const NAME: &'static str = COUNTERS;
+}
+
+/// Ensure that all the required indexes exist on the given database.
+///
+/// This operation is idempotent.
+pub async fn ensure_indexes_exist(db: &Database) -> Result<(), DbError> {
+    debug!("Ensuring collection indexes exist");
+
+    let unique = IndexOptions::builder().unique(true).build();
+
+    // Voter collection.
+    let voter_index = IndexModel::builder()
+        .keys(doc! {"sms_hmac": 1})
+        .options(unique.clone())
+        .build();
+    Coll::<Voter>::from_db(db)
+        .create_index(voter_index, None)
+        .await?;
+
+    // Admin collection.
+    let admin_index = IndexModel::builder()
+        .keys(doc! {"username": 1})
+        .options(unique.clone())
+        .build();
+    Coll::<Admin>::from_db(db)
+        .create_index(admin_index, None)
+        .await?;
+
+    // Ballot collection.
+    let ballot_index = IndexModel::builder()
+        .keys(doc! {"election_id": 1, "question_id": 1, "ballot_id": 1})
+        .options(unique.clone())
+        .build();
+    Coll::<AnyBallot>::from_db(db)
+        .create_index(ballot_index, None)
+        .await?;
+
+    // Candidate totals collection.
+    let totals_index = IndexModel::builder()
+        .keys(doc! {"election_id": 1, "question_id": 1, "candidate_name": 1})
+        .options(unique.clone())
+        .build();
+    Coll::<CandidateTotals>::from_db(db)
+        .create_index(totals_index, None)
+        .await?;
+
+    Ok(())
 }

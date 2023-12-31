@@ -15,7 +15,7 @@ use serde::Deserialize;
 
 use crate::model::{
     db::admin::ensure_admin_exists,
-    mongodb::{ensure_election_id_counter_exists, Coll},
+    mongodb::{ensure_election_id_counter_exists, ensure_indexes_exist, Coll},
 };
 
 /// Application configuration, derived from `Rocket.toml` and `ROCKET_*`
@@ -139,6 +139,12 @@ impl Fairing for DatabaseFairing {
             }
         };
         let db = client.database(&get_database_name());
+
+        // Ensure the required indexes exist.
+        if let Err(e) = ensure_indexes_exist(&db).await {
+            error!("Failed to connect to database: {e}");
+            return Err(rocket);
+        }
 
         // Ensure there is at least one admin user and the global election ID counter exists.
         let admins = Coll::from_db(&db);
