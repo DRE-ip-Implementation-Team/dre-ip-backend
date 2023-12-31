@@ -144,8 +144,11 @@ pub fn backend_test(args: TokenStream, input: TokenStream) -> TokenStream {
                 runtime.block_on(#new_name(#(#test_args),* #(,#collection_idents)*));
             });
 
-            // Run the cleanup.
-            outer_runtime.block_on(cleanup(db));
+            // Run the cleanup (unless suppressed).
+            let do_cleanup = std::env::var("SKIP_TEST_CLEANUP").as_deref().unwrap_or("").is_empty();
+            if do_cleanup {
+                outer_runtime.block_on(cleanup(db));
+            }
 
             // If the test panicked, re-raise the panic.
             if let Err(cause) = result {
