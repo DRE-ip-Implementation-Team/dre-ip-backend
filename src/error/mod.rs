@@ -1,10 +1,14 @@
 use argon2::Error as Argon2Error;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
-use mongodb::{bson::oid::Error as OidError, error::Error as DbError};
+use mongodb::{
+    bson::oid::Error as OidError,
+    error::{Error as DbError, ErrorKind as DbErrorKind},
+};
 use rocket::{
     http::{Status, StatusClass},
     response::Responder,
 };
+use std::sync::Arc;
 use thiserror::Error;
 
 use crate::{logging::RequestId, model::api::auth::RecaptchaError};
@@ -14,7 +18,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
-    Db(#[from] DbError),
+    Db(DbError),
     #[error(transparent)]
     Oid(#[from] OidError),
     #[error(transparent)]
@@ -25,6 +29,23 @@ pub enum Error {
     Recaptcha(#[from] RecaptchaError),
     #[error("{0}: {1}")]
     Status(Status, String),
+}
+
+impl From<DbError> for Error {
+    fn from(err: DbError) -> Self {
+        // Thanks to transactions, we may sometimes get an `Error`
+        // wrapped inside a `DbError`.
+        if err.get_custom::<Self>().is_some() {
+            // Pull the error apart to get the wrapped error by value.
+            let DbErrorKind::Custom(arc) = *err.kind else {
+                unreachable!()
+            };
+            let wrapped = arc.downcast::<Self>().unwrap();
+            Arc::into_inner(wrapped).expect("multiple refs to DbError")
+        } else {
+            Self::Db(err)
+        }
+    }
 }
 
 impl Error {
