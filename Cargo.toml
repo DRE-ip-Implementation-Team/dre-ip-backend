@@ -28,14 +28,20 @@ verification = ["clap"] # Enable extra dependencies needed for verification tool
 aws-config = "1"
 aws-credential-types = "1"
 aws-sdk-sns = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["cargo", "wrap_help"], optional = true }
 data-encoding = "2"
+dre-ip = { path = "protocol" }
 hmac = "0.12"
 jsonwebtoken = "9"
 log = "0.4"
 log4rs = "1"
 log4rs_dynamic_filters = "0.1"
+mongodb = { version = "2", features = ["bson-chrono-0_4"] }
 phonenumber = "0.3"
 rand = "0.8"
+reqwest = { version = "0.11", features = ["json"] }
+rocket = { version = "0.5", features = ["secrets", "json"] }
 rust-argon2 = "2"
 serde = "1"
 serde_repr = "0.1"
@@ -45,34 +51,6 @@ thiserror = "1"
 time = "0.3"
 typenum = "1"
 
-[dependencies.chrono]
-version = "0.4"
-features = ["serde"]
-
-[dependencies.clap]
-version = "4"
-optional = true # Only needed by verification tool
-features = ["cargo", "wrap_help"]
-
-[dependencies.dre-ip]
-path = "protocol" # Provided via git submodule
-
-[dependencies.mongodb]
-version = "2"
-features = ["bson-chrono-0_4"]
-
-[dependencies.reqwest]
-version = "0.11"
-features = ["json"]
-
-[dependencies.rocket]
-version = "0.5"
-features = ["secrets", "json"]
-
-[dev-dependencies.backend-test]
-path = "backend_test"
-
-[dev-dependencies.log4rs_test_utils]
-version = "0.2"
-default-features = false
-features = ["test_logging"]
+[dev-dependencies]
+backend-test = { path = "backend_test" }
+log4rs_test_utils = { version = "0.2", default-features = false, features = ["test_logging"] }
