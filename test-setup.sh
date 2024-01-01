@@ -4,7 +4,7 @@
 # Usage: './test-setup.sh' (no arguments)
 
 # Constants.
-readonly TESTDB_IMAGE='bitnami/mongodb:5.0.13-debian-11-r1'
+readonly TESTDB_IMAGE='bitnami/mongodb:7.0.4-debian-11-r3'
 readonly TESTDB_CONTAINER='dreip-backend-testdb'
 readonly TESTDB_PASSWORD='password'
 
