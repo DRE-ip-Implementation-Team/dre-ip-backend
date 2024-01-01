@@ -35,14 +35,13 @@ impl Challenge {
     }
 
     // Challenge serialization never fails.
-    #[allow(clippy::missing_panics_doc)]
     /// Convert into a cookie.
     pub fn into_cookie(self, config: &Config) -> Cookie<'static> {
         let claims = Claims {
             challenge: self,
             expire_at: Utc::now() + config.otp_ttl(),
         };
-        Cookie::build(
+        Cookie::build((
             CHALLENGE_COOKIE,
             jsonwebtoken::encode(
                 &Header::default(),
@@ -50,11 +49,11 @@ impl Challenge {
                 &EncodingKey::from_secret(config.jwt_secret()),
             )
             .unwrap(),
-        )
+        ))
         .max_age(Duration::seconds(config.otp_ttl().num_seconds()))
         .http_only(true)
         .same_site(SameSite::Strict)
-        .finish()
+        .build()
     }
 
     /// Deserialize a challenge from a cookie.
@@ -88,11 +87,11 @@ impl<'r> FromRequest<'r> for Challenge {
         let cookie = try_outcome!(req
             .cookies()
             .get_private(CHALLENGE_COOKIE)
-            .into_outcome((Status::Unauthorized, ChallengeError::Missing)));
+            .or_error((Status::Unauthorized, ChallengeError::Missing)));
 
         let challenge = try_outcome!(Challenge::from_cookie(&cookie, config)
             .map_err(ChallengeError::Jwt)
-            .into_outcome(Status::BadRequest));
+            .or_error(Status::BadRequest));
 
         request::Outcome::Success(challenge)
     }

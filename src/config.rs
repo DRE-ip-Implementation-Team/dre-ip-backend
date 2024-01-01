@@ -1,4 +1,4 @@
-use aws_config::SdkConfig;
+use aws_config::{BehaviorVersion, SdkConfig};
 use aws_credential_types::provider::SharedCredentialsProvider;
 use aws_sdk_sns::{
     config::{Credentials, Region},
@@ -223,6 +223,7 @@ impl Fairing for AwsFairing {
                 None,
                 "rocket config",
             )))
+            .behavior_version(BehaviorVersion::latest())
             .build();
         let client = SnsClient::new(&aws_config);
         info!("Loaded Amazon SNS config");

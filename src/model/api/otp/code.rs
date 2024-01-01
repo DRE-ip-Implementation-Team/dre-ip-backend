@@ -5,7 +5,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use rand::distributions::{Distribution, Uniform};
-use rocket::form::{self, prelude::ErrorKind, Errors, FromFormField, ValueField};
+use rocket::form::error::ErrorKind;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -150,15 +150,5 @@ impl From<ParseError> for ErrorKind<'_> {
                 c
             ))),
         }
-    }
-}
-
-impl<'r> FromFormField<'r> for Code {
-    fn from_value(field: ValueField<'r>) -> form::Result<'r, Self> {
-        if field.name != "code" {
-            return Err(Errors::from(ErrorKind::Missing));
-        }
-        let value = field.value;
-        value.parse::<Code>().map_err(Into::into)
     }
 }

@@ -1,4 +1,4 @@
-use argon2::Config;
+use argon2::{Config as HashConfig, Variant, Version};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -25,14 +25,24 @@ impl TryFrom<AdminCredentials> for NewAdmin {
             return Err(());
         }
 
-        // 16 bytes is recommended for password hashing:
-        //  https://en.wikipedia.org/wiki/Argon2
-        // Also useful:
-        //  https://www.twelve21.io/how-to-choose-the-right-parameters-for-argon2/
+        // Parameters chosen according to RFC9106:
+        // * 4 lanes as a sensible default.
+        // * 64 MiB mem_cost as the "first recommended" option of 2 GiB is excessive.
+        // * 3 rounds of time_cost to offset the lower mem_cost as recommended.
+        // * Argon2i as this is recommended for password hashing.
         let mut salt = [0_u8; 16];
         rand::thread_rng().fill(&mut salt);
-        let password_hash =
-            argon2::hash_encoded(cred.password.as_bytes(), &salt, &Config::default()).unwrap(); // Safe because the default `Config` is valid.
+        let config = HashConfig {
+            ad: &[],
+            hash_length: 32,
+            lanes: 4,
+            mem_cost: 65536,
+            secret: &[],
+            time_cost: 3,
+            variant: Variant::Argon2i,
+            version: Version::Version13,
+        };
+        let password_hash = argon2::hash_encoded(cred.password.as_bytes(), &salt, &config).unwrap();
         Ok(Self {
             username: cred.username,
             password_hash,

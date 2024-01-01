@@ -52,7 +52,6 @@ where
         }
     }
 
-    #[allow(clippy::missing_panics_doc)]
     /// Serialize this cookie into a token.
     pub fn into_cookie(self, config: &Config) -> Cookie<'static> {
         let claims = Claims {
@@ -67,11 +66,11 @@ where
         )
         .expect("JWT encoding is infallible with default settings");
 
-        Cookie::build(AUTH_TOKEN_COOKIE, token)
+        Cookie::build((AUTH_TOKEN_COOKIE, token))
             .max_age(Duration::seconds(config.auth_ttl().num_seconds()))
             .http_only(true)
             .same_site(SameSite::Strict)
-            .finish()
+            .build()
     }
 
     /// Deserialize a token from a cookie.
@@ -109,14 +108,18 @@ where
         let config = req.guard::<&State<Config>>().await.unwrap();
 
         // Forward to any routes that do not require an authentication token.
-        let cookie = try_outcome!(req.cookies().get(AUTH_TOKEN_COOKIE).or_forward(()));
+        let cookie = try_outcome!(req
+            .cookies()
+            .get(AUTH_TOKEN_COOKIE)
+            .or_forward(Status::Unauthorized));
 
         // Decode the token.
-        let token: Self = try_outcome!(Self::from_cookie(cookie, config).or_forward(()));
+        let token: Self =
+            try_outcome!(Self::from_cookie(cookie, config).or_forward(Status::Unauthorized));
 
         // Check it represents the correct rights.
         if !token.permits(U::RIGHTS) {
-            return Outcome::Forward(());
+            return Outcome::Forward(Status::Unauthorized);
         }
 
         // Check the user actually exists.
@@ -128,8 +131,8 @@ where
                     .await;
                 match voter {
                     Ok(Some(_)) => Outcome::Success(token),
-                    Ok(None) => Outcome::Forward(()),
-                    Err(e) => Outcome::Failure((Status::InternalServerError, e.into())),
+                    Ok(None) => Outcome::Forward(Status::Unauthorized),
+                    Err(e) => Outcome::Error((Status::InternalServerError, e.into())),
                 }
             }
             Rights::Admin => {
@@ -138,8 +141,8 @@ where
                     .await;
                 match admin {
                     Ok(Some(_)) => Outcome::Success(token),
-                    Ok(None) => Outcome::Forward(()),
-                    Err(e) => Outcome::Failure((Status::InternalServerError, e.into())),
+                    Ok(None) => Outcome::Forward(Status::Unauthorized),
+                    Err(e) => Outcome::Error((Status::InternalServerError, e.into())),
                 }
             }
         }

@@ -3,13 +3,11 @@ use std::ops::{Deref, DerefMut};
 use mongodb::error::Error as DbError;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{
-    api::admin::AdminCredentials,
-    mongodb::{Coll, Id},
-};
+use crate::model::mongodb::{Coll, Id};
 
 pub const DEFAULT_ADMIN_USERNAME: &str = "replace-this-admin-asap";
-pub const DEFAULT_ADMIN_PASSWORD: &str = "insecure";
+/// Password is "insecure".
+pub const DEFAULT_ADMIN_PASSWORD_HASH: &str = "$argon2i$v=19$m=4096,t=1,p=1$cG1lcGY0N2oyTDRHeThpWQ$tRcNjW70NB7V71nXdj6w2VrwrG9Hq9irrmyhMIVCp3o";
 
 /// Core admin user data.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,12 +27,10 @@ impl AdminCore {
 
 impl Default for AdminCore {
     fn default() -> Self {
-        AdminCredentials {
+        Self {
             username: DEFAULT_ADMIN_USERNAME.to_string(),
-            password: DEFAULT_ADMIN_PASSWORD.to_string(),
+            password_hash: DEFAULT_ADMIN_PASSWORD_HASH.to_string(),
         }
-        .try_into()
-        .unwrap() // Default credentials are valid.
     }
 }
 

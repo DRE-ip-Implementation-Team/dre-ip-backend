@@ -3,14 +3,6 @@ use std::{ops::Deref, str::FromStr};
 use hmac::Mac;
 use mongodb::bson::{to_bson, Bson};
 use phonenumber::PhoneNumber;
-use rocket::{
-    form::{self, prelude::ErrorKind, FromFormField, ValueField},
-    http::{
-        impl_from_uri_param_identity,
-        uri::fmt::{Query, UriDisplay},
-    },
-    request::FromParam,
-};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -63,44 +55,6 @@ impl From<Sms> for String {
         sms.to_string()
     }
 }
-
-#[rocket::async_trait]
-impl<'r> FromFormField<'r> for Sms {
-    fn from_value(field: ValueField<'r>) -> form::Result<'r, Self> {
-        if field.name != "sms" {
-            return Err(ErrorKind::Missing.into());
-        }
-        field
-            .value
-            .parse::<PhoneNumber>()
-            .map(|number| Sms { inner: number })
-            .map_err(|err| ErrorKind::Custom(Box::new(err)).into())
-    }
-}
-
-impl UriDisplay<Query> for Sms {
-    fn fmt(
-        &self,
-        formatter: &mut rocket::http::uri::fmt::Formatter<'_, Query>,
-    ) -> std::fmt::Result {
-        formatter.write_value(self.to_string())
-    }
-}
-
-impl<'a> FromParam<'a> for Sms {
-    type Error = SmsError<'a>;
-
-    fn from_param(param: &'a str) -> Result<Self, Self::Error> {
-        if !param.starts_with("sms=") {
-            return Err(SmsError::WrongName(param));
-        }
-        Ok(Self {
-            inner: param[4..].parse::<PhoneNumber>()?,
-        })
-    }
-}
-
-impl_from_uri_param_identity!([Query] Sms);
 
 #[derive(Debug, Error)]
 pub enum SmsError<'a> {

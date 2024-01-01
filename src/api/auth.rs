@@ -190,7 +190,7 @@ async fn verify(
     cookies.add(claims.into_cookie(config));
 
     // We no longer need the OTP challenge.
-    cookies.remove(Cookie::named(CHALLENGE_COOKIE));
+    cookies.remove(Cookie::from(CHALLENGE_COOKIE));
 
     info!(
         "  req{} Voter {} successfully authenticated",
@@ -202,20 +202,20 @@ async fn verify(
 #[delete("/auth", rank = 1)]
 fn logout_admin(token: AuthToken<Admin>, cookies: &CookieJar, request_id: RequestId) -> Status {
     info!("  req{} Admin {} logging out", request_id, token.id);
-    cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
+    cookies.remove(Cookie::from(AUTH_TOKEN_COOKIE));
     Status::Ok
 }
 
 #[delete("/auth", rank = 2)]
 fn logout_voter(token: AuthToken<Voter>, cookies: &CookieJar, request_id: RequestId) -> Status {
     info!("  req{} Voter {} logging out", request_id, token.id);
-    cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
+    cookies.remove(Cookie::from(AUTH_TOKEN_COOKIE));
     Status::Ok
 }
 
 #[delete("/auth", rank = 3)]
 fn logout_none(cookies: &CookieJar) -> Status {
-    cookies.remove(Cookie::named(AUTH_TOKEN_COOKIE));
+    cookies.remove(Cookie::from(AUTH_TOKEN_COOKIE));
     Status::Ok
 }
 
