@@ -17,12 +17,12 @@ db.createCollection("elections");
 // Ballot collection
 db.createCollection("ballots");
 ballots = db.getCollection("ballots");
-ballots.createIndex({election_id: 1, question_id: 1, ballot_id: 1})
+ballots.createIndex({election_id: 1, question_id: 1, ballot_id: 1}, {unique: true})
 
 // Candidate totals collection
 db.createCollection("candidate_totals");
 candidate_totals = db.getCollection("candidate_totals");
-candidate_totals.createIndex({election_id: 1, question_id: 1, candidate_name: 1})
+candidate_totals.createIndex({election_id: 1, question_id: 1, candidate_name: 1}, {unique: true})
 
 // Counter collection
 db.createCollection("counters");

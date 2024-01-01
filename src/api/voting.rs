@@ -1,8 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
-use mongodb::{bson::doc, options::ReplaceOptions, Client};
-use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
+use mongodb::{bson::doc, error::Error as DbError, options::ReplaceOptions, Client};
+use rocket::{
+    futures::{FutureExt, TryStreamExt},
+    http::Status,
+    serde::json::Json,
+    Route, State,
+};
 
 use crate::{
     error::{Error, Result},
@@ -139,19 +144,40 @@ async fn join_election(
 
     // Join the election by adding the voter's unanswered questions
     let allowed_questions_election_id = format!("allowed_questions.{}", election.id);
-    voters
+    let result = voters
         .update_one(
-            voter.id.as_doc(),
+            doc! {
+                "_id": voter.id,
+                // Concurrency: don't match if it was already set.
+                &allowed_questions_election_id: { "$exists": false },
+            },
             doc! {
                 "$set": {
-                    allowed_questions_election_id: allowed_questions
+                    &allowed_questions_election_id: allowed_questions,
                 }
             },
             None,
         )
         .await?;
 
-    Ok(())
+    match result.matched_count {
+        0 => {
+            // Concurrency error: someone else set the list before us.
+            warn!(
+                "  req{} Rejecting racy update to voter's allowed questions",
+                request_id
+            );
+            Err(Error::Status(
+                Status::Forbidden,
+                format!(
+                    "Voter has already joined election with ID '{}'",
+                    election_id
+                ),
+            ))
+        }
+        1 => Ok(()),
+        _ => unreachable!(),
+    }
 }
 
 #[get("/elections/<election_id>/questions/allowed")]
@@ -267,14 +293,21 @@ async fn cast_ballots(
     }
 
     // Insert ballots into DB within a transaction, so this entire endpoint is atomic.
-    {
-        let mut session = db_client.start_session(None).await?;
-        session.start_transaction(None).await?;
-        ballots
-            .insert_many_with_session(new_ballots.iter(), None, &mut session)
-            .await?;
-        session.commit_transaction().await?;
-    }
+    let mut session = db_client.start_session(None).await?;
+    session
+        .with_transaction(
+            (&ballots, &new_ballots),
+            |session, (ballots, new_ballots)| {
+                async {
+                    ballots
+                        .insert_many_with_session(new_ballots.iter(), None, session)
+                        .await
+                }
+                .boxed()
+            },
+            None,
+        )
+        .await?;
     trace!("  req{request_id} Committed ballots to database");
 
     // Return receipts.
@@ -313,42 +346,61 @@ async fn audit_ballots(
         ballot_recalls.len()
     );
 
-    // Get the election and ballots.
+    // Get the election.
     let election = active_election_by_id(election_id, &elections).await?;
-    let recalled_ballots =
-        recall_ballots(ballot_recalls.0, &unconfirmed_ballots, &election).await?;
+    let ballots = recall_ballots(&ballot_recalls.0, &unconfirmed_ballots, &election)
+        .await?
+        .into_iter()
+        .map(Ballot::audit)
+        .collect::<Vec<_>>();
 
     // Update ballots in DB using a transaction so the whole endpoint is atomic.
-    let mut new_ballots = Vec::with_capacity(recalled_ballots.len());
-    {
-        let mut session = db_client.start_session(None).await?;
-        session.start_transaction(None).await?;
-
-        for ballot in recalled_ballots {
-            let audited = ballot.audit();
-            let filter = doc! {
-                "_id": audited.internal_id,
-                "election_id": election_id,
-                "question_id": audited.question_id,
-                "state": Unconfirmed,
-            };
-            let result = audited_ballots
-                .replace_one_with_session(filter, &audited, None, &mut session)
-                .await?;
-            assert_eq!(result.modified_count, 1);
-            debug!(
-                "  req{} Audited ballot {} for question {}",
-                request_id, audited.ballot_id, audited.question_id
-            );
-            new_ballots.push(audited);
-        }
-
-        session.commit_transaction().await?;
-    }
+    let mut session = db_client.start_session(None).await?;
+    session
+        .with_transaction(
+            (request_id, &ballots, &audited_ballots),
+            |session, (request_id, ballots, audited_ballots)| {
+                async move {
+                    for ballot in ballots.iter() {
+                        let filter = doc! {
+                            "_id": ballot.internal_id,
+                            // Concurrency: only match if this ballot is still unconfirmed.
+                            "state": Unconfirmed,
+                        };
+                        let result = audited_ballots
+                            .replace_one_with_session(filter, ballot, None, session)
+                            .await?;
+                        match result.matched_count {
+                            0 => {
+                                // Concurrency error: ballot was not unconfirmed.
+                                warn!(
+                                    "  req{} Rejecting racy audit to ballot {}",
+                                    request_id, ballot.ballot_id
+                                );
+                                return Err(DbError::custom(Error::not_found(format!(
+                                    "Ballot with ID '{}'",
+                                    ballot.ballot_id
+                                ))));
+                            }
+                            1 => {}
+                            _ => unreachable!(),
+                        }
+                        debug!(
+                            "  req{} Audited ballot {} for question {}",
+                            request_id, ballot.ballot_id, ballot.question_id
+                        );
+                    }
+                    Ok(())
+                }
+                .boxed()
+            },
+            None,
+        )
+        .await?;
     trace!("  req{request_id} Committed changes to database");
 
     // Return receipts.
-    let receipts = new_ballots
+    let receipts = ballots
         .into_iter()
         .map(|ballot| Receipt::from_ballot(ballot.ballot, &election))
         .collect();
@@ -389,144 +441,218 @@ async fn confirm_ballots(
     );
 
     let mut voter = voter_by_id(token.id, &voters).await?;
-    // Get the election and ballots.
+    // Get the election.
     let election = active_election_by_id(election_id, &elections).await?;
-    let recalled_ballots =
-        recall_ballots(ballot_recalls.0, &unconfirmed_ballots, &election).await?;
 
     // Update DB in a transaction so the whole endpoint is atomic.
-    let mut new_ballots = Vec::with_capacity(recalled_ballots.len());
-    {
-        let mut session = db_client.start_session(None).await?;
-        session.start_transaction(None).await?;
-
-        for ballot in recalled_ballots {
-            // Check that the user is eligible to vote on this question.
-            let allowed_questions = match voter.allowed_questions.get_mut(&election_id) {
-                Some(allowed) => allowed,
-                None => {
-                    return Err(Error::Status(
-                        Status::BadRequest,
-                        format!(
-                            "Voter {} has not yet joined election {}",
-                            voter.id, election_id
-                        ),
-                    ));
-                }
-            };
-            if let Some(confirmed) = allowed_questions.confirmed.get_mut(&ballot.question_id) {
-                if *confirmed {
-                    return Err(Error::Status(
-                        Status::BadRequest,
-                        format!(
-                            "Voter {} has already voted on question {}",
-                            voter.id, ballot.question_id
-                        ),
-                    ));
-                }
-
-                // All tests passed, the voter can confirm this ballot.
-                *confirmed = true; // Not strictly necessary, but best practice to keep our local copy consistent.
-                let question_confirmed =
-                    format!("allowed_questions.{}.{}", election_id, ballot.question_id);
-                let update = doc! {
-                    "$set": {
-                        &question_confirmed: true
-                    }
-                };
-                let result = voters
-                    .update_one_with_session(voter.id.as_doc(), update, None, &mut session)
-                    .await?;
-                assert_eq!(result.modified_count, 1);
-            } else {
-                return Err(Error::Status(
-                    Status::BadRequest,
-                    format!(
-                        "Voter {} is not allowed to vote on question {}",
-                        voter.id, ballot.question_id
-                    ),
-                ));
-            }
-            trace!(
-                "  req{} Marked question {} as confirmed",
+    let mut new_ballots = Vec::with_capacity(ballot_recalls.len());
+    let mut session = db_client.start_session(None).await?;
+    session
+        .with_transaction(
+            (
                 request_id,
-                ballot.question_id
-            );
+                election_id,
+                &ballot_recalls,
+                &election,
+                &mut voter,
+                &mut new_ballots,
+                &unconfirmed_ballots,
+                &confirmed_ballots,
+                &voters,
+                &candidate_totals,
+            ),
+            |session,
+             (
+                request_id,
+                election_id,
+                ballot_recalls,
+                election,
+                voter,
+                new_ballots,
+                unconfirmed_ballots,
+                confirmed_ballots,
+                voters,
+                candidate_totals,
+            )| {
+                async move {
+                    // The transaction might get retried, but we must consume the ballots each time to
+                    // update the totals. Therefore fetch them each time.
+                    let recalled_ballots =
+                        recall_ballots(&ballot_recalls.0, unconfirmed_ballots, election)
+                            .await
+                            .map_err(DbError::custom)?;
+                    new_ballots.clear();
 
-            // Get candidate totals.
-            let filter = doc! {
-                "election_id": election_id,
-                "question_id": ballot.question_id,
-            };
-            let mut totals = candidate_totals
-                .find_with_session(filter, None, &mut session)
-                .await?
-                .stream(&mut session)
-                .try_collect::<Vec<_>>()
-                .await?;
-            // If the totals don't exist yet, we need to create them.
-            if totals.len() != ballot.crypto.votes.len() {
-                assert_eq!(totals.len(), 0);
-                debug!(
-                    "  req{} Creating candidate totals for question {}",
-                    request_id, ballot.question_id
-                );
-                let question = election.questions.get(&ballot.question_id).unwrap();
-                for candidate in &question.candidates {
-                    totals.push(CandidateTotals {
-                        id: Id::new(),
-                        totals: NewCandidateTotals::new(
-                            election_id,
-                            ballot.question_id,
-                            candidate.clone(),
-                        ),
-                    });
+                    for ballot in recalled_ballots {
+                        // Check that the user is eligible to vote on this question.
+                        let allowed_questions = match voter.allowed_questions.get_mut(election_id) {
+                            Some(allowed) => allowed,
+                            None => {
+                                return Err(DbError::custom(Error::Status(
+                                    Status::BadRequest,
+                                    format!(
+                                        "Voter {} has not yet joined election {}",
+                                        voter.id, election_id
+                                    ),
+                                )));
+                            }
+                        };
+                        if let Some(confirmed) =
+                            allowed_questions.confirmed.get_mut(&ballot.question_id)
+                        {
+                            if *confirmed {
+                                return Err(DbError::custom(Error::Status(
+                                    Status::BadRequest,
+                                    format!(
+                                        "Voter {} has already voted on question {}",
+                                        voter.id, ballot.question_id
+                                    ),
+                                )));
+                            }
+
+                            // All tests passed, the voter can confirm this ballot.
+                            let question_confirmed =
+                                format!("allowed_questions.{}.{}", election_id, ballot.question_id);
+                            let filter = doc! {
+                                "_id": voter.id,
+                                // Concurrency: only match if still false.
+                                &question_confirmed: false,
+                            };
+                            let update = doc! {
+                                "$set": {
+                                    &question_confirmed: true,
+                                }
+                            };
+                            let result = voters
+                                .update_one_with_session(filter, update, None, session)
+                                .await?;
+                            match result.matched_count {
+                                0 => {
+                                    // Concurrency error: question was already confirmed.
+                                    warn!(
+                                        "  req{} Rejecting racy answer to question {}",
+                                        request_id, ballot.question_id
+                                    );
+                                    return Err(DbError::custom(Error::Status(
+                                        Status::BadRequest,
+                                        format!(
+                                            "Voter {} has already voted on question {}",
+                                            voter.id, ballot.question_id
+                                        ),
+                                    )));
+                                }
+                                1 => {}
+                                _ => unreachable!(),
+                            }
+                        } else {
+                            return Err(DbError::custom(Error::Status(
+                                Status::BadRequest,
+                                format!(
+                                    "Voter {} is not allowed to vote on question {}",
+                                    voter.id, ballot.question_id
+                                ),
+                            )));
+                        }
+                        trace!(
+                            "  req{} Marked question {} as confirmed",
+                            request_id,
+                            ballot.question_id
+                        );
+
+                        // Get candidate totals.
+                        let filter = doc! {
+                            "election_id": *election_id,
+                            "question_id": ballot.question_id,
+                        };
+                        let mut totals = candidate_totals
+                            .find_with_session(filter, None, session)
+                            .await?
+                            .stream(session)
+                            .try_collect::<Vec<_>>()
+                            .await?;
+                        // If the totals don't exist yet, we need to create them.
+                        if totals.len() != ballot.crypto.votes.len() {
+                            assert_eq!(totals.len(), 0);
+                            debug!(
+                                "  req{} Creating candidate totals for question {}",
+                                request_id, ballot.question_id
+                            );
+                            let question = election.questions.get(&ballot.question_id).unwrap();
+                            for candidate in &question.candidates {
+                                totals.push(CandidateTotals {
+                                    id: Id::new(),
+                                    totals: NewCandidateTotals::new(
+                                        *election_id,
+                                        ballot.question_id,
+                                        candidate.clone(),
+                                    ),
+                                });
+                            }
+                        }
+                        assert_eq!(totals.len(), ballot.crypto.votes.len());
+                        // Convert to hashmap.
+                        let mut totals_map = totals
+                            .iter_mut()
+                            .map(|t| (t.candidate_name.clone(), &mut t.crypto))
+                            .collect::<HashMap<_, _>>();
+
+                        // Confirm ballot.
+                        let confirmed = ballot.confirm(&mut totals_map);
+                        let filter = doc! {
+                            "_id": confirmed.internal_id,
+                            // Concurrency: only match if this ballot is still unconfirmed.
+                            "state": Unconfirmed,
+                        };
+                        let result = confirmed_ballots
+                            .replace_one_with_session(filter, &confirmed, None, session)
+                            .await?;
+                        match result.matched_count {
+                            0 => {
+                                // Concurrency error: ballot was not unconfirmed.
+                                warn!(
+                                    "  req{} Rejecting racy confirm to ballot {}",
+                                    request_id, confirmed.ballot_id
+                                );
+                                return Err(DbError::custom(Error::not_found(format!(
+                                    "Ballot with ID '{}'",
+                                    confirmed.ballot_id
+                                ))));
+                            }
+                            1 => {}
+                            _ => unreachable!(),
+                        }
+                        debug!(
+                            "  req{} Confirmed ballot {} for question {}",
+                            request_id, confirmed.ballot_id, confirmed.question_id
+                        );
+
+                        // Write updated candidate totals.
+                        for t in totals {
+                            let filter = doc! {
+                                // Concurrency: we rely on the unique index created across the following three
+                                // attributes to ensure we don't accidentally upsert multiple fresh copies in
+                                // parallel.
+                                "election_id": *election_id,
+                                "question_id": confirmed.question_id,
+                                "candidate_name": &t.candidate_name,
+                            };
+                            let options = ReplaceOptions::builder().upsert(true).build();
+                            let result = candidate_totals
+                                .replace_one_with_session(filter, t, options, session)
+                                .await?;
+                            assert!(result.modified_count == 1 || result.upserted_id.is_some());
+                        }
+                        trace!("  req{request_id} Wrote new candidate totals");
+
+                        new_ballots.push(confirmed);
+                    }
+                    Ok(())
                 }
-            }
-            assert_eq!(totals.len(), ballot.crypto.votes.len());
-            // Convert to hashmap.
-            let mut totals_map = totals
-                .iter_mut()
-                .map(|t| (t.candidate_name.clone(), &mut t.crypto))
-                .collect::<HashMap<_, _>>();
-
-            // Confirm ballot.
-            let confirmed = ballot.confirm(&mut totals_map);
-            let filter = doc! {
-                "_id": confirmed.internal_id,
-                "election_id": election_id,
-                "question_id": confirmed.question_id,
-                "state": Unconfirmed,
-            };
-            let result = confirmed_ballots
-                .replace_one_with_session(filter, &confirmed, None, &mut session)
-                .await?;
-            assert_eq!(result.modified_count, 1);
-            debug!(
-                "  req{} Confirmed ballot {} for question {}",
-                request_id, confirmed.ballot_id, confirmed.question_id
-            );
-
-            // Write updated candidate totals.
-            for t in totals {
-                let filter = doc! {
-                    "election_id": election_id,
-                    "question_id": confirmed.question_id,
-                    "candidate_name": t.candidate_name.clone(),
-                };
-                let options = ReplaceOptions::builder().upsert(true).build();
-                let result = candidate_totals
-                    .replace_one_with_session(filter, t, options, &mut session)
-                    .await?;
-                assert!(result.modified_count == 1 || result.upserted_id.is_some());
-            }
-            trace!("  req{request_id} Wrote new candidate totals");
-
-            new_ballots.push(confirmed);
-        }
-
-        session.commit_transaction().await?;
-    }
+                .boxed()
+            },
+            None,
+        )
+        .await?;
     trace!("  req{request_id} Committed changes to database");
 
     // Return receipts.
@@ -568,7 +694,7 @@ async fn active_election_by_id(
 
 /// Get the given unconfirmed ballots, verifying their signatures.
 async fn recall_ballots(
-    ballot_recalls: Vec<BallotRecall>,
+    ballot_recalls: &[BallotRecall],
     unconfirmed_ballots: &Coll<Ballot<Unconfirmed>>,
     election: &Election,
 ) -> Result<Vec<Ballot<Unconfirmed>>> {

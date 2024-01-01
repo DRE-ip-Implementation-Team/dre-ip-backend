@@ -171,6 +171,8 @@ async fn verify(
         voter
     } else {
         // Voter doesn't exist yet.
+        // Concurrency: if two of these race, only one insert will succeed due to the unique index
+        // on the sms_hmac.
         let new_id: Id = new_voters
             .insert_one(&voter, None)
             .await?

@@ -1,6 +1,16 @@
 use chrono::Utc;
-use mongodb::{bson::doc, Client};
-use rocket::{futures::TryStreamExt, http::Status, serde::json::Json, Route, State};
+use mongodb::{
+    bson::doc,
+    options::{FindOneAndUpdateOptions, ReturnDocument},
+    Client,
+};
+use rocket::{
+    futures::{FutureExt, TryStreamExt},
+    http::Status,
+    serde::json::Json,
+    tokio::sync::Mutex,
+    Route, State,
+};
 
 use crate::{
     error::{Error, Result},
@@ -22,7 +32,10 @@ use crate::{
             election::{Election, ElectionFinalizers},
             voter::Voter,
         },
-        mongodb::{ballot_counter_id, u32_id_filter, Coll, Counter, ELECTION_ID_COUNTER_ID},
+        mongodb::{
+            ballot_counter_id, is_duplicate_key_error, u32_id_filter, Coll, Counter,
+            ELECTION_ID_COUNTER_ID,
+        },
     },
 };
 
@@ -62,24 +75,23 @@ async fn create_admin(
     request_id: RequestId,
 ) -> Result<()> {
     info!("  req{} Admin {} acting", request_id, token.id);
-    // Check username uniqueness.
-    let filter = doc! {
-        "username": &new_admin.username,
-    };
-    let existing = admins.find_one(filter, None).await?;
-    if existing.is_some() {
-        return Err(Error::Status(
-            Status::BadRequest,
-            format!("Admin username already in use: {}", new_admin.username),
-        ));
-    }
-
     // Create and insert the admin.
     let admin: NewAdmin = new_admin
         .0
         .try_into()
         .map_err(|_| Error::Status(Status::BadRequest, "Illegal admin credentials".to_string()))?;
-    admins.insert_one(&admin, None).await?;
+
+    // Username uniqueness is enforced by the unique index on the DB.
+    let result = admins.insert_one(&admin, None).await;
+    if is_duplicate_key_error(result.as_ref()) {
+        return Err(Error::Status(
+            Status::BadRequest,
+            format!("Admin username already in use: {}", admin.username),
+        ));
+    } else {
+        result?;
+    }
+
     warn!(
         "  req{} Created new admin user: {}",
         request_id, admin.username
@@ -95,7 +107,13 @@ async fn delete_admin(
     request_id: RequestId,
 ) -> Result<()> {
     info!("  req{} Admin {} acting", request_id, token.id);
+
     // Prevent deleting the last admin.
+    // It would appear that mongodb has no native way of conditionally deleting based on document
+    // count. To avoid a race, we must fall back to a good old mutex.
+    static LOCK: Mutex<()> = Mutex::const_new(());
+    let _locked = LOCK.lock().await;
+
     let count = admins.count_documents(None, None).await?;
     if count == 1 {
         return Err(Error::Status(
@@ -126,52 +144,64 @@ async fn create_election(
     request_id: RequestId,
 ) -> Result<Json<ElectionDescription>> {
     info!("  req{} Admin {} acting", request_id, token.id);
-    let election = {
-        let mut session = db_client.start_session(None).await?;
-        session.start_transaction(None).await?;
 
-        // Obtain a unique election ID.
-        let election_id = Counter::next(&counters, ELECTION_ID_COUNTER_ID).await?;
-        trace!("  req{request_id} Obtained election id {election_id}");
+    // Obtain a unique election ID.
+    let election_id = Counter::next(&counters, ELECTION_ID_COUNTER_ID).await?;
+    trace!("  req{request_id} Obtained election id {election_id}");
 
-        // Create and insert the election.
-        let election = spec.0.into_election(election_id, rand::thread_rng());
-        elections
-            .insert_one_with_session(&election, None, &mut session)
-            .await?;
-        debug!(
-            "  req{} Inserted election {} with {} electorates and {} questions",
-            request_id,
-            election.id,
-            election.electorates.len(),
-            election.questions.len()
-        );
+    // Create the election.
+    let election = spec.0.into_election(election_id, rand::thread_rng());
 
-        // Create and insert a counter for each question.
-        let new_counters = election
-            .questions
-            .keys()
-            .map(|question_id| Counter {
-                id: ballot_counter_id(election_id, *question_id),
-                next: 1,
-            })
-            .collect::<Vec<_>>();
-        counters
-            .insert_many_with_session(&new_counters, None, &mut session)
-            .await?;
-        trace!(
-            "  req{} Inserted {} ballot counters",
-            request_id,
-            new_counters.len()
-        );
+    // Insert the election.
+    let mut session = db_client.start_session(None).await?;
+    session
+        .with_transaction(
+            (request_id, &elections, &election, &counters),
+            |session, (request_id, elections, election, counters)| {
+                async move {
+                    elections
+                        .insert_one_with_session(*election, None, session)
+                        .await?;
 
-        session.commit_transaction().await?;
-        warn!(
-            "  req{} Created {:?} election {} - {}",
-            request_id, election.metadata.state, election.id, election.metadata.name
-        );
-        election
-    };
+                    debug!(
+                        "  req{} Inserted election {} with {} electorates and {} questions",
+                        request_id,
+                        election.id,
+                        election.electorates.len(),
+                        election.questions.len()
+                    );
+
+                    // Create and insert a counter for each question.
+                    let new_counters = election
+                        .questions
+                        .keys()
+                        .map(|question_id| Counter {
+                            id: ballot_counter_id(election_id, *question_id),
+                            next: 1,
+                        })
+                        .collect::<Vec<_>>();
+                    counters
+                        .insert_many_with_session(&new_counters, None, session)
+                        .await?;
+
+                    trace!(
+                        "  req{} Inserted {} ballot counters",
+                        request_id,
+                        new_counters.len()
+                    );
+
+                    Ok(())
+                }
+                .boxed()
+            },
+            None,
+        )
+        .await?;
+
+    warn!(
+        "  req{} Created {:?} election {} - {}",
+        request_id, election.metadata.state, election.id, election.metadata.name
+    );
 
     Ok(Json(election.into()))
 }
@@ -185,6 +215,7 @@ async fn modify_election(
     request_id: RequestId,
 ) -> Result<Json<ElectionDescription>> {
     info!("  req{} Admin {} acting", request_id, token.id);
+
     // Get the existing election.
     let election = elections
         .find_one(u32_id_filter(election_id), None)
@@ -225,6 +256,7 @@ async fn publish_election(
     request_id: RequestId,
 ) -> Result<()> {
     info!("  req{} Admin {} acting", request_id, token.id);
+
     // Update the state.
     let filter = doc! {
         "_id": election_id,
@@ -235,22 +267,26 @@ async fn publish_election(
             "state": ElectionState::Published,
         }
     };
-    let result = elections.update_one(filter, update, None).await?;
-    if result.modified_count != 1 {
-        return Err(Error::Status(
-            Status::BadRequest,
-            format!(
-                "Election {} doesn't exist or isn't a draft; cannot publish.",
-                election_id
-            ),
-        ));
-    }
+    let options = FindOneAndUpdateOptions::builder()
+        .return_document(ReturnDocument::After)
+        .build();
+    let result = elections
+        .find_one_and_update(filter, update, options)
+        .await?;
+    let election = match result {
+        Some(e) => e,
+        None => {
+            return Err(Error::Status(
+                Status::BadRequest,
+                format!(
+                    "Election {} doesn't exist or isn't a draft; cannot publish.",
+                    election_id
+                ),
+            ));
+        }
+    };
 
     // Schedule the election finalizer.
-    let election = elections
-        .find_one(u32_id_filter(election_id), None)
-        .await?
-        .unwrap(); // Presence already checked.
     election_finalizers
         .schedule_election(unconfirmed_ballots, audited_ballots, &election)
         .await;
@@ -268,6 +304,7 @@ async fn archive_election(
     request_id: RequestId,
 ) -> Result<()> {
     info!("  req{} Admin {} acting", request_id, token.id);
+
     // Update the state.
     let filter = doc! {
         "_id": election_id,
@@ -327,77 +364,103 @@ async fn delete_election(
     }
 
     // Atomically delete the election and all associated data.
-    {
-        let mut session = db_client.start_session(None).await?;
-        session.start_transaction(None).await?;
+    let mut session = db_client.start_session(None).await?;
+    session
+        .with_transaction(
+            (
+                election_id,
+                &election,
+                &elections,
+                &ballots,
+                &totals,
+                &voters,
+                &counters,
+            ),
+            |session, (election_id, election, elections, ballots, totals, voters, counters)| {
+                async move {
+                    // Delete the election itself.
+                    // Concurrency: only delete if still in correct state.
+                    let filter = doc! {
+                        "_id": *election_id,
+                        "$or": [{"state": ElectionState::Draft}, {"state": ElectionState::Archived}],
+                    };
+                    let result = elections
+                        .delete_one_with_session(filter, None, session)
+                        .await?;
+                    match result.deleted_count {
+                        0 => {
+                            // Concurrency error.
+                        }
+                        1 => {},
+                        _ => unreachable!(),
+                    }
+                    trace!("  req{request_id} Deleted election {election_id}");
 
-        // Delete the election itself.
-        let result = elections
-            .delete_one_with_session(u32_id_filter(election_id), None, &mut session)
-            .await?;
-        assert_eq!(result.deleted_count, 1);
-        trace!("  req{request_id} Deleted election {election_id}");
+                    // Delete all ballots and totals.
+                    let filter = doc! {
+                        "election_id": *election_id,
+                    };
+                    let result = ballots
+                        .delete_many_with_session(filter.clone(), None, session)
+                        .await?;
+                    trace!(
+                        "  req{} Deleted {} ballots for election {}",
+                        request_id,
+                        result.deleted_count,
+                        election_id
+                    );
+                    let result = totals
+                        .delete_many_with_session(filter, None, session)
+                        .await?;
+                    trace!(
+                        "  req{} Deleted {} totals for election {}",
+                        request_id,
+                        result.deleted_count,
+                        election_id
+                    );
 
-        // Delete all ballots and totals.
-        let filter = doc! {
-            "election_id": election_id,
-        };
-        let result = ballots
-            .delete_many_with_session(filter.clone(), None, &mut session)
-            .await?;
-        trace!(
-            "  req{} Deleted {} ballots for election {}",
-            request_id,
-            result.deleted_count,
-            election_id
-        );
-        let result = totals
-            .delete_many_with_session(filter, None, &mut session)
-            .await?;
-        trace!(
-            "  req{} Deleted {} totals for election {}",
-            request_id,
-            result.deleted_count,
-            election_id
-        );
+                    // Remove the election from all voters' allowed questions.
+                    let field_to_remove = format!("allowed_questions.{}", election_id);
+                    let update = doc! {
+                        "$unset": {
+                            &field_to_remove: "",
+                        }
+                    };
+                    let result = voters
+                        .update_many_with_session(doc! {}, update, None, session)
+                        .await?;
+                    trace!(
+                        "  req{} Removed election {} from {} voters",
+                        request_id,
+                        election_id,
+                        result.modified_count
+                    );
 
-        // Remove the election from all voters' allowed questions.
-        let field_to_remove = format!("allowed_questions.{}", election_id);
-        let update = doc! {
-            "$unset": {
-                &field_to_remove: "",
-            }
-        };
-        let result = voters
-            .update_many_with_session(doc! {}, update, None, &mut session)
-            .await?;
-        trace!(
-            "  req{} Removed election {} from {} voters",
-            request_id,
-            election_id,
-            result.modified_count
-        );
+                    // Delete the counters.
+                    let mut deleted_counters: u64 = 0;
+                    for question_id in election.questions.keys() {
+                        let result = counters
+                            .delete_one_with_session(
+                                doc! {"_id": ballot_counter_id(*election_id, *question_id)},
+                                None,
+                                session,
+                            )
+                            .await?;
+                        deleted_counters += result.deleted_count;
+                    }
+                    trace!(
+                        "  req{} Deleted {} ballot counters for election {}",
+                        request_id,
+                        deleted_counters,
+                        election_id,
+                    );
 
-        // Delete the counters.
-        for question_id in election.questions.keys() {
-            let result = counters
-                .delete_one_with_session(
-                    doc! {"_id": ballot_counter_id(election_id, *question_id)},
-                    None,
-                    &mut session,
-                )
-                .await?;
-            assert_eq!(result.deleted_count, 1);
-        }
-        trace!(
-            "  req{} Deleted {} ballot counters for election {}",
-            request_id,
-            election.questions.len(),
-            election_id
-        );
-
-        session.commit_transaction().await?;
-    }
+                    Ok(())
+                }.boxed()
+            },
+            None,
+        )
+        .await?;
     warn!(
         "  req{} Permanently deleted election {} - {}",
         request_id, election.id, election.metadata.name
