@@ -1,12 +1,6 @@
 // This script inserts test data useful for end-to-end testing.
 
 use dreip;
-// Create an admin account.
-db.admins.insertOne({
-  username: "admin",
-  // Password is `admin`
-  password_hash: "$argon2i$v=19$m=4096,t=3,p=1$WDluTWJ4ZHUyOXRwaUJtcg$PRV0VWV3M4uNMiYZ/85QqB8rkVLHuWoyCq+CkRb9Opw"
-});
 
 // Create an election.
 let month_milliseconds = 1000 * 60 * 60 * 24 * 30;
@@ -117,10 +111,6 @@ db.candidate_totals.insertMany([
 
 // Create the counters.
 db.counters.insertMany([
-  {
-    "_id": "eid",
-    "next": 3
-  },
   {
     "_id": "bid:1:1",
     "next": 10
