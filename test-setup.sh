@@ -95,9 +95,8 @@ if [[ $reuse_container != true ]]; then
   # This defaults to the container hostname (container ID), but must be routable
   # from this host, so set it to the container IP.
   # This only works once mongodb is fully up and ready, which is difficult to
-  # detect exactly, so wait for the port to be available and then retry in a loop.
+  # detect exactly, so retry in a loop.
   echo -n "Configuring replica set... "
-  ./db/wait-for-it.sh "$ip_addr:27017" &>/dev/null
   remaining_attempts=10
   set +e
   trap - ERR
