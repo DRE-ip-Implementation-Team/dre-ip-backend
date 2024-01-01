@@ -4,7 +4,7 @@
 # Usage: './test-setup.sh' (no arguments)
 
 # Constants.
-readonly TESTDB_IMAGE='dreip-backend-testdb'
+readonly TESTDB_IMAGE='bitnami/mongodb:5.0.13-debian-11-r1'
 readonly TESTDB_CONTAINER='dreip-backend-testdb'
 readonly TESTDB_PASSWORD='password'
 
@@ -66,11 +66,6 @@ if [[ "$name_matches" -gt 1 ]]; then
 fi
 
 if [[ $reuse_container != true ]]; then
-  # Build the image.
-  echo -n "Rebuilding DB image... "
-  docker build -t "$TESTDB_IMAGE" ./db >/dev/null
-  echo "done"
-
   # Run the container.
   echo -n "Launching container... "
   docker run --rm -d \
@@ -112,26 +107,6 @@ if [[ $reuse_container != true ]]; then
       &>/dev/null
     # An `&& break` would stop the mongosh invocation from triggering `set -e`, so
     # test the return code afterwards.
-    test $? -eq 0 && break
-    sleep 1
-  done
-  echo "done"
-
-  # Wait for DB init to complete.
-  echo -n "Waiting for init scripts... "
-  remaining_attempts=10
-  set +e
-  trap - ERR
-  while true; do
-    ((remaining_attempts--))
-    if [[ $remaining_attempts -eq 0 ]]; then
-      # Die if the last attempt fails.
-      set -e
-      trap "$errtrap" ERR
-    fi
-    mongosh "$mongo_uri" --quiet --eval 'use flags' \
-        --eval "db.flags.findOne({init_complete: true})" 2>/dev/null \
-            | grep -qF 'init_complete: true'
     test $? -eq 0 && break
     sleep 1
   done

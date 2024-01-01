@@ -1,3 +1,5 @@
+// This script inserts test data useful for end-to-end testing.
+
 use dreip;
 // Create an admin account.
 db.admins.insertOne({
