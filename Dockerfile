@@ -1,5 +1,5 @@
 # Stage 1: build
-FROM rust:1.64-bullseye as build
+FROM rust:1.75-bookworm as build
 ARG BUILD_DIR=/app
 ARG BUILD_TYPE=release
 
@@ -21,7 +21,7 @@ RUN if [ "${BUILD_TYPE}" = "release" ]; then BUILD_ARGS="${BUILD_ARGS} --release
     strip target/${BUILD_TYPE}/dreip-backend
 
 # Stage 2: run
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 ARG BUILD_DIR=/app
 ARG BUILD_TYPE=release
 ARG APP_DIR=/app
