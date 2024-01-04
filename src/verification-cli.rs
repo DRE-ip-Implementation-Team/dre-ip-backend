@@ -190,6 +190,12 @@ fn verify(path: &str) -> Result<Vec<FriendlyResults>, Error> {
                 .unwrap()
                 .tally = Some(tally_to_u64(totals_desc.tally));
         }
+        // If there were no confirmed votes, the tallies will be missing.
+        for res in friendly_results.values_mut() {
+            if res.tally.is_none() {
+                res.tally = Some(0);
+            }
+        }
     }
 
     // Turn into a list ordered by tally, then name.
