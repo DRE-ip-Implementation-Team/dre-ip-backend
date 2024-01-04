@@ -1,5 +1,5 @@
 [workspace]
-members = ["backend_test", "protocol"]
+members = ["backend_test", "benchmarks", "protocol"]
 
 [package]
 name = "dreip-backend"
