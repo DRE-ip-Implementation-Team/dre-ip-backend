@@ -1193,7 +1193,7 @@ mod tests {
         assert_eq!(ballot.question_id, question_id);
         assert!(
             ballot.creation_time < Utc::now()
-                && ballot.creation_time + Duration::minutes(1) > Utc::now()
+                && ballot.creation_time + Duration::try_minutes(1).unwrap() > Utc::now()
         );
         let mut yes_votes = 0;
         for (candidate, vote) in ballot.crypto.votes.iter() {

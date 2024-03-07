@@ -707,7 +707,7 @@ mod tests {
         let modified = modify_election_with_spec(&client, election.id, &spec).await;
         assert_eq!(modified.name, spec.name);
         assert_eq!(modified.state, ElectionState::Draft);
-        assert!(modified.start_time - spec.start_time < Duration::seconds(1));
+        assert!(modified.start_time - spec.start_time < Duration::try_seconds(1).unwrap());
         assert_eq!(modified.end_time, election.end_time);
         assert_eq!(modified.electorates, election.electorates);
 

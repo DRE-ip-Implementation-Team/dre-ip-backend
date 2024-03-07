@@ -42,12 +42,14 @@ impl Config {
 
     /// Valid lifetime of OTP in seconds.
     pub fn otp_ttl(&self) -> Duration {
-        Duration::seconds(self.otp_ttl.into())
+        // Unwrap safe: u32 is not big enough to exceed the bounds of Duration.
+        Duration::try_seconds(self.otp_ttl.into()).unwrap()
     }
 
     /// Valid lifetime of auth token cookies in seconds.
     pub fn auth_ttl(&self) -> Duration {
-        Duration::seconds(self.auth_ttl.into())
+        // Unwrap safe: u32 is not big enough to exceed the bounds of Duration.
+        Duration::try_seconds(self.auth_ttl.into()).unwrap()
     }
 
     /// Secret key used to encrypt JWTs.

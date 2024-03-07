@@ -861,7 +861,7 @@ mod tests {
         assert_eq!(response.status(), Status::NotFound);
 
         // Set the end time in the past.
-        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        election.metadata.end_time = Utc::now() - chrono::Duration::try_seconds(1).unwrap();
         let result = Coll::<Election>::from_db(&db)
             .replace_one(u32_id_filter(election.id), &election, None)
             .await
@@ -913,7 +913,7 @@ mod tests {
         assert!(results.verify().is_ok());
 
         // Try with a finished election.
-        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        election.metadata.end_time = Utc::now() - chrono::Duration::try_seconds(1).unwrap();
         let result = Coll::<Election>::from_db(&db)
             .replace_one(u32_id_filter(election.id), &election, None)
             .await
@@ -942,7 +942,7 @@ mod tests {
         // Put the election in the past, and set ID to 1.
         let mut election = get_election_for_spec(&db, ElectionSpec::current_example()).await;
         election.id = 1;
-        election.metadata.end_time = Utc::now() - chrono::Duration::seconds(1);
+        election.metadata.end_time = Utc::now() - chrono::Duration::try_seconds(1).unwrap();
         let result = Coll::<Election>::from_db(&db)
             .delete_many(doc! {}, None)
             .await

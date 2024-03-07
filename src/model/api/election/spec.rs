@@ -106,7 +106,7 @@ mod examples {
     impl ElectionSpec {
         pub fn current_example() -> Self {
             let start_time = midnight_today!();
-            let end_time = start_time + Duration::days(30);
+            let end_time = start_time + Duration::try_days(30).unwrap();
             Self {
                 name: "Test Election 1".to_string(),
                 start_time,
@@ -122,8 +122,8 @@ mod examples {
         }
 
         pub fn future_example() -> Self {
-            let start_time = midnight_today!() + Duration::days(30);
-            let end_time = start_time + Duration::days(30);
+            let start_time = midnight_today!() + Duration::try_days(30).unwrap();
+            let end_time = start_time + Duration::try_days(30).unwrap();
             Self {
                 name: "Test Election 2".to_string(),
                 start_time,
@@ -134,8 +134,8 @@ mod examples {
         }
 
         pub fn past_example() -> Self {
-            let start_time = midnight_today!() - Duration::days(30);
-            let end_time = start_time + Duration::days(7);
+            let start_time = midnight_today!() - Duration::try_days(30).unwrap();
+            let end_time = start_time + Duration::try_days(7).unwrap();
             Self {
                 name: "Test Election 3".to_string(),
                 start_time,

@@ -184,7 +184,7 @@ but hints that assumptions made elsewhere might be incorrect"
                         tasks.clone(),
                     );
                     const RETRY_INTERVAL_SECONDS: i64 = 300;
-                    let retry_time = Utc::now() + Duration::seconds(RETRY_INTERVAL_SECONDS);
+                    let retry_time = Utc::now() + Duration::try_seconds(RETRY_INTERVAL_SECONDS).unwrap();
                     let mut tasks_locked = tasks.lock().await;
                     let finalizer_task = ScheduledTask::new(retry, retry_time);
                     tasks_locked.insert(election_id, finalizer_task);
