@@ -1017,14 +1017,14 @@ mod tests {
             .values()
             .find(|q| q.description == QuestionSpec::example1().description)
             .unwrap();
-        let q1c1 = q1.candidates.get(0).unwrap();
+        let q1c1 = q1.candidates.first().unwrap();
         let q1c2 = q1.candidates.get(1).unwrap();
         let q2 = election
             .questions
             .values()
             .find(|q| q.description == QuestionSpec::example2().description)
             .unwrap();
-        let q2c1 = q2.candidates.get(0).unwrap();
+        let q2c1 = q2.candidates.first().unwrap();
         let q2c2 = q2.candidates.get(1).unwrap();
         let mut rng = rand::thread_rng();
 
